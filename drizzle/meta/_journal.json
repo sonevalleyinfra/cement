@@ -64,6 +64,13 @@
       "when": 1791542944522,
       "tag": "0008_dispatches",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791543898611,
+      "tag": "0009_ledger_entries",
+      "breakpoints": true
     }
   ]
 }
