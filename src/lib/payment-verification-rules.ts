@@ -8,6 +8,7 @@
  *   (ignoring case and spaces). Then the status becomes "verified". Verified is final.
  * - Cheques: pending -> cleared | bounced (see receipt-rules canChangeChequeStatus).
  *   A bounce adds compensating ledger rows that undo every credit line; nothing is edited.
+ * - Online money that never arrived ("Not received") is a receipt reversal, see receipt-reversal.ts.
  */
 import { hasAnyRole } from "@/lib/roles";
 import { bounceReversal, canChangeChequeStatus, type ChequeStatus, type PostingLine } from "@/lib/receipt-rules";

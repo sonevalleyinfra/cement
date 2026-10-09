@@ -6,6 +6,7 @@ import { ListCard } from "@/components/app/list-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatINR } from "@/lib/money";
+import { ReverseForm } from "../[id]/reverse-form";
 import { setChequeStatus, verifyOnline } from "./actions";
 
 type Row = {
@@ -22,7 +23,7 @@ type Row = {
   date: string;
 };
 
-function OnlineCard({ r, index }: { r: Row; index: number }) {
+function OnlineCard({ r, index, canReverse }: { r: Row; index: number; canReverse: boolean }) {
   const [utr, setUtr] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
@@ -52,6 +53,7 @@ function OnlineCard({ r, index }: { r: Row; index: number }) {
             </Button>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
+          {canReverse && <ReverseForm receiptId={r.id} label="Not received" />}
         </div>
       }
     />
@@ -96,7 +98,7 @@ function ChequeCard({ r, index }: { r: Row; index: number }) {
   );
 }
 
-export function ReviewView({ rows }: { rows: Row[] }) {
+export function ReviewView({ rows, canReverse }: { rows: Row[]; canReverse: boolean }) {
   const online = rows.filter((r) => r.mode === "online");
   const cheques = rows.filter((r) => r.mode === "cheque");
   return (
@@ -109,7 +111,7 @@ export function ReviewView({ rows }: { rows: Row[] }) {
         <ul className="flex flex-col gap-3">
           {online.map((r, i) => (
             <li key={r.id}>
-              <OnlineCard r={r} index={i} />
+              <OnlineCard r={r} index={i} canReverse={canReverse} />
             </li>
           ))}
         </ul>

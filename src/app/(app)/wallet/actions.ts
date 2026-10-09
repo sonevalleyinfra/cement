@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { user, walletMovements } from "@/db/schema";
 import { findAccessibleFirm } from "@/lib/firm-access";
 import { isUuid } from "@/lib/ids";
+import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole, writeBlock } from "@/lib/session";
 import { canAnswerRequest, canConfirmHandover, validateHandoverRequest, walletBalance } from "@/lib/wallet-rules";
@@ -78,6 +79,15 @@ export async function answerHandover(requestId: string, confirm: boolean): Promi
       amountPaise: confirm ? request.amountPaise : 0,
       refId: request.id,
       actorId: session.user.id,
+    });
+    await notifyMoney(tx, {
+      event: confirm ? "handover_confirmed" : "handover_rejected",
+      firmId: request.firmId,
+      firmNames: [firm.name],
+      amountPaise: request.amountPaise,
+      actorId: session.user.id,
+      collectorId: request.collectorId,
+      link: "/wallet",
     });
     return { ok: true };
   });
