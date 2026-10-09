@@ -53,4 +53,8 @@ describe("buildNotifications", () => {
       expect(list[0].title.startsWith("Firm A: ")).toBe(true);
     }
   });
+  it("a partial dispatch names the bags that left, not the whole order", () => {
+    const list = buildNotifications({ ...base, event: "dispatched", bags: 20 });
+    expect(list[0].body).toBe("Raju Stores, 20 bags is on its way.");
+  });
 });

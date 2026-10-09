@@ -16,6 +16,8 @@ export async function notify(
   orderId: string,
   event: NotificationEvent,
   actorId: string | null,
+  /** Bags to mention instead of the whole order (a partial dispatch). */
+  bagsOverride?: number,
 ): Promise<void> {
   const [row] = await tx
     .select({
@@ -51,7 +53,7 @@ export async function notify(
     event,
     firmName: row.firmName,
     retailerName: row.retailerName,
-    bags: row.bags,
+    bags: bagsOverride ?? row.bags,
     actorId,
     people: {
       salesRepId: row.salesRepId,

@@ -173,7 +173,7 @@ export async function dispatchOrder(input: {
         ...(rate.newRatePaise !== null ? { ratePaise: rate.newRatePaise } : {}),
       })
       .where(eq(orders.id, order.id));
-    await notify(tx, order.id, "dispatched", me.id);
+    await notify(tx, order.id, "dispatched", me.id, input.bags);
     return { ok: true };
   });
   if (result.ok) refresh(input.orderId);
