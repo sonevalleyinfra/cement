@@ -4,13 +4,15 @@ import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { rolesFor } from "@/lib/permissions";
-import { requireRole } from "@/lib/session";
+import { requireRole, writeBlock } from "@/lib/session";
 import { ReceiptForm } from "./receipt-form";
 
 export default async function NewReceiptPage() {
   const { user } = await requireRole(...rolesFor("recordReceipt"));
   const firms = await getAccessibleFirms(user.id, user.role);
   if (firms.length === 0) return <EmptyState title="No firm available" />;
+  const blocked = await writeBlock();
+  if (blocked) return <EmptyState title={blocked} />;
   const list = await db
     .select({ id: retailers.id, name: retailers.name, place: retailers.place })
     .from(retailers)
