@@ -4,12 +4,14 @@ import { db } from "@/db";
 import { user as userTable, walletMovements } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { can, rolesFor } from "@/lib/permissions";
+import { getFirmSelection } from "@/components/app/firm-switcher";
 import { requireRole } from "@/lib/session";
 import { pendingRequestIds, walletBalance } from "@/lib/wallet-rules";
 import { WalletView } from "./wallet-view";
 
 export default async function WalletPage() {
   const { user } = await requireRole(...rolesFor("useWallet"));
+  const { selection } = await getFirmSelection();
   const firms = await getAccessibleFirms(user.id, user.role);
   if (firms.length === 0) return <EmptyState title="No firm available" />;
   const firmIds = firms.map((f) => f.id);
@@ -42,5 +44,5 @@ export default async function WalletPage() {
     collectors = [];
     requests = [];
   }
-  return <WalletView mine={mine} collectors={collectors} requests={requests} isAccounts={can(user.role, "confirmHandover")} />;
+  return <WalletView mine={mine} collectors={collectors} requests={requests} isAccounts={can(user.role, "confirmHandover")} readOnly={selection.readOnly} />;
 }

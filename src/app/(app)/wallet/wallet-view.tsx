@@ -18,11 +18,14 @@ export function WalletView({
   collectors,
   requests,
   isAccounts,
+  readOnly = false,
 }: {
   mine: Mine[];
   collectors: Collector[];
   requests: Request[];
   isAccounts: boolean;
+  /** Admin's "All firms" view: show numbers, no buttons. */
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState<Mine | null>(null);
   const [amount, setAmount] = useState("");
@@ -62,6 +65,7 @@ export function WalletView({
               bottom={
                 <>
                   <span className="tabular text-lg font-bold">{formatINR(m.balancePaise)}</span>
+                  {!readOnly && (
                   <Button
                     variant="outline"
                     disabled={m.availablePaise <= 0}
@@ -73,6 +77,7 @@ export function WalletView({
                   >
                     Hand over
                   </Button>
+                  )}
                 </>
               }
             />
@@ -96,8 +101,8 @@ export function WalletView({
                     bottom={
                       <>
                         <span className="tabular text-lg font-bold">{formatINR(r.amountPaise)}</span>
-                        {r.own ? (
-                          <span className="text-xs text-muted-foreground">Another person confirms yours</span>
+                        {r.own || readOnly ? (
+                          <span className="text-xs text-muted-foreground">{r.own ? "Another person confirms yours" : "View only"}</span>
                         ) : (
                           <div className="flex gap-2">
                             <Button disabled={pending} onClick={() => answer(r.id, true)}>

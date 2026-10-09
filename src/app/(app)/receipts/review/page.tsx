@@ -5,11 +5,14 @@ import { receipts, retailers } from "@/db/schema";
 import { formatDate } from "@/lib/datetime";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { rolesFor } from "@/lib/permissions";
+import { getFirmSelection } from "@/components/app/firm-switcher";
 import { requireRole } from "@/lib/session";
 import { ReviewView } from "./review-view";
 
 export default async function ReviewPage() {
   const { user } = await requireRole(...rolesFor("verifyPayments"));
+  const { selection } = await getFirmSelection();
+  if (selection.mode === "all") return <EmptyState title="Pick one firm to verify payments" />;
   const firms = await getAccessibleFirms(user.id, user.role);
   const firmIds = firms.map((f) => f.id);
   if (firmIds.length === 0) return <EmptyState title="No firm available" />;

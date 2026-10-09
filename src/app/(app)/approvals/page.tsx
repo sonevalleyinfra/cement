@@ -6,11 +6,14 @@ import { firms, orders, products, retailers } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { getDues } from "@/lib/dues";
 import { rolesFor } from "@/lib/permissions";
+import { getFirmSelection } from "@/components/app/firm-switcher";
 import { requireRole } from "@/lib/session";
 import { ApprovalCard } from "./approval-card";
 
 export default async function ApprovalsPage() {
   const { user } = await requireRole(...rolesFor("viewApprovals"));
+  const { selection } = await getFirmSelection();
+  if (selection.mode === "all") return <EmptyState title="Pick one firm to approve orders" />;
   const firmIds = (await getAccessibleFirms(user.id, user.role)).map((f) => f.id);
   const rows =
     firmIds.length === 0

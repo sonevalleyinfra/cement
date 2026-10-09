@@ -11,6 +11,7 @@ import { isUuid } from "@/lib/ids";
 import { canCancelOrder, canSeePrice, chipLabel, chipStatus } from "@/lib/order-access";
 import { isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
 import { canFillRate } from "@/lib/rate-rules";
+import { getFirmSelection } from "@/components/app/firm-switcher";
 import { requireUser } from "@/lib/session";
 import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
@@ -70,8 +71,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     .where(eq(orderEvents.orderId, o.id))
     .orderBy(asc(orderEvents.createdAt));
 
-  const canCancel = showPrice && canCancelOrder(user.role, user.id, o);
-  const canRate = canFillRate(user.role, user.id, o.salesRepId, o.status);
+  // Admin's "All firms" view is read only: no buttons that change anything.
+  const { selection } = await getFirmSelection();
+  const canCancel = !selection.readOnly && showPrice && canCancelOrder(user.role, user.id, o);
+  const canRate = !selection.readOnly && canFillRate(user.role, user.id, o.salesRepId, o.status);
 
   return (
     <div className="flex flex-col gap-4">
