@@ -8,6 +8,20 @@
       "when": 1791059973920,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791536558084,
+      "tag": "0001_firms_products_user_firms",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791536560912,
+      "tag": "0002_seed_firms_products",
+      "breakpoints": true
     }
   ]
 }
