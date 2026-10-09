@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 
-/** Static placeholder block. Plain grey: no shimmer, no pulse. */
+/** Placeholder block with a soft light sweep while data loads. */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("rounded-xl bg-muted", className)} />;
+  return <div className={cn("animate-shimmer rounded-xl bg-muted", className)} />;
 }
 
 export function ListSkeleton({ rows = 4 }: { rows?: number }) {

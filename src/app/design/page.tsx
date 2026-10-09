@@ -1,8 +1,10 @@
+import { BadgeCheck, Banknote, CalendarDays, Package, Receipt, Wallet } from "lucide-react";
 import { notFound } from "next/navigation";
 import type { NavItem } from "@/components/app/bottom-nav";
 import { AppShell } from "@/components/app/app-shell";
 import { EmptyState } from "@/components/app/empty-state";
 import { FirmChip } from "@/components/app/firm-chip";
+import { IconTile } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { ListSkeleton } from "@/components/app/skeleton";
@@ -32,7 +34,34 @@ export default function DesignPage() {
 
       <div className="mt-4 flex flex-col gap-3">
         <ListCard
+          featured
           index={0}
+          href="/design"
+          title="Today"
+          icon={
+            <span className="flex size-10 items-center justify-center rounded-xl bg-white/20 text-white">
+              <CalendarDays className="size-5" />
+            </span>
+          }
+          bottom={<Stat label="Orders" value="6" />}
+        />
+        <ListCard
+          index={1}
+          href="/design"
+          title="Dues"
+          icon={<IconTile icon={Banknote} tone="rose" />}
+          bottom={<Stat label="Outstanding" value={formatINR(5_150_000, { hidePaise: true })} />}
+        />
+        <div className="flex gap-2 px-1">
+          <IconTile icon={CalendarDays} tone="orange" />
+          <IconTile icon={Banknote} tone="rose" />
+          <IconTile icon={Package} tone="blue" />
+          <IconTile icon={Wallet} tone="green" />
+          <IconTile icon={BadgeCheck} tone="violet" />
+          <IconTile icon={Receipt} tone="teal" />
+        </div>
+        <ListCard
+          index={2}
           href="/design"
           top={
             <>
@@ -49,7 +78,7 @@ export default function DesignPage() {
           }
         />
         <ListCard
-          index={1}
+          index={3}
           top={
             <>
               <FirmChip name="Firm B" slot="b" />
@@ -65,7 +94,7 @@ export default function DesignPage() {
           }
         />
         <ListCard
-          index={2}
+          index={4}
           top={
             <>
               <FirmChip name="Firm C" slot="c" />

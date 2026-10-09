@@ -117,7 +117,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       <div className="tabular text-3xl font-bold">{formatINR(r.totalPaise)}</div>
 
       {(r.mode === "online" || r.mode === "cheque") && (
-        <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 text-sm ring-1 ring-foreground/8">
+        <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
           {r.receivedFirmId && <div>Into {firmName(r.receivedFirmId)}</div>}
           {r.mode === "online" && r.utr && (
             <div className="text-muted-foreground">
@@ -137,7 +137,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
         {split.map((s) => {
           const f = firmOf.get(s.firmId);
           return (
-            <li key={s.firmId} className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+            <li key={s.firmId} className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex flex-col gap-1">
                 {f && <FirmChip name={f.name} slot={f.slot} />}
                 {s.advancePaise > 0 && (

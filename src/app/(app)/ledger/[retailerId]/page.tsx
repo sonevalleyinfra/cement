@@ -78,7 +78,7 @@ export default async function RetailerLedgerPage({
           ))}
         </div>
       )}
-      <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+      <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <div className="text-xs text-muted-foreground">
           {balance < 0 ? "Advance with" : "Dues with"} {firm.name}
         </div>
@@ -92,7 +92,7 @@ export default async function RetailerLedgerPage({
       ) : (
         <ul className="flex flex-col gap-2">
           {entries.map((e) => (
-            <li key={e.id} className="flex flex-col gap-1 rounded-2xl bg-card p-3 ring-1 ring-foreground/8">
+            <li key={e.id} className="flex flex-col gap-1 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold">{ledgerEntryLabel(e.kind, e.amountPaise)}</span>
                 <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-green-700" : ""}`}>

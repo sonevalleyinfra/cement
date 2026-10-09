@@ -26,7 +26,7 @@ export function RateForm({ orderId, bags }: { orderId: string; bags: number }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+    <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
       <div className="text-sm font-semibold">Rate per bag (₹)</div>
       <div className="tabular text-3xl font-bold">{digits ? `₹${digits}` : "₹0"}</div>
       {paise !== null && (

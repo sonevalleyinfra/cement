@@ -123,7 +123,7 @@ export function DispatchView({
   return (
     <div className="flex flex-col gap-3">
       {locations.length === 0 && (
-        <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+        <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <p className="text-sm">
             This firm has no godown yet, so nothing can be dispatched.{" "}
             {isAdmin ? "Add one:" : "Ask admin to add a godown."}

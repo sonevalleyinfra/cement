@@ -20,7 +20,7 @@ type RetailerRow = { id: string; name: string; place: string };
 const modeLabel: Record<PaymentMode, string> = { cash: "Cash", online: "Online", cheque: "Cheque" };
 
 const chip = (on: boolean) =>
-  `h-11 rounded-full px-4 text-sm font-semibold ring-1 ring-foreground/10 ${on ? "bg-primary text-primary-foreground" : "bg-card"}`;
+  `h-11 rounded-full px-4 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
 
 /** Paise as plain rupee text for an input ("40000", "123.45"). */
 const rupeeText = (paise: number) => (paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2));
@@ -121,7 +121,7 @@ export function ReceiptForm({ retailers, firms }: { retailers: RetailerRow[]; fi
       <button
         type="button"
         onClick={() => setPickOpen(true)}
-        className="flex min-h-14 items-center justify-between rounded-2xl bg-card p-4 text-left text-base font-semibold ring-1 ring-foreground/8"
+        className="flex min-h-14 items-center justify-between rounded-2xl bg-card p-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
       >
         {retailer ? (retailer.place ? `${retailer.name} · ${retailer.place}` : retailer.name) : "Pick retailer"}
         <span className="text-sm font-medium text-muted-foreground">Change</span>
@@ -134,7 +134,7 @@ export function ReceiptForm({ retailers, firms }: { retailers: RetailerRow[]; fi
               <button
                 type="button"
                 onClick={() => pickRetailer(r)}
-                className="min-h-12 w-full rounded-xl bg-card p-3 text-left text-base font-medium ring-1 ring-foreground/8"
+                className="min-h-12 w-full rounded-xl bg-card p-3 text-left text-base font-medium shadow-card ring-1 ring-foreground/6"
               >
                 {r.name}
                 {r.place && <span className="text-muted-foreground"> · {r.place}</span>}
@@ -219,7 +219,7 @@ export function ReceiptForm({ retailers, firms }: { retailers: RetailerRow[]; fi
               const value = edits[d.firmId] ?? rupeeText(amountOf(d.firmId));
               const oldest = d.items[0]?.dueSince;
               return (
-                <li key={d.firmId} className="flex flex-col gap-2 rounded-2xl bg-card p-3 ring-1 ring-foreground/8">
+                <li key={d.firmId} className="flex flex-col gap-2 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
                   <div className="flex items-center justify-between gap-2">
                     {firm && <FirmChip name={firm.name} slot={firm.slot} />}
                     <Button

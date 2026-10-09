@@ -1,85 +1,59 @@
+import {
+  BadgeCheck,
+  BookOpen,
+  Building2,
+  ChevronRight,
+  KeyRound,
+  Package,
+  Receipt,
+  Truck,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
+import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { Button } from "@/components/ui/button";
-import { can } from "@/lib/permissions";
+import { can, type Action } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { signOut } from "../dashboard/actions";
 
-const rowClass =
-  "flex w-full items-center justify-between rounded-2xl bg-card p-4 text-left text-base font-semibold ring-1 ring-foreground/8";
+type Row = { href: string; label: string; icon: LucideIcon; tone: Tone; permission?: Action };
+
+const rows: Row[] = [
+  { href: "/users", label: "Users", icon: Users, tone: "violet", permission: "manageUsers" },
+  { href: "/firms", label: "Firms", icon: Building2, tone: "slate", permission: "manageFirms" },
+  { href: "/approvals", label: "Approvals", icon: BadgeCheck, tone: "violet", permission: "viewApprovals" },
+  { href: "/stock", label: "Stock", icon: Package, tone: "blue", permission: "viewStock" },
+  { href: "/dispatch", label: "Dispatch", icon: Truck, tone: "blue", permission: "dispatch" },
+  { href: "/ledger", label: "Ledger", icon: BookOpen, tone: "rose", permission: "viewLedger" },
+  { href: "/receipts", label: "Receipts", icon: Receipt, tone: "teal", permission: "viewReceipts" },
+  { href: "/wallet", label: "Wallet", icon: Wallet, tone: "green", permission: "useWallet" },
+  { href: "/vehicles", label: "Vehicles", icon: Truck, tone: "amber", permission: "viewVehicles" },
+  { href: "/account", label: "Change password", icon: KeyRound, tone: "orange" },
+];
 
 export default async function MorePage() {
   const { user } = await requireUser();
+  const visible = rows.filter((r) => !r.permission || can(user.role, r.permission));
   return (
     <ul className="flex flex-col gap-3">
-      {can(user.role, "manageUsers") && (
-        <li>
-          <Link href="/users" className={rowClass}>
-            Users
+      {visible.map((r, i) => (
+        <li key={r.href} className="animate-in-up" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+          <Link
+            href={r.href}
+            className="group flex w-full items-center gap-3 rounded-2xl bg-card p-3 pr-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6 transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.99]"
+          >
+            <IconTile icon={r.icon} tone={r.tone} />
+            <span className="flex-1">{r.label}</span>
+            <ChevronRight
+              aria-hidden
+              className="size-5 text-muted-foreground/60 transition-transform duration-200 group-hover:translate-x-0.5"
+            />
           </Link>
         </li>
-      )}
-      {can(user.role, "manageFirms") && (
-        <li>
-          <Link href="/firms" className={rowClass}>
-            Firms
-          </Link>
-        </li>
-      )}
-      {can(user.role, "viewApprovals") && (
-        <li>
-          <Link href="/approvals" className={rowClass}>
-            Approvals
-          </Link>
-        </li>
-      )}
-      {can(user.role, "viewStock") && (
-        <li>
-          <Link href="/stock" className={rowClass}>
-            Stock
-          </Link>
-        </li>
-      )}
-      {can(user.role, "dispatch") && (
-        <li>
-          <Link href="/dispatch" className={rowClass}>
-            Dispatch
-          </Link>
-        </li>
-      )}
-      {can(user.role, "viewLedger") && (
-        <li>
-          <Link href="/ledger" className={rowClass}>
-            Ledger
-          </Link>
-        </li>
-      )}
-      {can(user.role, "viewReceipts") && (
-        <li>
-          <Link href="/receipts" className={rowClass}>
-            Receipts
-          </Link>
-        </li>
-      )}
-      {can(user.role, "useWallet") && (
-        <li>
-          <Link href="/wallet" className={rowClass}>
-            Wallet
-          </Link>
-        </li>
-      )}
-      {can(user.role, "viewVehicles") && (
-        <li>
-          <Link href="/vehicles" className={rowClass}>
-            Vehicles
-          </Link>
-        </li>
-      )}
-      <li>
-        <Link href="/account" className={rowClass}>
-          Change password
-        </Link>
-      </li>
-      <li>
+      ))}
+      <li className="animate-in-up mt-2" style={{ animationDelay: `${Math.min(visible.length, 8) * 40}ms` }}>
         <form action={signOut}>
           <Button type="submit" variant="outline" className="w-full">
             Sign out

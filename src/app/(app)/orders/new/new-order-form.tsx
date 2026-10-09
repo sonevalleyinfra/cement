@@ -60,14 +60,14 @@ export function NewOrderForm({
       <p className="text-sm font-medium text-muted-foreground">{firmName}</p>
 
       {fixedRetailerId ? (
-        <div className="rounded-2xl bg-card p-4 text-base font-semibold ring-1 ring-foreground/8">
+        <div className="rounded-2xl bg-card p-4 text-base font-semibold shadow-card ring-1 ring-foreground/6">
           {retailer?.name}
         </div>
       ) : (
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex h-14 items-center justify-between rounded-2xl bg-card px-4 text-left text-base font-semibold ring-1 ring-foreground/8"
+          className="flex h-14 items-center justify-between rounded-2xl bg-card px-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
         >
           {retailer ? retailer.name : <span className="text-muted-foreground">Retailer</span>}
         </button>
@@ -82,8 +82,10 @@ export function NewOrderForm({
             aria-checked={p.id === productId}
             onClick={() => setProductId(p.id)}
             className={cn(
-              "h-12 rounded-full px-5 text-sm font-semibold ring-1 ring-foreground/10",
-              p.id === productId ? "bg-foreground text-background" : "bg-card",
+              "h-12 rounded-full px-5 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97]",
+              p.id === productId
+                ? "bg-primary text-primary-foreground shadow-brand ring-primary"
+                : "bg-card ring-foreground/10",
             )}
           >
             {p.name}
@@ -122,7 +124,7 @@ export function NewOrderForm({
                   setOpen(false);
                   setSearch("");
                 }}
-                className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left ring-1 ring-foreground/8"
+                className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left shadow-card ring-1 ring-foreground/6"
               >
                 <span className="font-semibold">{r.name}</span>
                 {r.place && <span className="text-xs text-muted-foreground">{r.place}</span>}

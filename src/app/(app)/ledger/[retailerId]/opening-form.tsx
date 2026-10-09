@@ -34,7 +34,7 @@ export function OpeningForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+    <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
       <div className="text-sm font-semibold">Opening balance with {firmName}</div>
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant={owes ? "default" : "outline"} onClick={() => setOwes(true)}>

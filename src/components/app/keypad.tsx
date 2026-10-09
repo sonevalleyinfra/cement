@@ -33,8 +33,8 @@ export function Keypad({
           onClick={() => press(key)}
           aria-label={key === "del" ? "Delete" : key}
           className={cn(
-            "tabular flex h-14 items-center justify-center rounded-2xl bg-card text-xl font-semibold ring-1 ring-foreground/8",
-            "transition-[transform,background-color] duration-150 ease-out active:scale-[0.97] active:bg-muted",
+            "tabular flex h-14 items-center justify-center rounded-2xl bg-card text-xl font-semibold shadow-card ring-1 ring-foreground/6",
+            "transition-[transform,background-color,color] duration-150 ease-out active:scale-[0.95] active:bg-primary/10 active:text-primary",
           )}
         >
           {key === "del" ? <Delete className="size-5" /> : key}

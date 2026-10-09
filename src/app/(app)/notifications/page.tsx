@@ -33,7 +33,7 @@ export default async function NotificationsPage() {
           <button
             type="submit"
             className={cn(
-              "flex w-full flex-col gap-1 rounded-2xl bg-card p-4 text-left ring-1 ring-foreground/8",
+              "flex w-full flex-col gap-1 rounded-2xl bg-card p-4 text-left shadow-card ring-1 ring-foreground/6",
               !n.readAt && "ring-2 ring-primary/40",
             )}
           >

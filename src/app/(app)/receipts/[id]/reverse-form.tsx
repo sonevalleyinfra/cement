@@ -23,7 +23,7 @@ export function ReverseForm({ receiptId, label = "Reverse receipt" }: { receiptI
     );
   }
   return (
-    <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+    <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
       <Input
         value={reason}
         onChange={(e) => setReason(e.target.value)}

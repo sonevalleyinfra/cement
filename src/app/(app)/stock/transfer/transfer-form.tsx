@@ -52,7 +52,7 @@ export function TransferForm({
 
   if (places.length < 2 || products.length === 0) {
     return (
-      <p className="rounded-2xl bg-card p-4 text-sm ring-1 ring-foreground/8">
+      <p className="rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
         This firm needs at least two places and a product first.
       </p>
     );

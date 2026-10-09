@@ -111,7 +111,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         {o.notes && <p className="mt-1 text-sm">{o.notes}</p>}
       </div>
       {showPrice && o.ratePaise !== null && valuePaise !== null && (
-        <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+        <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <div className="text-xs text-muted-foreground">
             Rate {formatINR(o.ratePaise)} per bag
           </div>
@@ -121,7 +121,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       {loads.length > 0 && (
         <ul className="flex flex-col gap-2">
           {loads.map((l) => (
-            <li key={l.id} className="rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+            <li key={l.id} className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="tabular text-lg font-bold">{l.bags} bags</span>
                 <span className="text-sm font-semibold">{l.vehicle}</span>

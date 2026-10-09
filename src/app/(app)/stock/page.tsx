@@ -9,7 +9,7 @@ import { getBalances } from "@/lib/stock";
 import { can, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 
-const linkClass = "rounded-xl bg-card px-3 py-2 text-sm font-semibold ring-1 ring-foreground/8";
+const linkClass = "rounded-xl bg-card px-3 py-2 text-sm font-semibold shadow-card ring-1 ring-foreground/6";
 
 export default async function StockPage() {
   const session = await requireRole(...rolesFor("viewStock"));
@@ -55,7 +55,7 @@ export default async function StockPage() {
       {prods.length === 0 && <EmptyState title="No products yet" />}
       <ul className="flex flex-col gap-3">
         {prods.map((p) => (
-          <li key={p.id} className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+          <li key={p.id} className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
             <Stat label={p.name} value={`${totalOf(p.id)} bags`} />
             {places
               .filter((l) => l.productId === p.id && l.bags !== 0)
