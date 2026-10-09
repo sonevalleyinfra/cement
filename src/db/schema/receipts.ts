@@ -8,7 +8,7 @@ import { retailers } from "./retailers";
  * One receipt = one money event from one retailer (it has no firm of its own;
  * the split lives in `receipt_allocations`). `totalPaise` is integer paise.
  * `mode`: cash | online | cheque. `status`: for cheques pending | cleared | bounced,
- * cash and online are saved as "received".
+ * cash is "received", online is "unverified" then "verified".
  */
 export const receipts = pgTable(
   "receipts",
@@ -54,4 +54,32 @@ export const receiptAllocations = pgTable(
     advance: boolean("advance").default(false).notNull(),
   },
   (t) => [index("receipt_allocations_receipt_idx").on(t.receiptId), index("receipt_allocations_order_idx").on(t.orderId)],
+);
+
+/**
+ * Cash wallet, one per collector per firm. Append-only: rows are never edited or deleted.
+ * `amountPaise` is a positive size; `kind` decides the direction (see lib/wallet-rules.ts).
+ * `refId` points a confirmed / rejected row at the handover request it answers.
+ */
+export const walletMovements = pgTable(
+  "wallet_movements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firmId: uuid("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    collectorId: text("collector_id")
+      .notNull()
+      .references(() => user.id),
+    /** collected | handover_request | handover_confirmed | handover_rejected */
+    kind: text("kind").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    receiptId: uuid("receipt_id").references(() => receipts.id),
+    refId: uuid("ref_id"),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("wallet_movements_collector_idx").on(t.collectorId, t.firmId, t.createdAt)],
 );

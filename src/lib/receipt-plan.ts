@@ -13,7 +13,7 @@ import {
  * Turns a receipt request into what must be saved, or an error.
  * Choices where the spec is silent:
  * - Cheques are saved as "pending" but the ledger is credited right away (spec 6.4:
- *   "on bounce, every allocation line reverses"). Cash and online are saved as "received".
+ *   "on bounce, every allocation line reverses"). Cash is saved as "received"; online as "unverified" until accounts verify the UTR.
  * - Ledger credit = one row per firm, negative signed paise (ledger convention).
  */
 export type ReceiptRequest = {
@@ -28,7 +28,7 @@ export type ReceiptRequest = {
 export type ReceiptPlan =
   | {
       ok: true;
-      status: "received" | "pending";
+      status: "received" | "pending" | "unverified";
       /** Allocation rows to store (orders first, then the advance row). */
       rows: { firmId: string; orderId: string | null; amountPaise: number; advance: boolean }[];
       ledger: LedgerEntry[];
@@ -56,5 +56,5 @@ export function planReceipt(req: ReceiptRequest, outstanding: readonly Outstandi
     kind: "receipt_credit",
     amountPaise: -l.amountPaise,
   }));
-  return { ok: true, status: req.mode === "cheque" ? "pending" : "received", rows, ledger };
+  return { ok: true, status: req.mode === "cheque" ? "pending" : req.mode === "online" ? "unverified" : "received", rows, ledger };
 }

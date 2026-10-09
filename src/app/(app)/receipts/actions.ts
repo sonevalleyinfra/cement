@@ -3,13 +3,15 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { receiptAllocations, receipts, retailers } from "@/db/schema";
+import { receiptAllocations, receipts, retailers, walletMovements } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { postEntry } from "@/lib/ledger";
 import { getOutstanding } from "@/lib/receipts";
 import { planReceipt } from "@/lib/receipt-plan";
 import { PAYMENT_MODES } from "@/lib/receipt-rules";
 import { requireRole } from "@/lib/session";
+import { collectedMovements } from "@/lib/wallet-rules";
+import { firmLines } from "@/lib/receipt-rules";
 
 export type DueRow = { orderId: string; firmId: string; dueSinceDate: string; duePaise: number };
 export type DuesResult = { ok: true; rows: DueRow[] } | { ok: false; error: string };
@@ -105,9 +107,20 @@ export async function saveReceipt(input: {
     for (const entry of plan.ledger) {
       await postEntry(tx, { ...entry }, session.user.id, `Receipt #${receipt.receiptNo}`, receipt.id);
     }
+    // Cash goes into the collector's wallet, one row per firm line.
+    const walletRows = collectedMovements(
+      input.mode,
+      firmLines(input.allocations, input.advance),
+    );
+    if (walletRows.length > 0) {
+      await tx.insert(walletMovements).values(
+        walletRows.map((w) => ({ ...w, collectorId: session.user.id, receiptId: receipt.id, actorId: session.user.id })),
+      );
+    }
     return { ok: true };
   });
   if (res.ok) {
+    revalidatePath("/wallet");
     revalidatePath("/receipts");
     revalidatePath("/ledger");
     revalidatePath(`/ledger/${input.retailerId}`);

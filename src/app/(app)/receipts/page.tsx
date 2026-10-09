@@ -7,11 +7,14 @@ import { receiptAllocations, receipts, retailers } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { formatINR } from "@/lib/money";
+import { hasAnyRole } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
 
 const modeLabel: Record<string, string> = { cash: "Cash", online: "Online", cheque: "Cheque" };
 const statusLabel: Record<string, string> = {
   received: "Received",
+  unverified: "Online, unverified",
+  verified: "Online, verified",
   pending: "Cheque pending",
   cleared: "Cleared",
   bounced: "Bounced",
@@ -48,9 +51,16 @@ export default async function ReceiptsPage() {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Receipts</h1>
-        <Link href="/receipts/new" className="text-sm font-semibold underline">
-          New receipt
-        </Link>
+        <div className="flex gap-4">
+          {hasAnyRole(user.role, ["accounts"]) && (
+            <Link href="/receipts/review" className="text-sm font-semibold underline">
+              Verify
+            </Link>
+          )}
+          <Link href="/receipts/new" className="text-sm font-semibold underline">
+            New receipt
+          </Link>
+        </div>
       </div>
       {rows.length === 0 ? (
         <EmptyState title="No receipts yet" />

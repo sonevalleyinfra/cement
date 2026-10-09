@@ -17,6 +17,16 @@ const base: ReceiptRequest = {
   advance: null,
 };
 
+describe("planReceipt status", () => {
+  it("online starts unverified", () => {
+    const p = planReceipt(
+      { ...base, mode: "online", details: { utr: "U1", receivedFirmId: "A" } },
+      items,
+    );
+    expect(p.ok && p.status).toBe("unverified");
+  });
+});
+
 describe("planReceipt", () => {
   it("posts one negative credit per firm", () => {
     const p = planReceipt(base, items);

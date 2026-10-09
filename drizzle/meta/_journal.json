@@ -78,6 +78,13 @@
       "when": 1791544749864,
       "tag": "0010_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791545291150,
+      "tag": "0011_wallet_movements",
+      "breakpoints": true
     }
   ]
 }
