@@ -2,12 +2,13 @@ import { and, asc, eq } from "drizzle-orm";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
 import { products, stockLocations } from "@/db/schema";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { getBalances } from "@/lib/stock";
 
 /** Shared by the three admin forms: admin check, one firm, its places, products, balances. */
 export async function loadFormData() {
-  await requireRole("admin");
+  await requireRole(...rolesFor("manageStock"));
   const { selection } = await getFirmSelection();
   if (selection.mode !== "firm") return null;
   const firmId = selection.firmId;

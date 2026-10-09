@@ -3,11 +3,12 @@ import { EmptyState } from "@/components/app/empty-state";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
 import { stockLocations, vehicles } from "@/db/schema";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { LocationsView } from "./locations-view";
 
 export default async function LocationsPage() {
-  await requireRole("admin");
+  await requireRole(...rolesFor("manageStock"));
   const { selection } = await getFirmSelection();
   if (selection.mode !== "firm") return <EmptyState title="Pick one firm first" />;
   const [places, vs] = await Promise.all([

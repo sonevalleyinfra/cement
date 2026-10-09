@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { firms as firmsTable, retailers, user as users } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { getAccessibleFirms } from "@/lib/firm-access";
+import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
 import { withRunningBalance } from "@/lib/ledger-rules";
 import { formatINR } from "@/lib/money";
@@ -32,6 +33,7 @@ export default async function RetailerLedgerPage({
   const { user } = await requireUser();
   const { retailerId } = await params;
   const { firm: firmParam } = await searchParams;
+  if (!isUuid(retailerId)) notFound();
   if (!(await mayViewLedger(user, retailerId))) notFound();
 
   const [retailer] = await db.select().from(retailers).where(eq(retailers.id, retailerId)).limit(1);

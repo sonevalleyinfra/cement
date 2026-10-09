@@ -5,11 +5,12 @@ import { db } from "@/db";
 import { firms, orders, products, retailers } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { getDues } from "@/lib/dues";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { ApprovalCard } from "./approval-card";
 
 export default async function ApprovalsPage() {
-  const { user } = await requireRole("accounts");
+  const { user } = await requireRole(...rolesFor("viewApprovals"));
   const firmIds = (await getAccessibleFirms(user.id, user.role)).map((f) => f.id);
   const rows =
     firmIds.length === 0

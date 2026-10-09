@@ -1,11 +1,12 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { firms, user, userFirms } from "@/db/schema";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { UsersView } from "./users-view";
 
 export default async function UsersPage() {
-  const { user: me } = await requireRole("admin");
+  const { user: me } = await requireRole(...rolesFor("manageUsers"));
   const [users, firmList, links] = await Promise.all([
     db
       .select({ id: user.id, name: user.name, email: user.email, role: user.role, banned: user.banned })

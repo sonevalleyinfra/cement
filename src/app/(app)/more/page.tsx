@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { hasAnyRole, hasRole, isAdmin } from "@/lib/roles";
+import { can } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { signOut } from "../dashboard/actions";
 
@@ -11,58 +11,62 @@ export default async function MorePage() {
   const { user } = await requireUser();
   return (
     <ul className="flex flex-col gap-3">
-      {isAdmin(user.role) && (
+      {can(user.role, "manageUsers") && (
         <li>
           <Link href="/users" className={rowClass}>
             Users
           </Link>
         </li>
       )}
-      {hasAnyRole(user.role, ["accounts"]) && (
+      {can(user.role, "viewApprovals") && (
         <li>
           <Link href="/approvals" className={rowClass}>
             Approvals
           </Link>
         </li>
       )}
-      <li>
-        <Link href="/stock" className={rowClass}>
-          Stock
-        </Link>
-      </li>
-      {hasAnyRole(user.role, ["logistics"]) && (
+      {can(user.role, "viewStock") && (
+        <li>
+          <Link href="/stock" className={rowClass}>
+            Stock
+          </Link>
+        </li>
+      )}
+      {can(user.role, "dispatch") && (
         <li>
           <Link href="/dispatch" className={rowClass}>
             Dispatch
           </Link>
         </li>
       )}
-      {(hasAnyRole(user.role, ["accounts", "sales"]) || hasRole(user.role, "retailer")) && (
+      {can(user.role, "viewLedger") && (
         <li>
           <Link href="/ledger" className={rowClass}>
             Ledger
           </Link>
         </li>
       )}
-      {hasAnyRole(user.role, ["accounts", "sales"]) && (
+      {can(user.role, "viewReceipts") && (
         <li>
           <Link href="/receipts" className={rowClass}>
             Receipts
           </Link>
         </li>
       )}
-      {hasAnyRole(user.role, ["accounts", "sales"]) && (
+      {can(user.role, "useWallet") && (
         <li>
           <Link href="/wallet" className={rowClass}>
             Wallet
           </Link>
         </li>
       )}
-      <li>
-        <Link href="/vehicles" className={rowClass}>
-          Vehicles
-        </Link>
-      </li>
+      {can(user.role, "viewVehicles") && (
+        <li>
+          <Link href="/vehicles" className={rowClass}>
+            Vehicles
+          </Link>
+        </li>
+      )}
       <li>
         <Link href="/account" className={rowClass}>
           Change password

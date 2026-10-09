@@ -4,11 +4,12 @@ import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
 import { dispatches, orders, products, retailers, stockLocations, vehicles } from "@/db/schema";
 import { getBalances } from "@/lib/stock";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { DispatchView } from "./dispatch-view";
 
 export default async function DispatchPage() {
-  const { user } = await requireRole("logistics");
+  const { user } = await requireRole(...rolesFor("dispatch"));
   const { selection, admin } = await getFirmSelection();
   if (selection.mode === "none") return <EmptyState title="No firm available" />;
   if (selection.mode === "all") return <EmptyState title="Pick one firm to dispatch" />;

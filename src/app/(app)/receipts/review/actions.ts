@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { receiptAllocations, receipts } from "@/db/schema";
 import { findAccessibleFirm } from "@/lib/firm-access";
+import { isUuid } from "@/lib/ids";
+import { rolesFor } from "@/lib/permissions";
 import { postEntry } from "@/lib/ledger";
 import { checkOnlineVerification, planChequeAction } from "@/lib/payment-verification-rules";
-import { requireRole } from "@/lib/session";
+import { requireRole, writeBlock } from "@/lib/session";
 
 export type ReviewResult = { ok: true } | { ok: false; error: string };
 
@@ -20,7 +22,10 @@ function refresh(retailerId: string) {
 
 /** Accounts / admin verify an online payment by typing the UTR from the bank statement. */
 export async function verifyOnline(receiptId: string, utr: string): Promise<ReviewResult> {
-  const session = await requireRole("accounts");
+  const session = await requireRole(...rolesFor("verifyPayments"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  if (!isUuid(receiptId)) return { ok: false, error: "Receipt not found." };
   let retailerId = "";
   const res = await db.transaction(async (tx): Promise<ReviewResult> => {
     const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("update");
@@ -28,7 +33,7 @@ export async function verifyOnline(receiptId: string, utr: string): Promise<Revi
     retailerId = receipt.retailerId;
     if (!receipt.receivedFirmId || !(await findAccessibleFirm(session.user.id, session.user.role, receipt.receivedFirmId)))
       return { ok: false, error: "You cannot work on this firm." };
-    const check = checkOnlineVerification(session.user.role, receipt, utr);
+    const check = checkOnlineVerification(session.user.role, receipt, String(utr ?? ""));
     if (!check.ok) return check;
     await tx.update(receipts).set({ status: "verified", updatedAt: new Date() }).where(eq(receipts.id, receiptId));
     return { ok: true };
@@ -39,7 +44,10 @@ export async function verifyOnline(receiptId: string, utr: string): Promise<Revi
 
 /** Accounts / admin mark a pending cheque cleared or bounced. A bounce undoes every credit line. */
 export async function setChequeStatus(receiptId: string, to: "cleared" | "bounced"): Promise<ReviewResult> {
-  const session = await requireRole("accounts");
+  const session = await requireRole(...rolesFor("verifyPayments"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  if (!isUuid(receiptId)) return { ok: false, error: "Receipt not found." };
   let retailerId = "";
   const res = await db.transaction(async (tx): Promise<ReviewResult> => {
     const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("update");

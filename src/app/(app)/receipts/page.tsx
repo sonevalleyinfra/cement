@@ -7,7 +7,7 @@ import { receiptAllocations, receipts, retailers } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { formatINR } from "@/lib/money";
-import { hasAnyRole } from "@/lib/roles";
+import { can, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 
 const modeLabel: Record<string, string> = { cash: "Cash", online: "Online", cheque: "Cheque" };
@@ -21,7 +21,7 @@ const statusLabel: Record<string, string> = {
 };
 
 export default async function ReceiptsPage() {
-  const { user } = await requireRole("accounts", "sales");
+  const { user } = await requireRole(...rolesFor("viewReceipts"));
   const firms = await getAccessibleFirms(user.id, user.role);
   const firmIds = firms.map((f) => f.id);
 
@@ -52,7 +52,7 @@ export default async function ReceiptsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Receipts</h1>
         <div className="flex gap-4">
-          {hasAnyRole(user.role, ["accounts"]) && (
+          {can(user.role, "verifyPayments") && (
             <Link href="/receipts/review" className="text-sm font-semibold underline">
               Verify
             </Link>

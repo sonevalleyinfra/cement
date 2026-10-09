@@ -4,6 +4,8 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { vehicles } from "@/db/schema";
+import { isUuid } from "@/lib/ids";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { validateVehicle } from "@/lib/vehicle-rules";
 
@@ -14,7 +16,8 @@ export async function saveVehicle(
   id: string | null,
   form: { number: string; driverName: string; driverPhone: string },
 ): Promise<VehicleResult> {
-  await requireRole("logistics");
+  await requireRole(...rolesFor("editVehicles"));
+  if (id !== null && !isUuid(id)) return { ok: false, error: "Vehicle not found." };
   const check = validateVehicle(form);
   if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
   const { number, driverName, driverPhone } = check.value;
@@ -37,7 +40,8 @@ export async function saveVehicle(
 
 /** Switches a vehicle on or off. Admin and logistics only. */
 export async function setVehicleActive(id: string, active: boolean): Promise<VehicleResult> {
-  await requireRole("logistics");
+  await requireRole(...rolesFor("editVehicles"));
+  if (!isUuid(id)) return { ok: false, error: "Vehicle not found." };
   await db.update(vehicles).set({ active, updatedAt: new Date() }).where(eq(vehicles.id, id));
   revalidatePath("/vehicles");
   return { ok: true };

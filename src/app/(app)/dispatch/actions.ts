@@ -11,12 +11,14 @@ import {
   checkRateEdit,
   planDispatch,
 } from "@/lib/dispatch-rules";
+import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { rateChangeEntry } from "@/lib/ledger-rules";
 import { notify } from "@/lib/notify";
 import { canUserTransition, isOrderStatus } from "@/lib/order-rules";
+import { rolesFor } from "@/lib/permissions";
 import { ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
-import { requireAdmin, requireFirm, requireRole } from "@/lib/session";
+import { requireAdmin, requireFirm, requireRole, writeBlock } from "@/lib/session";
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
 
@@ -39,7 +41,11 @@ export async function dispatchOrder(input: {
   newRateRupees?: string;
   rateReason?: string;
 }): Promise<DispatchResult> {
-  const session = await requireRole("logistics");
+  const session = await requireRole(...rolesFor("dispatch"));
+  if (!isUuid(input.orderId)) return { ok: false, error: "Order not found." };
+  if ((input.vehicleId && !isUuid(input.vehicleId)) || (input.locationId && !isUuid(input.locationId))) {
+    return { ok: false, error: "Refresh the page and try again." };
+  }
   const [found] = await db
     .select({ firmId: orders.firmId })
     .from(orders)
@@ -53,12 +59,12 @@ export async function dispatchOrder(input: {
     readOnlyMode: selection.readOnly || selection.firmId !== found.firmId,
     vehicleId: input.vehicleId,
     locationId: input.locationId,
-    driverName: input.driverName,
-    driverPhone: input.driverPhone,
+    driverName: String(input.driverName ?? ""),
+    driverPhone: String(input.driverPhone ?? ""),
   });
   if (!fields.ok) return fields;
 
-  const digits = (input.newRateRupees ?? "").trim();
+  const digits = String(input.newRateRupees ?? "").trim();
   const wantedRate = digits ? ratePaiseFromRupeeDigits(digits) : null;
   if (digits && wantedRate === null) return { ok: false, error: "Enter a valid rate per bag." };
 
@@ -173,7 +179,8 @@ export async function dispatchOrder(input: {
 
 /** Logistics marks a fully dispatched order as delivered. */
 export async function markDelivered(orderId: string): Promise<DispatchResult> {
-  const session = await requireRole("logistics");
+  const session = await requireRole(...rolesFor("markDelivered"));
+  if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
   const [found] = await db
     .select({ firmId: orders.firmId })
     .from(orders)
@@ -213,7 +220,9 @@ export async function markDelivered(orderId: string): Promise<DispatchResult> {
 export async function createGodown(firmId: string, name: string): Promise<DispatchResult> {
   await requireAdmin();
   await requireFirm(firmId);
-  const clean = name.trim().replace(/\s+/g, " ").slice(0, 60);
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  const clean = String(name ?? "").trim().replace(/\s+/g, " ").slice(0, 60);
   if (!clean) return { ok: false, error: "Enter a name for the godown." };
   await db.insert(stockLocations).values({ firmId, kind: "godown", name: clean });
   revalidatePath("/dispatch");

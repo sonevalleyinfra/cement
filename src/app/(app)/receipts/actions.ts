@@ -5,11 +5,13 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { receiptAllocations, receipts, retailers, walletMovements } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
+import { isUuid } from "@/lib/ids";
+import { rolesFor } from "@/lib/permissions";
 import { postEntry } from "@/lib/ledger";
 import { getOutstanding } from "@/lib/receipts";
 import { planReceipt } from "@/lib/receipt-plan";
 import { PAYMENT_MODES } from "@/lib/receipt-rules";
-import { requireRole } from "@/lib/session";
+import { requireRole, writeBlock } from "@/lib/session";
 import { collectedMovements } from "@/lib/wallet-rules";
 import { firmLines } from "@/lib/receipt-rules";
 
@@ -19,7 +21,8 @@ export type SaveReceiptResult = { ok: true } | { ok: false; error: string };
 
 /** Outstanding orders of one retailer, only for firms this user may work on. */
 export async function loadOutstanding(retailerId: string): Promise<DuesResult> {
-  const session = await requireRole("accounts", "sales");
+  const session = await requireRole(...rolesFor("recordReceipt"));
+  if (!isUuid(retailerId)) return { ok: false, error: "Retailer not found." };
   const firms = await getAccessibleFirms(session.user.id, session.user.role);
   const rows = await getOutstanding(retailerId, firms.map((f) => f.id));
   return {
@@ -49,7 +52,11 @@ export async function saveReceipt(input: {
   allocations: { orderId: string; firmId: string; amountPaise: number }[];
   advance: { firmId: string; amountPaise: number } | null;
 }): Promise<SaveReceiptResult> {
-  const session = await requireRole("accounts", "sales");
+  const session = await requireRole(...rolesFor("recordReceipt"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  if (!isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
+  if (!Array.isArray(input.allocations)) return { ok: false, error: "Refresh the page and try again." };
   if (!(PAYMENT_MODES as readonly string[]).includes(input.mode)) return { ok: false, error: "Pick a payment mode." };
 
   const firms = await getAccessibleFirms(session.user.id, session.user.role);

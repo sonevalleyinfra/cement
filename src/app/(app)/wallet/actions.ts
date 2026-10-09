@@ -5,14 +5,19 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { user, walletMovements } from "@/db/schema";
 import { findAccessibleFirm } from "@/lib/firm-access";
-import { requireRole } from "@/lib/session";
+import { isUuid } from "@/lib/ids";
+import { rolesFor } from "@/lib/permissions";
+import { requireRole, writeBlock } from "@/lib/session";
 import { canAnswerRequest, canConfirmHandover, validateHandoverRequest, walletBalance } from "@/lib/wallet-rules";
 
 export type WalletResult = { ok: true } | { ok: false; error: string };
 
 /** The collector says how much cash of one firm they are handing over. Goes to accounts to confirm. */
 export async function requestHandover(input: { firmId: string; amountPaise: number }): Promise<WalletResult> {
-  const session = await requireRole("accounts", "sales");
+  const session = await requireRole(...rolesFor("useWallet"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  if (!isUuid(input.firmId)) return { ok: false, error: "You cannot work on this firm." };
   const firm = await findAccessibleFirm(session.user.id, session.user.role, input.firmId);
   if (!firm) return { ok: false, error: "You cannot work on this firm." };
 
@@ -40,7 +45,10 @@ export async function requestHandover(input: { firmId: string; amountPaise: numb
 
 /** Accounts or admin confirm (or refuse) one handover request. Confirming clears that much from the wallet. */
 export async function answerHandover(requestId: string, confirm: boolean): Promise<WalletResult> {
-  const session = await requireRole("accounts");
+  const session = await requireRole(...rolesFor("confirmHandover"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  if (!isUuid(requestId)) return { ok: false, error: "Handover not found." };
   const res = await db.transaction(async (tx): Promise<WalletResult> => {
     const [request] = await tx
       .select()

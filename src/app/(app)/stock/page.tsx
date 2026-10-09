@@ -6,12 +6,13 @@ import { Stat } from "@/components/app/stat";
 import { db } from "@/db";
 import { products, stockMovements } from "@/db/schema";
 import { getBalances } from "@/lib/stock";
-import { requireUser } from "@/lib/session";
+import { rolesFor } from "@/lib/permissions";
+import { requireRole } from "@/lib/session";
 
 const linkClass = "rounded-xl bg-card px-3 py-2 text-sm font-semibold ring-1 ring-foreground/8";
 
 export default async function StockPage() {
-  await requireUser();
+  await requireRole(...rolesFor("viewStock"));
   const { selection, admin } = await getFirmSelection();
   if (selection.mode === "none") return <EmptyState title="No firm available" />;
 

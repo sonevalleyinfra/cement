@@ -4,9 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ledgerEntries, retailers } from "@/db/schema";
+import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { openingEntry } from "@/lib/ledger-rules";
-import { requireFirm, requireRole } from "@/lib/session";
+import { rolesFor } from "@/lib/permissions";
+import { requireFirm, requireRole, writeBlock } from "@/lib/session";
 
 export type LedgerResult = { ok: true } | { ok: false; error: string };
 
@@ -17,9 +19,12 @@ export async function setOpeningBalance(input: {
   rupeeDigits: string;
   owes: boolean;
 }): Promise<LedgerResult> {
-  const session = await requireRole("admin");
+  const session = await requireRole(...rolesFor("setOpeningBalance"));
+  if (!isUuid(input.firmId) || !isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
   await requireFirm(input.firmId);
-  if (!/^\d{1,9}$/.test(input.rupeeDigits)) return { ok: false, error: "Enter the amount." };
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  if (typeof input.rupeeDigits !== "string" || !/^\d{1,9}$/.test(input.rupeeDigits)) return { ok: false, error: "Enter the amount." };
   const paise = Number(input.rupeeDigits) * 100;
   const signed = input.owes ? paise : -paise;
 
@@ -27,6 +32,8 @@ export async function setOpeningBalance(input: {
   if (!retailer) return { ok: false, error: "Retailer not found." };
 
   const res = await db.transaction(async (tx): Promise<LedgerResult> => {
+    // Lock the retailer so two clicks cannot both post an opening balance.
+    await tx.select({ id: retailers.id }).from(retailers).where(eq(retailers.id, input.retailerId)).for("update");
     const existing = await tx
       .select({ kind: ledgerEntries.kind, firmId: ledgerEntries.firmId, retailerId: ledgerEntries.retailerId })
       .from(ledgerEntries)

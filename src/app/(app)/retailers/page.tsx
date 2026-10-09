@@ -1,12 +1,14 @@
 import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { retailers, user as users } from "@/db/schema";
-import { hasAnyRole, hasRole, isAdmin } from "@/lib/roles";
-import { requireUser } from "@/lib/session";
+import { can, rolesFor } from "@/lib/permissions";
+import { hasRole, isAdmin } from "@/lib/roles";
+import { requireRole } from "@/lib/session";
 import { RetailersView } from "./retailers-view";
 
 export default async function RetailersPage() {
-  const { user } = await requireUser();
+  // Retailer phones are internal: staff only (a retailer would see every other shop).
+  const { user } = await requireRole(...rolesFor("viewRetailers"));
   const rows = await db
     .select({
       id: retailers.id,
@@ -23,5 +25,5 @@ export default async function RetailersPage() {
         .filter((u) => hasRole(u.role, "retailer"))
         .map((u) => ({ id: u.id, label: `${u.name} (${u.email})` }))
     : null;
-  return <RetailersView rows={rows} canEdit={hasAnyRole(user.role, ["sales"])} logins={logins} />;
+  return <RetailersView rows={rows} canEdit={can(user.role, "editRetailers")} logins={logins} />;
 }

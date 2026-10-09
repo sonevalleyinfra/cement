@@ -4,10 +4,12 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { retailers, user } from "@/db/schema";
+import { isUuid } from "@/lib/ids";
+import { rolesFor } from "@/lib/permissions";
 import { canLinkRetailerUser } from "@/lib/rate-rules";
 import { hasRole } from "@/lib/roles";
 import { validateRetailer } from "@/lib/retailer-rules";
-import { requireAdmin, requireRole } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
@@ -16,7 +18,8 @@ export async function saveRetailer(
   id: string | null,
   form: { name: string; phone: string; place: string },
 ): Promise<RetailerResult> {
-  await requireRole("sales");
+  await requireRole(...rolesFor("editRetailers"));
+  if (id !== null && !isUuid(id)) return { ok: false, error: "Retailer not found." };
   const check = validateRetailer(form);
   if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
   const { name, phone, place } = check.value;
@@ -39,7 +42,8 @@ export async function saveRetailer(
 
 /** Switches a retailer on or off. Admin and sales only. */
 export async function setRetailerActive(id: string, active: boolean): Promise<RetailerResult> {
-  await requireRole("sales");
+  await requireRole(...rolesFor("editRetailers"));
+  if (!isUuid(id)) return { ok: false, error: "Retailer not found." };
   await db.update(retailers).set({ active, updatedAt: new Date() }).where(eq(retailers.id, id));
   revalidatePath("/retailers");
   return { ok: true };
@@ -50,7 +54,8 @@ export async function linkRetailerUser(
   retailerId: string,
   userId: string | null,
 ): Promise<RetailerResult> {
-  await requireAdmin();
+  await requireRole(...rolesFor("linkRetailerLogin"));
+  if (!isUuid(retailerId)) return { ok: false, error: "Retailer not found." };
   if (userId) {
     const [u] = await db.select({ role: user.role }).from(user).where(eq(user.id, userId)).limit(1);
     if (!u || !hasRole(u.role, "retailer")) return { ok: false, error: "Pick a user with the retailer role." };

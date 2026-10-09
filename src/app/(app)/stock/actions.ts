@@ -12,7 +12,9 @@ import {
   inMovement,
   type Movement,
 } from "@/lib/stock-rules";
-import { requireFirm, requireRole } from "@/lib/session";
+import { isUuid } from "@/lib/ids";
+import { rolesFor } from "@/lib/permissions";
+import { requireFirm, requireRole, writeBlock } from "@/lib/session";
 
 export type StockResult = { ok: true } | { ok: false; error: string };
 
@@ -27,7 +29,10 @@ export type StockInput = {
 
 /** Admin only, one firm picked (not "All firms"), and the place must belong to that firm. */
 async function prepare(input: StockInput) {
-  const session = await requireRole("admin");
+  const session = await requireRole(...rolesFor("manageStock"));
+  if (!isUuid(input.firmId) || !isUuid(input.productId) || !isUuid(input.locationId)) {
+    return { error: "Pick a product and a place.", session: null } as const;
+  }
   await requireFirm(input.firmId);
   const { selection } = await getFirmSelection();
   if (selection.mode !== "firm" || selection.firmId !== input.firmId) {
@@ -82,7 +87,7 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const p = await prepare(input);
   if (p.error !== null) return { ok: false, error: p.error };
   const key = { firmId: input.firmId, productId: input.productId, locationId: input.locationId };
-  const m = inMovement("purchase", key, input.bags, input.note.trim().slice(0, 200));
+  const m = inMovement("purchase", key, input.bags, String(input.note ?? "").trim().slice(0, 200));
   if (!m.ok) return m;
   const res = await db.transaction(async (tx): Promise<StockResult> => {
     const bad = await checkPlace(tx, input);
@@ -122,7 +127,7 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
       await currentMovements(tx, input),
       key,
       input.bags,
-      input.note,
+      String(input.note ?? ""),
       p.session!.user.role,
     );
     if (!m.ok) return m;
@@ -137,18 +142,17 @@ export async function addLocation(
   firmId: string,
   form: { kind: "godown" | "vehicle"; name: string; vehicleId: string | null },
 ): Promise<StockResult> {
-  await requireRole("admin");
+  await requireRole(...rolesFor("manageStock"));
   await requireFirm(firmId);
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
   if (form.kind === "godown") {
-    const name = cleanLocationName(form.name);
+    const name = cleanLocationName(String(form.name ?? ""));
     if (!name) return { ok: false, error: "Enter a name for the godown." };
     await db.insert(stockLocations).values({ firmId, kind: "godown", name });
   } else {
-    const [v] = await db
-      .select()
-      .from(vehicles)
-      .where(eq(vehicles.id, form.vehicleId ?? ""))
-      .limit(1);
+    if (!isUuid(form.vehicleId)) return { ok: false, error: "Pick a vehicle." };
+    const [v] = await db.select().from(vehicles).where(eq(vehicles.id, form.vehicleId)).limit(1);
     if (!v) return { ok: false, error: "Pick a vehicle." };
     const [dup] = await db
       .select({ id: stockLocations.id })
@@ -164,20 +168,29 @@ export async function addLocation(
 
 /** Switch a place on or off. Not allowed while it still holds bags. */
 export async function setLocationActive(id: string, active: boolean): Promise<StockResult> {
-  await requireRole("admin");
+  await requireRole(...rolesFor("manageStock"));
+  if (!isUuid(id)) return { ok: false, error: "Place not found." };
   const [loc] = await db.select().from(stockLocations).where(eq(stockLocations.id, id)).limit(1);
   if (!loc) return { ok: false, error: "Place not found." };
   await requireFirm(loc.firmId);
-  if (!active) {
-    const [left] = await db
-      .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int` })
-      .from(stockMovements)
-      .where(eq(stockMovements.locationId, id));
-    if ((left?.bags ?? 0) > 0) {
-      return { ok: false, error: "Move or adjust the bags out before switching this place off." };
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  const res = await db.transaction(async (tx): Promise<StockResult> => {
+    // Same lock as dispatch and purchase, so bags cannot arrive while we switch it off.
+    await tx.select({ id: stockLocations.id }).from(stockLocations).where(eq(stockLocations.id, id)).for("update");
+    if (!active) {
+      const [left] = await tx
+        .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int` })
+        .from(stockMovements)
+        .where(eq(stockMovements.locationId, id));
+      if ((left?.bags ?? 0) > 0) {
+        return { ok: false, error: "Move or adjust the bags out before switching this place off." };
+      }
     }
-  }
-  await db.update(stockLocations).set({ active }).where(eq(stockLocations.id, id));
+    await tx.update(stockLocations).set({ active }).where(eq(stockLocations.id, id));
+    return { ok: true };
+  });
+  if (!res.ok) return res;
   revalidatePath("/stock/locations");
   return done();
 }

@@ -3,13 +3,13 @@ import { EmptyState } from "@/components/app/empty-state";
 import { db } from "@/db";
 import { user as userTable, walletMovements } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
-import { hasAnyRole } from "@/lib/roles";
+import { can, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { pendingRequestIds, walletBalance } from "@/lib/wallet-rules";
 import { WalletView } from "./wallet-view";
 
 export default async function WalletPage() {
-  const { user } = await requireRole("accounts", "sales");
+  const { user } = await requireRole(...rolesFor("useWallet"));
   const firms = await getAccessibleFirms(user.id, user.role);
   if (firms.length === 0) return <EmptyState title="No firm available" />;
   const firmIds = firms.map((f) => f.id);
@@ -22,7 +22,7 @@ export default async function WalletPage() {
 
   let collectors: { key: string; collector: string; firmName: string; balancePaise: number }[] = [];
   let requests: { id: string; collector: string; firmName: string; amountPaise: number; own: boolean }[] = [];
-  if (hasAnyRole(user.role, ["accounts"])) {
+  if (can(user.role, "confirmHandover")) {
     const ids = [...new Set(all.map((m) => m.collectorId))];
     const people = ids.length ? await db.select({ id: userTable.id, name: userTable.name }).from(userTable).where(inArray(userTable.id, ids)) : [];
     const nameOf = new Map(people.map((p) => [p.id, p.name]));
@@ -42,5 +42,5 @@ export default async function WalletPage() {
     collectors = [];
     requests = [];
   }
-  return <WalletView mine={mine} collectors={collectors} requests={requests} isAccounts={hasAnyRole(user.role, ["accounts"])} />;
+  return <WalletView mine={mine} collectors={collectors} requests={requests} isAccounts={can(user.role, "confirmHandover")} />;
 }
