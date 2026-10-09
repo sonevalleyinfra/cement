@@ -6,8 +6,8 @@ import { requireUser } from "@/lib/session";
 
 const nav: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
+  { href: "/orders", label: "Orders", icon: "orders" },
   { href: "/retailers", label: "Retailers", icon: "retailers" },
-  { href: "/vehicles", label: "Vehicles", icon: "vehicles" },
   { href: "/more", label: "More", icon: "more" },
 ];
 

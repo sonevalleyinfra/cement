@@ -19,6 +19,11 @@ export default async function MorePage() {
         </li>
       )}
       <li>
+        <Link href="/vehicles" className={rowClass}>
+          Vehicles
+        </Link>
+      </li>
+      <li>
         <Link href="/dashboard" className={rowClass}>
           Change password
         </Link>
