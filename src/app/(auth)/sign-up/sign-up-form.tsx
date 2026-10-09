@@ -42,7 +42,7 @@ export function SignUpForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+    <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="name">Name</Label>
         <Input id="name" name="name" autoComplete="name" required />
