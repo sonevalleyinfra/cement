@@ -5,6 +5,7 @@ import {
   collectedMovements,
   pendingRequestIds,
   validateHandoverRequest,
+  WALLET_KINDS,
   walletBalance,
 } from "./wallet-rules";
 
@@ -20,6 +21,7 @@ describe("walletBalance", () => {
   it("is collected minus confirmed handovers; pending is held back", () => {
     expect(walletBalance(moves)).toEqual({
       collectedPaise: 150000,
+      reversedPaise: 0,
       handedOverPaise: 60000,
       pendingPaise: 30000,
       balancePaise: 90000,
@@ -30,6 +32,22 @@ describe("walletBalance", () => {
     const b = walletBalance([...moves, { id: "6", kind: "handover_rejected", amountPaise: 0, refId: "5" }]);
     expect(b.pendingPaise).toBe(0);
     expect(b.availablePaise).toBe(90000);
+  });
+  it("a reversed cash receipt takes its cash back out of the wallet", () => {
+    const b = walletBalance([...moves, { id: "6", kind: "reversed", amountPaise: 40000 }]);
+    expect(b.reversedPaise).toBe(40000);
+    expect(b.collectedPaise).toBe(150000);
+    expect(b.balancePaise).toBe(50000); // 150000 - 40000 - 60000
+    expect(b.availablePaise).toBe(20000); // minus the 30000 still pending
+  });
+  it("a reversal is not mistaken for a handover", () => {
+    const b = walletBalance([{ id: "1", kind: "collected", amountPaise: 500 }, { id: "2", kind: "reversed", amountPaise: 500 }]);
+    expect(b.handedOverPaise).toBe(0);
+    expect(b.pendingPaise).toBe(0);
+    expect(b.balancePaise).toBe(0);
+  });
+  it("lists every kind, including reversed", () => {
+    expect(WALLET_KINDS).toEqual(["collected", "handover_request", "handover_confirmed", "handover_rejected", "reversed"]);
   });
   it("empty wallet is zero", () => {
     expect(walletBalance([]).balancePaise).toBe(0);

@@ -3,6 +3,7 @@ import {
   cashInHandPaise,
   homeSections,
   isOpenOrderStatus,
+  logisticsCounts,
   istDayStart,
   retailersWithDues,
   totalDuesPaise,
@@ -54,6 +55,7 @@ describe("dues totals", () => {
 describe("cash and open orders", () => {
   it("cash in hand is collected minus confirmed", () => {
     expect(cashInHandPaise(1000_00, 400_00)).toBe(600_00);
+    expect(cashInHandPaise(1000_00, 400_00, 100_00)).toBe(500_00); // a reversed cash receipt left the wallet
   });
   it("open orders exclude finished ones", () => {
     expect(isOpenOrderStatus("placed")).toBe(true);
@@ -61,5 +63,15 @@ describe("cash and open orders", () => {
     expect(isOpenOrderStatus("delivered")).toBe(false);
     expect(isOpenOrderStatus("cancelled")).toBe(false);
     expect(isOpenOrderStatus("rejected")).toBe(false);
+  });
+});
+
+describe("logisticsCounts", () => {
+  it("counts ready and partly sent orders, ignores the rest", () => {
+    const orders = ["approved", "assigned", "partly_dispatched", "dispatched", "placed", "assigned"].map((status) => ({
+      status,
+    }));
+    expect(logisticsCounts(orders)).toEqual({ ready: 3, partly: 1 });
+    expect(logisticsCounts([])).toEqual({ ready: 0, partly: 0 });
   });
 });

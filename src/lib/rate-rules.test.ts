@@ -4,7 +4,9 @@ import {
   canDecide,
   canFillRate,
   canLinkRetailerUser,
+  checkRateDigits,
   checkRejectReason,
+  MAX_RATE_RUPEES_PER_BAG,
   ratePaiseFromRupeeDigits,
 } from "./rate-rules";
 
@@ -18,6 +20,25 @@ describe("ratePaiseFromRupeeDigits", () => {
   it("amount = bags x rate in paise", () => {
     expect(orderTotalPaise(100, ratePaiseFromRupeeDigits("385") as number)).toBe(3850000);
   });
+});
+
+describe("rate sanity cap", () => {
+  it("is ₹2,000 per bag", () => expect(MAX_RATE_RUPEES_PER_BAG).toBe(2000));
+  it("accepts the cap itself", () => {
+    expect(checkRateDigits("2000")).toEqual({ ok: true, paise: 200000 });
+    expect(ratePaiseFromRupeeDigits("2000")).toBe(200000);
+  });
+  it("refuses anything above it with a clear message", () => {
+    expect(checkRateDigits("2001")).toEqual({ ok: false, error: "Rate looks too high (max ₹2,000 per bag)." });
+    expect(checkRateDigits("38500").ok).toBe(false);
+    expect(ratePaiseFromRupeeDigits("2001")).toBeNull();
+  });
+  it("asks for a rate when empty, zero or not digits", () => {
+    for (const d of ["", "0", "3.5", "abc", "-5"]) {
+      expect(checkRateDigits(d)).toEqual({ ok: false, error: "Enter a rate per bag." });
+    }
+  });
+  it("ignores spaces around the digits", () => expect(checkRateDigits(" 385 ")).toEqual({ ok: true, paise: 38500 }));
 });
 
 describe("canFillRate", () => {

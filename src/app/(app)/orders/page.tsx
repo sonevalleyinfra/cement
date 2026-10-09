@@ -1,4 +1,4 @@
-import { desc, eq, and } from "drizzle-orm";
+import { desc, eq, and, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
 import { FirmChip } from "@/components/app/firm-chip";
@@ -8,11 +8,11 @@ import { PinnedAction } from "@/components/app/pinned-action";
 import { StatusChip } from "@/components/app/status-chip";
 import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
-import { firms, orders, products, retailers } from "@/db/schema";
+import { dispatches, firms, orders, products, retailers } from "@/db/schema";
 import { formatINR } from "@/lib/money";
 import { formatDate } from "@/lib/datetime";
 import { canPlaceOrder, canSeePrice, chipLabel, chipStatus, orderListScope } from "@/lib/order-access";
-import { isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
+import { isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +56,17 @@ export default async function OrdersPage() {
           .orderBy(desc(orders.createdAt))
           .limit(100);
 
+  // Truck loads, so the amount counts each load at its own rate (staff only).
+  const loads =
+    showPrice && rows.length > 0
+      ? await db
+          .select({ orderId: dispatches.orderId, bags: dispatches.bags, ratePaise: dispatches.ratePaise })
+          .from(dispatches)
+          .where(inArray(dispatches.orderId, rows.map((r) => r.id)))
+      : [];
+  const valueOf = (o: (typeof rows)[number]) =>
+    orderValuePaise({ ...o, loads: loads.filter((l) => l.orderId === o.id) });
+
   const canPlace = canPlaceOrder(user.role) && !selection.readOnly;
 
   return (
@@ -86,10 +97,8 @@ export default async function OrdersPage() {
                         {o.product} · {formatDate(o.createdAt)}
                       </div>
                     </div>
-                    {showPrice && o.ratePaise !== null && (
-                      <div className="tabular text-lg font-semibold">
-                        {formatINR(orderTotalPaise(o.bags, o.ratePaise))}
-                      </div>
+                    {showPrice && valueOf(o) !== null && (
+                      <div className="tabular text-lg font-semibold">{formatINR(valueOf(o) ?? 0)}</div>
                     )}
                   </>
                 }

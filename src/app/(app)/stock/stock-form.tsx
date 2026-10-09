@@ -67,7 +67,7 @@ export function StockForm({
 
   if (places.length === 0 || products.length === 0) {
     return (
-      <p className="rounded-2xl bg-card p-4 text-sm ring-1 ring-foreground/8">
+      <p className="rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
         Add a godown or vehicle place for this firm first (Stock, then Places).
       </p>
     );

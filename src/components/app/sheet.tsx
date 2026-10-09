@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Bottom sheet for pickers and short forms. Slides up in 200ms.
+ * Bottom sheet for pickers and short forms. Slides up in 300ms.
  * Control it with `open` / `onOpenChange`.
  */
 export function Sheet({
@@ -24,14 +24,14 @@ export function Sheet({
       <Dialog.Portal>
         <Dialog.Backdrop
           className={cn(
-            "fixed inset-0 z-40 bg-foreground/30 transition-opacity duration-200 ease-out",
+            "fixed inset-0 z-40 bg-foreground/35 backdrop-blur-[2px] transition-opacity duration-300 ease-out",
             "data-ending-style:opacity-0 data-starting-style:opacity-0",
           )}
         />
         <Dialog.Popup
           className={cn(
-            "fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-3xl bg-background",
-            "transition-transform duration-200 ease-out",
+            "fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-3xl bg-background shadow-[0_-12px_40px_-12px_oklch(0.3_0.03_60/0.3)]",
+            "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
             "data-ending-style:translate-y-full data-starting-style:translate-y-full",
           )}
         >

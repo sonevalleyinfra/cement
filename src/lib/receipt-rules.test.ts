@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
+import { firmDuesFromLedger, type LedgerRow } from "./firm-dues";
 import {
-  autoSplitOldestFirst,
+  autoSplitByFirm,
   bounceReversal,
+  fillAllocation,
   canChangeChequeStatus,
-  clearFull,
   firmLines,
   interFirmBalances,
+  RECEIPT_STATUSES,
+  receiptChip,
   validateAllocation,
   validateModeDetails,
-  type OutstandingItem,
+  type FirmDue,
 } from "./receipt-rules";
 
-const item = (orderId: string, firmId: string, dueSinceDate: string, duePaise: number): OutstandingItem => ({
-  orderId, firmId, dueSinceDate, duePaise, retailerId: "r1",
+const day = (n: number) => new Date(Date.UTC(2026, 0, 1 + n, 6));
+const due = (firmId: string, ...items: [number, number, string?][]): FirmDue => ({
+  firmId,
+  duePaise: items.reduce((s, [, p]) => s + p, 0),
+  items: items.map(([d, duePaise, kind]) => ({ kind: kind ?? "order", dueSince: day(d), duePaise })),
 });
 
 // Small seeded generator (mulberry32) so the random tests are repeatable.
@@ -44,130 +50,144 @@ describe("validateModeDetails", () => {
   it("rejects unknown mode", () => expect(validateModeDetails("upi", {})).not.toBeNull());
 });
 
-describe("autoSplitOldestFirst", () => {
+describe("autoSplitByFirm", () => {
   it("matches the spec example", () => {
-    const items = [item("a1", "A", "2026-01-01", 6_000_000), item("b1", "B", "2026-02-01", 7_000_000)];
-    const r = autoSplitOldestFirst(10_000_000, items);
+    const r = autoSplitByFirm(10_000_000, [due("A", [1, 6_000_000]), due("B", [2, 7_000_000])]);
     expect(r.allocations).toEqual([
-      { orderId: "a1", firmId: "A", amountPaise: 6_000_000 },
-      { orderId: "b1", firmId: "B", amountPaise: 4_000_000 },
+      { firmId: "A", amountPaise: 6_000_000 },
+      { firmId: "B", amountPaise: 4_000_000 },
     ]);
     expect(r.advancePaise).toBe(0);
   });
-  it("orders by date across firms, ties keep given order", () => {
-    const items = [
-      item("x", "B", "2026-03-01", 100),
-      item("y", "A", "2026-01-01", 100),
-      item("z", "A", "2026-03-01", 100),
-    ];
-    expect(autoSplitOldestFirst(300, items).allocations.map((a) => a.orderId)).toEqual(["y", "x", "z"]);
+  it("walks items oldest first across firms", () => {
+    // A: day 1 (100) and day 5 (100); B: day 3 (100). 250 pays A1, B3, then 50 of A5.
+    const r = autoSplitByFirm(250, [due("A", [1, 100], [5, 100]), due("B", [3, 100])]);
+    expect(r.allocations).toEqual([
+      { firmId: "A", amountPaise: 150 },
+      { firmId: "B", amountPaise: 100 },
+    ]);
   });
-  it("exact clear leaves no advance", () => {
-    const r = autoSplitOldestFirst(200, [item("a", "A", "2026-01-01", 200)]);
-    expect(r.advancePaise).toBe(0);
+  it("openings count as the oldest, whatever their date", () => {
+    const r = autoSplitByFirm(100, [due("A", [1, 100]), due("B", [9, 100, "opening"])]);
+    expect(r.allocations).toEqual([{ firmId: "B", amountPaise: 100 }]);
   });
-  it("overpay goes to advance", () => {
-    const r = autoSplitOldestFirst(500, [item("a", "A", "2026-01-01", 200)]);
-    expect(r.advancePaise).toBe(300);
+  it("ties keep the firm order given", () => {
+    const r = autoSplitByFirm(100, [due("B", [1, 100]), due("A", [1, 100])]);
+    expect(r.allocations).toEqual([{ firmId: "B", amountPaise: 100 }]);
   });
-  it("underpay leaves later dues untouched", () => {
-    const r = autoSplitOldestFirst(150, [item("a", "A", "2026-01-01", 100), item("b", "A", "2026-02-01", 100)]);
-    expect(r.allocations).toHaveLength(2);
-    expect(r.allocations[1].amountPaise).toBe(50);
-  });
-  it("skips zero dues and handles no items", () => {
-    expect(autoSplitOldestFirst(100, [item("a", "A", "2026-01-01", 0)])).toEqual({ allocations: [], advancePaise: 100 });
-    expect(autoSplitOldestFirst(0, [item("a", "A", "2026-01-01", 10)]).allocations).toEqual([]);
+  it("overpay goes to advance; no dues means all advance", () => {
+    expect(autoSplitByFirm(500, [due("A", [1, 200])]).advancePaise).toBe(300);
+    expect(autoSplitByFirm(100, [])).toEqual({ allocations: [], advancePaise: 100 });
+    expect(autoSplitByFirm(0, [due("A", [1, 10])]).allocations).toEqual([]);
   });
   it("rejects bad receipt amounts", () => {
-    expect(() => autoSplitOldestFirst(-1, [])).toThrow();
-    expect(() => autoSplitOldestFirst(1.5, [])).toThrow();
-    expect(() => autoSplitOldestFirst(NaN, [])).toThrow();
+    expect(() => autoSplitByFirm(-1, [])).toThrow();
+    expect(() => autoSplitByFirm(1.5, [])).toThrow();
+    expect(() => autoSplitByFirm(NaN, [])).toThrow();
   });
-  it("allocations + advance always equal the receipt (seeded random)", () => {
+  it("works on real ledger dues and always passes validation (seeded random)", () => {
     const rand = rng(42);
     for (let n = 0; n < 500; n++) {
-      const items = Array.from({ length: Math.floor(rand() * 8) }, (_, i) =>
-        item(`o${i}`, rand() < 0.5 ? "A" : "B", `2026-0${1 + Math.floor(rand() * 9)}-01`, Math.floor(rand() * 1_000_000)),
-      );
+      const rows: LedgerRow[] = [];
+      for (let i = 0; i < Math.floor(rand() * 10); i++) {
+        const firmId = ["A", "B", "C"][Math.floor(rand() * 3)];
+        const amount = 1 + Math.floor(rand() * 1_000_000);
+        const createdAt = day(Math.floor(rand() * 20));
+        if (rand() < 0.6) rows.push({ firmId, kind: "order_debit", amountPaise: amount, orderId: `o${i}`, createdAt });
+        else rows.push({ firmId, kind: "receipt_credit", amountPaise: -amount, orderId: null, createdAt });
+      }
+      const dues = firmDuesFromLedger(rows);
       const receipt = Math.floor(rand() * 5_000_000) + 1;
-      const r = autoSplitOldestFirst(receipt, items);
+      const r = autoSplitByFirm(receipt, dues);
       const sum = r.allocations.reduce((s, a) => s + a.amountPaise, 0) + r.advancePaise;
       expect(sum).toBe(receipt);
-      expect(r.advancePaise).toBeGreaterThanOrEqual(0);
       for (const a of r.allocations) {
-        expect(Number.isInteger(a.amountPaise)).toBe(true);
-        expect(a.amountPaise).toBeLessThanOrEqual(items.find((i) => i.orderId === a.orderId)!.duePaise);
+        expect(a.amountPaise).toBeGreaterThan(0);
+        expect(a.amountPaise).toBeLessThanOrEqual(dues.find((f) => f.firmId === a.firmId)!.duePaise);
       }
-      const check = validateAllocation(receipt, r.allocations, items, {
-        retailerId: "r1",
-        advance: { firmId: "A", amountPaise: r.advancePaise },
-      });
+      const totalDue = dues.reduce((s, f) => s + f.duePaise, 0);
+      expect(r.advancePaise).toBe(Math.max(0, receipt - totalDue));
+      const check = validateAllocation(receipt, r.allocations, dues, { firmId: "A", amountPaise: r.advancePaise });
       expect(check.ok).toBe(true);
     }
   });
 });
 
-describe("clearFull", () => {
-  const items = [item("a", "A", "2026-01-01", 100), item("b", "B", "2026-01-02", 250), item("c", "A", "2026-01-03", 5)];
-  it("totals all firms", () => expect(clearFull(items).totalPaise).toBe(355));
-  it("totals one firm", () => {
-    const r = clearFull(items, "A");
-    expect(r.totalPaise).toBe(105);
-    expect(r.allocations.map((a) => a.orderId)).toEqual(["a", "c"]);
+describe("fillAllocation", () => {
+  const dues = [due("A", [1, 6_000_000]), due("B", [2, 7_000_000])];
+  it("with nothing typed it is the auto-split", () => {
+    expect(fillAllocation(10_000_000, dues, {})).toEqual({ amounts: { A: 6_000_000, B: 4_000_000 }, leftoverPaise: 0 });
   });
-  it("empty is zero", () => expect(clearFull([]).totalPaise).toBe(0));
+  it("a typed firm keeps its amount, the others share the rest", () => {
+    expect(fillAllocation(10_000_000, dues, { B: 7_000_000 })).toEqual({
+      amounts: { A: 3_000_000, B: 7_000_000 },
+      leftoverPaise: 0,
+    });
+  });
+  it("leftover is the advance; negative when too much is typed", () => {
+    expect(fillAllocation(15_000_000, dues, {}).leftoverPaise).toBe(2_000_000);
+    expect(fillAllocation(1_000, dues, { A: 5_000 })).toEqual({ amounts: { A: 5_000, B: 0 }, leftoverPaise: -4_000 });
+  });
+  it("ignores typed amounts for firms without dues", () => {
+    expect(fillAllocation(100, dues, { Z: 100 }).amounts).toEqual({ A: 100, B: 0 });
+  });
 });
 
 describe("validateAllocation", () => {
-  const items = [item("a", "A", "2026-01-01", 100), item("b", "B", "2026-01-02", 200)];
-  const A = { orderId: "a", firmId: "A", amountPaise: 100 };
+  const dues = [due("A", [1, 100]), due("B", [2, 200])];
   it("accepts remaining 0", () => {
-    const r = validateAllocation(300, [A, { orderId: "b", firmId: "B", amountPaise: 200 }], items, { retailerId: "r1" });
+    const r = validateAllocation(300, [{ firmId: "A", amountPaise: 100 }, { firmId: "B", amountPaise: 200 }], dues);
     expect(r).toEqual({ ok: true, remainingPaise: 0, firmTotals: { A: 100, B: 200 } });
   });
   it("rejects underpay left unallocated", () => {
-    const r = validateAllocation(300, [A], items);
-    expect(r).toMatchObject({ ok: false, remainingPaise: 200 });
+    expect(validateAllocation(300, [{ firmId: "A", amountPaise: 100 }], dues)).toMatchObject({ ok: false, remainingPaise: 200 });
   });
-  it("overpay needs explicit advance", () => {
-    expect(validateAllocation(150, [A], items).ok).toBe(false);
-    const r = validateAllocation(150, [A], items, { advance: { firmId: "B", amountPaise: 50 } });
-    expect(r).toMatchObject({ ok: true, firmTotals: { A: 100, B: 50 } });
-  });
-  it("rejects advance without a firm", () => {
-    expect(validateAllocation(150, [A], items, { advance: { firmId: "", amountPaise: 50 } }).ok).toBe(false);
+  it("overpay needs an explicit advance with a firm", () => {
+    const A = { firmId: "A", amountPaise: 100 };
+    expect(validateAllocation(150, [A], dues).ok).toBe(false);
+    expect(validateAllocation(150, [A], dues, { firmId: "", amountPaise: 50 }).ok).toBe(false);
+    expect(validateAllocation(150, [A], dues, { firmId: "A", amountPaise: 50 })).toMatchObject({
+      ok: true,
+      firmTotals: { A: 150 },
+    });
+    // Advance may sit with a firm that has no dues.
+    expect(validateAllocation(150, [A], dues, { firmId: "C", amountPaise: 50 }).ok).toBe(true);
   });
   it("rejects more than the receipt", () => {
-    expect(validateAllocation(50, [A], items)).toMatchObject({ ok: false, remainingPaise: -50 });
+    expect(validateAllocation(50, [{ firmId: "A", amountPaise: 100 }], dues)).toMatchObject({ ok: false, remainingPaise: -50 });
   });
-  it("rejects above due, negative, fractional, duplicate, unknown", () => {
-    expect(validateAllocation(101, [{ ...A, amountPaise: 101 }], items).ok).toBe(false);
-    expect(validateAllocation(100, [{ ...A, amountPaise: -1 }, { ...A, amountPaise: 101 }], items).ok).toBe(false);
-    expect(validateAllocation(100, [{ ...A, amountPaise: 50.5 }], items).ok).toBe(false);
-    expect(validateAllocation(100, [{ ...A, amountPaise: 50 }, { ...A, amountPaise: 50 }], items).ok).toBe(false);
-    expect(validateAllocation(100, [{ orderId: "zzz", firmId: "A", amountPaise: 100 }], items).ok).toBe(false);
+  it("rejects above dues, negative, fractional, twice, firm without dues", () => {
+    expect(validateAllocation(101, [{ firmId: "A", amountPaise: 101 }], dues).ok).toBe(false);
+    expect(validateAllocation(100, [{ firmId: "A", amountPaise: -1 }], dues).ok).toBe(false);
+    expect(validateAllocation(100, [{ firmId: "A", amountPaise: 50.5 }], dues).ok).toBe(false);
+    expect(validateAllocation(100, [{ firmId: "A", amountPaise: 50 }, { firmId: "A", amountPaise: 50 }], dues).ok).toBe(false);
+    expect(validateAllocation(100, [{ firmId: "Z", amountPaise: 100 }], dues).ok).toBe(false);
+    expect(validateAllocation(100, [{ firmId: "A", amountPaise: 100 }], [{ firmId: "A", duePaise: 0, items: [] }]).ok).toBe(false);
   });
-  it("rejects wrong firm and other retailer", () => {
-    expect(validateAllocation(100, [{ ...A, firmId: "B" }], items).ok).toBe(false);
-    expect(validateAllocation(100, [A], items, { retailerId: "r2" }).ok).toBe(false);
+  it("ignores zero lines", () => {
+    expect(validateAllocation(100, [{ firmId: "A", amountPaise: 100 }, { firmId: "Z", amountPaise: 0 }], dues).ok).toBe(true);
   });
   it("rejects zero or invalid receipt", () => {
-    expect(validateAllocation(0, [], items).ok).toBe(false);
-    expect(validateAllocation(1.5, [], items).ok).toBe(false);
+    expect(validateAllocation(0, [], dues).ok).toBe(false);
+    expect(validateAllocation(1.5, [], dues).ok).toBe(false);
   });
 });
 
 describe("firm lines and inter-firm", () => {
   const allocs = [
-    { orderId: "a", firmId: "A", amountPaise: 60 },
-    { orderId: "b", firmId: "B", amountPaise: 30 },
-    { orderId: "c", firmId: "B", amountPaise: 10 },
+    { firmId: "A", amountPaise: 60 },
+    { firmId: "B", amountPaise: 40 },
   ];
   it("one line per firm incl. advance", () => {
     expect(firmLines(allocs, { firmId: "A", amountPaise: 5 })).toEqual([
       { firmId: "A", amountPaise: 65 },
       { firmId: "B", amountPaise: 40 },
+    ]);
+  });
+  it("sums stored allocation rows (old per-order rows too)", () => {
+    expect(firmLines([...allocs, { firmId: "B", amountPaise: 10 }])).toEqual([
+      { firmId: "A", amountPaise: 60 },
+      { firmId: "B", amountPaise: 50 },
     ]);
   });
   it("receiving firm owes the other firms", () => {
@@ -189,10 +209,18 @@ describe("cheque lifecycle", () => {
       for (const to of ["pending", "cleared", "bounced"] as const) expect(canChangeChequeStatus(from, to)).toBe(false);
   });
   it("bounce reversal cancels the credit fully", () => {
-    const lines = firmLines([{ orderId: "a", firmId: "A", amountPaise: 70 }, { orderId: "b", firmId: "B", amountPaise: 30 }]);
+    const lines = firmLines([{ firmId: "A", amountPaise: 70 }, { firmId: "B", amountPaise: 30 }]);
     const rev = bounceReversal(lines);
     expect(rev).toEqual([{ firmId: "A", amountPaise: -70 }, { firmId: "B", amountPaise: -30 }]);
-    const net = [...lines, ...rev].reduce((s, l) => s + l.amountPaise, 0);
-    expect(net).toBe(0);
+    expect([...lines, ...rev].reduce((s, l) => s + l.amountPaise, 0)).toBe(0);
+  });
+});
+
+describe("receiptChip", () => {
+  it("has a label for every status; bounced and reversed are red", () => {
+    for (const s of RECEIPT_STATUSES) expect(receiptChip(s).label).not.toBe(s);
+    expect(receiptChip("bounced").status).toBe("rejected");
+    expect(receiptChip("reversed").status).toBe("rejected");
+    expect(receiptChip("unverified").status).toBe("pending");
   });
 });

@@ -1,5 +1,7 @@
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { LEDGER_KINDS } from "../../lib/ledger-rules";
+import { oneOf } from "../check-helpers";
 import { user } from "./auth";
 import { firms } from "./firms";
 import { orders } from "./orders";
@@ -25,7 +27,7 @@ export const ledgerEntries = pgTable(
       .references(() => retailers.id),
     /** opening | order_debit | receipt_credit | adjustment */
     kind: text("kind").notNull(),
-    amountPaise: integer("amount_paise").notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
     orderId: uuid("order_id").references(() => orders.id),
     receiptId: uuid("receipt_id"),
     note: text("note").default("").notNull(),
@@ -40,5 +42,7 @@ export const ledgerEntries = pgTable(
     uniqueIndex("ledger_entries_one_opening_idx")
       .on(t.retailerId, t.firmId)
       .where(sql`${t.kind} = 'opening'`),
+    check("ledger_entries_kind_valid", oneOf(t.kind, LEDGER_KINDS)),
+    check("ledger_entries_amount_not_zero", sql`${t.amountPaise} <> 0`),
   ],
 );

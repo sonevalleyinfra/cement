@@ -17,14 +17,9 @@ export default async function Home() {
             Go to dashboard
           </Link>
         ) : (
-          <>
-            <Link href="/sign-in" className={buttonVariants()}>
-              Sign in
-            </Link>
-            <Link href="/sign-up" className={buttonVariants({ variant: "outline" })}>
-              Create account
-            </Link>
-          </>
+          <Link href="/sign-in" className={buttonVariants()}>
+            Sign in
+          </Link>
         )}
       </div>
     </main>

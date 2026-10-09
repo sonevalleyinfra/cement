@@ -31,11 +31,14 @@ export const ACTION_ROLES = {
   verifyPayments: ["accounts"],
   useWallet: STAFF,
   confirmHandover: ["accounts"],
+  reverseReceipt: ["accounts"],
   viewLedger: ["sales", "accounts", "retailer"],
   setOpeningBalance: ["admin"],
   // Stock
   viewStock: STAFF,
   manageStock: ["admin"],
+  /** Move bags between two places (godown / vehicle) of the same firm. */
+  transferStock: ["logistics"],
   // Masters
   viewRetailers: STAFF,
   editRetailers: ["sales"],

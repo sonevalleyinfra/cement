@@ -1,41 +1,62 @@
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
  * One row in a list: top line (chip + status), a title, and a bottom row of numbers.
- * Pass `href` to make the whole card tappable.
+ * Pass `href` to make the whole card tappable, `icon` (an `IconTile`) to show it beside the title,
+ * and `featured` for the one highlighted card on a screen (brand gradient, white text).
  */
 export function ListCard({
   href,
   top,
   title,
+  icon,
   bottom,
   index = 0,
+  featured = false,
   className,
 }: {
   href?: string;
   top?: ReactNode;
   title: string;
+  icon?: ReactNode;
   bottom?: ReactNode;
   /** Position in the list; staggers the fade-in a little. */
   index?: number;
+  featured?: boolean;
   className?: string;
 }) {
   const body = (
     <>
       {top && <div className="flex items-center justify-between gap-2">{top}</div>}
-      <div className="text-base leading-snug font-semibold">{title}</div>
+      <div className="flex items-center gap-3">
+        {icon}
+        <div className="flex-1 text-base leading-snug font-semibold">{title}</div>
+        {href && (
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              "size-5 shrink-0 transition-transform duration-200 ease-out group-hover/card:translate-x-0.5",
+              featured ? "text-white/80" : "text-muted-foreground/60",
+            )}
+          />
+        )}
+      </div>
       {bottom && <div className="flex items-end justify-between gap-3">{bottom}</div>}
     </>
   );
   const classes = cn(
-    "animate-in-up flex flex-col gap-2.5 rounded-2xl bg-card p-4 ring-1 ring-foreground/8",
+    "group/card animate-in-up relative flex flex-col gap-3 overflow-hidden rounded-2xl p-4",
+    featured
+      ? "bg-brand-gradient text-white shadow-brand [--muted-foreground:oklch(1_0_0/0.8)]"
+      : "bg-card shadow-card ring-1 ring-foreground/6",
     href &&
-      "transition-transform duration-150 ease-out active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring",
+      "transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring",
     className,
   );
-  const style = { animationDelay: `${Math.min(index, 8) * 30}ms` };
+  const style = { animationDelay: `${Math.min(index, 8) * 45}ms` };
   return href ? (
     <Link href={href} className={classes} style={style}>
       {body}

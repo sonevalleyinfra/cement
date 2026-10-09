@@ -50,7 +50,8 @@ export function FirmSwitcherClient({
                 onClick={() => choose(r.id)}
                 className={cn(
                   "flex h-12 w-full items-center justify-between rounded-xl px-3 text-left text-base",
-                  r.id === selectedId ? "bg-muted font-semibold" : "active:bg-muted",
+                  "transition-colors duration-150",
+                  r.id === selectedId ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted active:bg-muted",
                 )}
               >
                 {r.label}

@@ -7,12 +7,21 @@
  *   (needed for "Partial dispatch allowed").
  * - Rate filling (placed -> rate_filled) is done by sales; admin can do anything.
  * - Approve / reject is accounts; the next step "assigned" is automatic after
- *   approval, so we let accounts (and admin) trigger it.
+ *   approval, so we let accounts (and admin) trigger it. Approval picks a logistics
+ *   person by round robin (spec 4.5) in the same step; if nobody is free the order
+ *   stays "approved" and the first logistics person who dispatches it takes it.
  * - Dispatch and delivery are logistics work.
- * - Cancel is allowed until the order is fully dispatched. Before approval no stock
- *   was touched. After approval, stock is reversed only for bags already dispatched.
- * - Cancel before approval: sales or admin (a retailer cannot cancel). After approval:
- *   accounts or admin.
+ * - Cancel is allowed until the order is fully dispatched. It never moves stock.
+ *   Before approval nothing was billed. Approved or assigned with nothing sent: the whole
+ *   bill is reversed. Partly dispatched (owner's decision): "close short" - the bags already
+ *   sent stay at the shop and stay billed (each load at its own truck rate), only the bags
+ *   not sent are taken off the bill at the order rate, and the order becomes "dispatched"
+ *   (so it can still be marked delivered).
+ * - Cancel before approval: sales or admin (a retailer cannot cancel). After approval
+ *   (close short included): accounts or admin.
+ * - Order value = each load at its own rate (the order rate if the truck kept it) + bags not
+ *   sent yet at the order rate. Once an order is dispatched, delivered or cancelled the bags
+ *   not sent are no longer counted (they were closed short or never billed).
  * - Admin passes every role check (same as hasAnyRole in roles.ts).
  * - Money is integer paise only.
  */
@@ -57,7 +66,7 @@ export function isFinalStatus(status: OrderStatus): boolean {
   return ALLOWED_TRANSITIONS[status].length === 0;
 }
 
-/** Statuses after approval, where cancelling touches stock. */
+/** Statuses after approval, where cancelling reverses the bill (and may close short). */
 const AFTER_APPROVAL: readonly OrderStatus[] = ["approved", "assigned", "partly_dispatched"];
 
 const BEFORE_APPROVAL_CANCEL_ROLES: readonly Role[] = ["sales"];
@@ -106,25 +115,64 @@ export function isValidRatePaise(ratePaise: number): boolean {
   return Number.isSafeInteger(ratePaise) && ratePaise > 0;
 }
 
-export type CancelDecision =
-  | { ok: true; reverseStockBags: number }
+export type CancelPlan =
+  | {
+      ok: true;
+      /** "dispatched" when the order is closed short. */
+      newStatus: "cancelled" | "dispatched";
+      /** Signed paise for one compensating ledger entry (0 = post nothing). */
+      ledgerPaise: number;
+      /** Reason saved on the history row. */
+      historyReason: string;
+      /** Bags not sent when closing short (for the notification), else null. */
+      closedShortBags: number | null;
+    }
   | { ok: false; error: string };
 
 /**
- * Can this order be cancelled, and how many dispatched bags must go back to the
- * firm's stock? Nothing to reverse before approval or before any dispatch.
+ * The whole cancel decision. No stock ever moves (bags already sent are at the shop).
+ * - Before approval: cancelled, nothing billed (postedNetPaise is 0 then).
+ * - Approved or assigned, nothing sent: cancelled, the whole net bill is reversed.
+ * - Some bags sent: closed short. Only the bags not sent come off the bill, at the order rate.
  */
-export function cancelDecision(
-  status: OrderStatus,
-  dispatchedBags: number,
-  reason: string | null | undefined,
-): CancelDecision {
-  if (!canTransition(status, "cancelled")) {
+export function planCancel(input: {
+  status: string;
+  orderedBags: number;
+  dispatchedBags: number;
+  /** Order rate per bag (paise); needed to close short. */
+  ratePaise: number | null;
+  /** Net of everything already posted to the ledger for this order. */
+  postedNetPaise: number;
+  reason: string | null | undefined;
+}): CancelPlan {
+  const { status, orderedBags, ratePaise, postedNetPaise } = input;
+  if (!isOrderStatus(status) || !canTransition(status, "cancelled")) {
     return { ok: false, error: `An order that is ${status.replace("_", " ")} cannot be cancelled.` };
   }
-  if (!isValidReason(reason)) return { ok: false, error: "Enter a reason for cancelling." };
-  const reverse = AFTER_APPROVAL.includes(status) ? Math.max(0, dispatchedBags) : 0;
-  return { ok: true, reverseStockBags: reverse };
+  if (!isValidReason(input.reason)) return { ok: false, error: "Enter a reason for cancelling." };
+  const why = (input.reason as string).trim().slice(0, 300);
+  const sent = Math.max(0, input.dispatchedBags);
+
+  if (sent === 0 || !AFTER_APPROVAL.includes(status)) {
+    return { ok: true, newStatus: "cancelled", ledgerPaise: 0 - postedNetPaise, historyReason: why, closedShortBags: null };
+  }
+  const notSent = remainingBags(orderedBags, sent);
+  if (notSent === 0) return { ok: false, error: "Every bag is already dispatched." };
+  if (ratePaise === null || !isValidRatePaise(ratePaise)) {
+    return { ok: false, error: "This order has no rate, so it cannot be closed short." };
+  }
+  return {
+    ok: true,
+    newStatus: "dispatched",
+    ledgerPaise: -orderTotalPaise(notSent, ratePaise),
+    historyReason: `Closed short: ${notSent} ${notSent === 1 ? "bag" : "bags"} not sent. ${why}`,
+    closedShortBags: notSent,
+  };
+}
+
+/** True when cancelling this order now means closing it short (some bags already sent). */
+export function isCloseShort(status: string, dispatchedBags: number): boolean {
+  return isOrderStatus(status) && AFTER_APPROVAL.includes(status) && dispatchedBags > 0;
 }
 
 /* ---------- Quantity rules ---------- */
@@ -164,9 +212,65 @@ export function orderTotalPaise(bags: number, ratePaisePerBag: number): number {
   return bags * ratePaisePerBag;
 }
 
+/** Statuses where the bags not sent will never be sent (closed short, or never billed). */
+const NO_MORE_LOADS: readonly OrderStatus[] = ["dispatched", "delivered", "cancelled"];
+
+/**
+ * What the order is worth to staff, in paise: every load at its own rate (null = the
+ * order rate) plus the bags not sent yet at the order rate. Null when there is no rate yet.
+ */
+export function orderValuePaise(order: {
+  status: string;
+  bags: number;
+  ratePaise: number | null;
+  loads: readonly { bags: number; ratePaise: number | null }[];
+}): number | null {
+  if (order.ratePaise === null) return null;
+  const rate = order.ratePaise;
+  let total = 0;
+  let sent = 0;
+  for (const l of order.loads) {
+    total += orderTotalPaise(l.bags, l.ratePaise ?? rate);
+    sent += l.bags;
+  }
+  const closed = isOrderStatus(order.status) && NO_MORE_LOADS.includes(order.status);
+  if (!closed) total += orderTotalPaise(remainingBags(order.bags, sent), rate);
+  return total;
+}
+
 /* ---------- Round-robin assignment ---------- */
 
+/** Status and history steps when an order is approved: straight on to "assigned" if someone was picked. */
+export function approvalSteps(assigneeId: string | null): {
+  status: "approved" | "assigned";
+  steps: ("approved" | "assigned")[];
+} {
+  return assigneeId ? { status: "assigned", steps: ["approved", "assigned"] } : { status: "approved", steps: ["approved"] };
+}
+
 export type Assignee = { id: string; active: boolean };
+
+/** Who the history row for one approval step records as picked: only the "assigned" step has one. */
+export function approvalStepAssignee(step: "approved" | "assigned", assigneeId: string | null): string | null {
+  return step === "assigned" ? assigneeId : null;
+}
+
+/**
+ * Round robin's "last" for one firm: who approval's round robin picked most recently.
+ * Only rows with an assignee count (approval writes it); a dispatch take-over or an order
+ * someone took at dispatch has none, so it does not move the turn. Null when there is none.
+ */
+export function lastRoundRobinAssignee(
+  rows: readonly { assigneeId: string | null; createdAt: Date }[],
+): string | null {
+  let last: { assigneeId: string; createdAt: Date } | null = null;
+  for (const r of rows) {
+    if (r.assigneeId && (!last || r.createdAt.getTime() > last.createdAt.getTime())) {
+      last = { assigneeId: r.assigneeId, createdAt: r.createdAt };
+    }
+  }
+  return last?.assigneeId ?? null;
+}
 
 /**
  * Next logistics member after `lastAssignedId`, in the given (stable) list order,

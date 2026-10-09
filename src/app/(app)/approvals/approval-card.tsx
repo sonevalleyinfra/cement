@@ -37,7 +37,7 @@ export function ApprovalCard({
 
   return (
     <div
-      className="animate-in-up flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/8"
+      className="animate-in-up flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6"
       style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
     >
       <div className="flex items-center justify-between">{chip}</div>

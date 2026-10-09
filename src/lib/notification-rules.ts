@@ -4,22 +4,30 @@
  *
  * Spec rows used:
  * - Order placed: accounts, sales rep
- * - Rate edited (we use it for "rate filled"): accounts, admin, sales rep
+ * - Rate edited: accounts, admin, sales rep (also used for the first "rate filled")
  * - Approved / rejected: placer, sales rep, admin
+ * - Assigned: the logistics member picked for the order
  * - Dispatched: retailer, sales rep
+ * - Payment recorded: admin
+ * - Handover / online verified: collector
  * Where the spec is silent (simplest choice):
  * - Delivered: retailer, sales rep (same as dispatched)
  * - Cancelled: placer, sales rep, admin
+ * - Handover rejected and receipt reversed: collector (same as handover confirmed)
  * Rules: the person who did the action is never told about their own action; nobody
- * gets the same notification twice; every title starts with the firm name; no
- * message ever contains a price (retailers also read these).
+ * gets the same notification twice; every title starts with the firm name; ORDER
+ * messages never contain a price (retailers also read these). Money messages go to
+ * staff only, so they may show the amount.
  */
+import { formatINR } from "@/lib/money";
 
 export const NOTIFICATION_EVENTS = [
   "placed",
   "rate_filled",
+  "rate_edited",
   "approved",
   "rejected",
+  "assigned",
   "dispatched",
   "delivered",
   "cancelled",
@@ -32,17 +40,42 @@ export type OrderPeople = {
   placedBy: string;
   /** The login linked to the retailer shop (may be empty). */
   retailerUserId: string | null;
+  /** Logistics person assigned to the order (empty until approval). */
+  logisticsId: string | null;
   /** Accounts people who work on the order's firm. */
   accountsIds: readonly string[];
   adminIds: readonly string[];
 };
 
+/** Money events: not about one order, staff only. */
+export const MONEY_EVENTS = [
+  "payment_recorded",
+  "online_verified",
+  "handover_confirmed",
+  "handover_rejected",
+  "receipt_reversed",
+] as const;
+export type MoneyEvent = (typeof MONEY_EVENTS)[number];
+
+export type NotificationType = NotificationEvent | MoneyEvent;
+
+/** One notification ready to save. `link` empty = open the order (or the list). */
 export type NotificationDraft = {
   userId: string;
-  type: NotificationEvent;
+  type: NotificationType;
   title: string;
   body: string;
+  link: string | null;
 };
+
+/** Keeps real ids, drops the actor, empty values and repeats (first one wins). */
+function uniqueRecipients(list: readonly (string | null | undefined)[], actorId: string | null): string[] {
+  const out: string[] = [];
+  for (const id of list) {
+    if (id && id !== actorId && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
 
 export function recipientIds(
   event: NotificationEvent,
@@ -55,7 +88,11 @@ export function recipientIds(
       list = [...people.accountsIds, people.salesRepId];
       break;
     case "rate_filled":
+    case "rate_edited":
       list = [...people.accountsIds, ...people.adminIds, people.salesRepId];
+      break;
+    case "assigned":
+      list = [people.logisticsId];
       break;
     case "approved":
     case "rejected":
@@ -67,18 +104,16 @@ export function recipientIds(
       list = [people.retailerUserId, people.salesRepId];
       break;
   }
-  const out: string[] = [];
-  for (const id of list) {
-    if (id && id !== actorId && !out.includes(id)) out.push(id);
-  }
-  return out;
+  return uniqueRecipients(list, actorId);
 }
 
 const MESSAGES: Record<NotificationEvent, (what: string) => { title: string; body: string }> = {
   placed: (w) => ({ title: "New order", body: `${w} placed.` }),
   rate_filled: (w) => ({ title: "Rate filled", body: `${w} is waiting for approval.` }),
+  rate_edited: (w) => ({ title: "Rate edited", body: `${w}.` }),
   approved: (w) => ({ title: "Order approved", body: `${w} approved.` }),
   rejected: (w) => ({ title: "Order rejected", body: `${w} rejected.` }),
+  assigned: (w) => ({ title: "Order assigned", body: `${w} to dispatch.` }),
   dispatched: (w) => ({ title: "Order dispatched", body: `${w} is on its way.` }),
   delivered: (w) => ({ title: "Order delivered", body: `${w} delivered.` }),
   cancelled: (w) => ({ title: "Order cancelled", body: `${w} cancelled.` }),
@@ -99,5 +134,95 @@ export function buildNotifications(input: {
     type: event,
     title: `${firmName}: ${msg.title}`,
     body: msg.body,
+    link: null,
   }));
+}
+
+/** Who is told about a money event. */
+export function moneyRecipientIds(
+  event: MoneyEvent,
+  people: { adminIds: readonly string[]; collectorId: string | null },
+  actorId: string | null,
+): string[] {
+  const list = event === "payment_recorded" ? people.adminIds : [people.collectorId];
+  return uniqueRecipients(list, actorId);
+}
+
+/** Where a money notification opens when the caller gives no link. */
+export function defaultMoneyLink(event: MoneyEvent): string {
+  return event === "handover_confirmed" || event === "handover_rejected" ? "/wallet" : "/receipts";
+}
+
+/** "Firm A + Firm B" (blank and repeated names dropped). */
+export function joinFirmNames(firmNames: readonly string[]): string {
+  const names: string[] = [];
+  for (const n of firmNames) {
+    const clean = n.trim();
+    if (clean && !names.includes(clean)) names.push(clean);
+  }
+  return names.join(" + ");
+}
+
+const MONEY_MESSAGES: Record<MoneyEvent, (amount: string, from: string) => { title: string; body: string }> = {
+  payment_recorded: (a, f) => ({ title: "Payment recorded", body: `${a}${f}.` }),
+  online_verified: (a, f) => ({ title: "Online payment verified", body: `${a}${f} verified.` }),
+  handover_confirmed: (a) => ({ title: "Handover confirmed", body: `${a} cash handover confirmed.` }),
+  handover_rejected: (a) => ({ title: "Handover rejected", body: `${a} cash handover rejected.` }),
+  receipt_reversed: (a, f) => ({ title: "Receipt reversed", body: `${a}${f} reversed.` }),
+};
+
+export type MoneyNotificationInput = {
+  event: MoneyEvent;
+  /** Every firm the money belongs to (a receipt can be split across firms). */
+  firmNames: readonly string[];
+  /** The shop that paid, when there is one (not for handovers). */
+  retailerName?: string | null;
+  /** Integer paise. */
+  amountPaise: number;
+  people: { adminIds: readonly string[]; collectorId: string | null };
+  actorId: string | null;
+  /** Internal path to open, e.g. "/receipts/<id>". Default: see defaultMoneyLink. */
+  link?: string | null;
+  /** Why it was rejected or reversed (added to the message). */
+  reason?: string | null;
+};
+
+/** Drafts for a money event, e.g. title "Firm A + Firm B: Payment recorded", body "₹5,000.00 from Raju Stores." */
+export function buildMoneyNotifications(input: MoneyNotificationInput): NotificationDraft[] {
+  const firms = joinFirmNames(input.firmNames);
+  const from = input.retailerName?.trim() ? ` from ${input.retailerName.trim()}` : "";
+  const msg = MONEY_MESSAGES[input.event](formatINR(input.amountPaise), from);
+  const reason = input.reason?.trim();
+  const body = reason ? `${msg.body} Reason: ${reason}` : msg.body;
+  const link = input.link ?? defaultMoneyLink(input.event);
+  return moneyRecipientIds(input.event, input.people, input.actorId).map((userId) => ({
+    userId,
+    type: input.event,
+    title: firms ? `${firms}: ${msg.title}` : msg.title,
+    body,
+    link,
+  }));
+}
+
+/**
+ * True only for a path inside this app ("/wallet", "/receipts/abc").
+ * Refuses "//evil.com" and backslashes (browsers treat both as another site) and full URLs.
+ */
+export function isSafeInternalPath(link: string | null | undefined): link is string {
+  if (typeof link !== "string" || link.length === 0 || link.length > 300) return false;
+  if (!link.startsWith("/") || link.startsWith("//")) return false;
+  if (link.includes("\\")) return false;
+  // No control characters (tabs and newlines are dropped by browsers, so "/\t/evil.com" becomes "//evil.com").
+  for (const ch of link) {
+    const code = ch.charCodeAt(0);
+    if (code < 32 || code === 127) return false;
+  }
+  return true;
+}
+
+/** Where tapping a notification goes: its own safe link, else its order, else the list. */
+export function notificationTarget(link: string | null | undefined, orderId: string | null | undefined): string {
+  if (isSafeInternalPath(link)) return link;
+  if (orderId) return `/orders/${orderId}`;
+  return "/notifications";
 }

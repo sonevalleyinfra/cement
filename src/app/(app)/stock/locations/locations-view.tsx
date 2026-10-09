@@ -39,7 +39,7 @@ export function LocationsView({
       <h1 className="text-xl font-bold">Stock places</h1>
       <ul className="flex flex-col gap-2">
         {places.map((p) => (
-          <li key={p.id} className="flex items-center justify-between rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+          <li key={p.id} className="flex items-center justify-between rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
             <span className={p.active ? "font-semibold" : "text-muted-foreground line-through"}>
               {p.kind === "vehicle" ? `Vehicle ${p.name}` : p.name}
             </span>

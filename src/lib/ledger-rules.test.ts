@@ -4,12 +4,14 @@ import {
   balanceForFirm,
   balancesByFirm,
   canViewLedger,
-  cancelReversalEntry,
+  cancelEntry,
   duesFrom,
+  MAX_OPENING_PAISE,
   openingEntry,
   orderDebitEntry,
   orderDebitPaise,
-  rateChangeEntry,
+  truckRateChangeEntry,
+  sumPaise,
   summariseDues,
   withRunningBalance,
 } from "./ledger-rules";
@@ -77,7 +79,10 @@ describe("order debit", () => {
     expect(orderDebitPaise(10, 0)).toBeNull();
     expect(orderDebitPaise(10, 10.5)).toBeNull();
   });
-  it("refuses totals too big for the column", () => expect(orderDebitPaise(100000, 100000)).toBeNull());
+  it("allows totals above the old 32-bit limit (₹2.15 crore)", () =>
+    expect(orderDebitPaise(100000, 100000)).toBe(10_000_000_000));
+  it("refuses totals JavaScript cannot count exactly", () =>
+    expect(orderDebitPaise(1_000_000_000, 100_000_000)).toBeNull());
   it("builds a debit entry", () => {
     const r = orderDebitEntry({ id: "o1", firmId: "A", retailerId: "r1", bags: 10, ratePaise: 40000 });
     expect(r).toEqual({
@@ -89,33 +94,47 @@ describe("order debit", () => {
     expect(orderDebitEntry({ id: "o1", firmId: "A", retailerId: "r1", bags: 10, ratePaise: null }).ok).toBe(false));
 });
 
-describe("rate change", () => {
-  const o = { id: "o1", firmId: "A", retailerId: "r1", bags: 10 };
-  it("adds the difference", () => {
-    expect(rateChangeEntry(o, 40000, 41000)?.amountPaise).toBe(10000);
-    expect(rateChangeEntry(o, 40000, 39000)?.amountPaise).toBe(-10000);
-    expect(rateChangeEntry(o, 40000, 41000)?.kind).toBe("adjustment");
+describe("truck rate change", () => {
+  const o = { id: "o1", firmId: "A", retailerId: "r1" };
+  it("bills only this truck's bags at the difference", () => {
+    // 100 bags ordered at ₹400; this truck takes 30 bags at ₹410.
+    expect(truckRateChangeEntry(o, 30, 40000, 41000)).toEqual({
+      firmId: "A",
+      retailerId: "r1",
+      kind: "adjustment",
+      amountPaise: 30000,
+      orderId: "o1",
+    });
+    expect(truckRateChangeEntry(o, 30, 40000, 39000)?.amountPaise).toBe(-30000);
   });
-  it("adds nothing when unchanged", () => expect(rateChangeEntry(o, 40000, 40000)).toBeNull());
+  it("adds nothing when unchanged or a value is missing", () => {
+    expect(truckRateChangeEntry(o, 30, 40000, 40000)).toBeNull();
+    expect(truckRateChangeEntry(o, 30, null, 41000)).toBeNull();
+    expect(truckRateChangeEntry(o, 30, 40000, null)).toBeNull();
+    expect(truckRateChangeEntry(o, 0, 40000, 41000)).toBeNull();
+  });
 });
 
-describe("cancel reversal", () => {
+describe("cancel entry", () => {
   const o = { id: "o1", firmId: "A", retailerId: "r1" };
-  it("cancels the debit", () => {
-    const r = cancelReversalEntry(o, [e("r1", "A", 400000, "o1")]);
-    expect(r?.amountPaise).toBe(-400000);
-    expect(r?.orderId).toBe("o1");
+  it("posts the given amount for the order", () => {
+    expect(cancelEntry(o, -2400000)).toEqual({
+      firmId: "A",
+      retailerId: "r1",
+      kind: "adjustment",
+      amountPaise: -2400000,
+      orderId: "o1",
+    });
   });
-  it("includes rate adjustments so the order nets to zero", () => {
+  it("posts nothing for zero or a broken amount", () => {
+    expect(cancelEntry(o, 0)).toBeNull();
+    expect(cancelEntry(o, 1.5)).toBeNull();
+    expect(cancelEntry(o, Number.NaN)).toBeNull();
+  });
+  it("a full cancel brings the order back to zero", () => {
     const posted = [e("r1", "A", 400000, "o1"), e("r1", "A", 10000, "o1")];
-    expect(cancelReversalEntry(o, posted)?.amountPaise).toBe(-410000);
-  });
-  it("ignores other orders", () => {
-    expect(cancelReversalEntry(o, [e("r1", "A", 500, "o2")])).toBeNull();
-  });
-  it("does nothing when nothing posted or already reversed", () => {
-    expect(cancelReversalEntry(o, [])).toBeNull();
-    expect(cancelReversalEntry(o, [e("r1", "A", 100, "o1"), e("r1", "A", -100, "o1")])).toBeNull();
+    const entry = cancelEntry(o, -sumPaise(posted));
+    expect(sumPaise([...posted, entry!])).toBe(0);
   });
 });
 
@@ -139,7 +158,9 @@ describe("opening balance", () => {
   it("refuses zero, fractions and huge amounts; allows negative", () => {
     expect(openingEntry([], "r1", "A", 0).ok).toBe(false);
     expect(openingEntry([], "r1", "A", 1.5).ok).toBe(false);
-    expect(openingEntry([], "r1", "A", 3_000_000_000).ok).toBe(false);
+    expect(openingEntry([], "r1", "A", 3_000_000_000).ok).toBe(true);
+    expect(openingEntry([], "r1", "A", -MAX_OPENING_PAISE).ok).toBe(true);
+    expect(openingEntry([], "r1", "A", MAX_OPENING_PAISE + 1).ok).toBe(false);
     expect(openingEntry([], "r1", "A", -500).ok).toBe(true);
   });
 });

@@ -9,7 +9,7 @@ import {
   firmProductTotal,
   inMovement,
   MAX_STOCK_ENTRY_BAGS,
-  reversalMovements,
+  checkTransferPlaces,
   transferMovements,
   type Movement,
   type StockKey,
@@ -79,31 +79,6 @@ describe("dispatchMovement and firm isolation", () => {
   });
 });
 
-describe("reversalMovements", () => {
-  it("returns the dispatched bags to the same place", () => {
-    const list = [mv(A, 100), dispatchMovement([mv(A, 100)], A, 40, "o1")];
-    const rev = reversalMovements(list, "o1");
-    expect(rev).toHaveLength(1);
-    expect(rev[0]).toMatchObject({ ...A, type: "dispatch_reversal", bags: 40, orderId: "o1" });
-    expect(balance([...list, ...rev], A)).toBe(100);
-  });
-  it("does nothing for other orders or when already reversed", () => {
-    const d = dispatchMovement([mv(A, 100)], A, 40, "o1");
-    const list = [mv(A, 100), d];
-    expect(reversalMovements(list, "o2")).toEqual([]);
-    const again = [...list, ...reversalMovements(list, "o1")];
-    expect(reversalMovements(again, "o1")).toEqual([]);
-  });
-  it("handles a dispatch split over two vehicles", () => {
-    const list = [
-      { ...A, type: "dispatch" as const, bags: -10, orderId: "o1" },
-      { ...A, locationId: "v1", type: "dispatch" as const, bags: -5, orderId: "o1" },
-    ];
-    const rev = reversalMovements(list, "o1");
-    expect(rev.map((r) => r.bags).sort((a, b) => a - b)).toEqual([5, 10]);
-  });
-});
-
 describe("adjustmentMovement", () => {
   const list = [mv(A, 20)];
   it("needs admin", () => {
@@ -144,6 +119,26 @@ describe("transferMovements", () => {
     expect(transferMovements([mv(A, 5)], A, "v1", 6).ok).toBe(false);
     expect(transferMovements([mv(A, 5)], A, "g1", 1).ok).toBe(false);
     expect(transferMovements([mv(B, 50)], A, "v1", 1).ok).toBe(false);
+  });
+  it("refuses zero, fractions and more than the per-entry limit", () => {
+    const big = [mv(A, MAX_STOCK_ENTRY_BAGS + 10)];
+    expect(transferMovements(big, A, "v1", 0).ok).toBe(false);
+    expect(transferMovements(big, A, "v1", 1.5).ok).toBe(false);
+    expect(transferMovements(big, A, "v1", MAX_STOCK_ENTRY_BAGS).ok).toBe(true);
+    expect(transferMovements(big, A, "v1", MAX_STOCK_ENTRY_BAGS + 1).ok).toBe(false);
+  });
+});
+
+describe("checkTransferPlaces", () => {
+  const ok = { firmId: "A", active: true };
+  it("accepts two active places of the firm", () => {
+    expect(checkTransferPlaces("A", ok, ok).ok).toBe(true);
+  });
+  it("refuses a missing, inactive or other-firm place", () => {
+    expect(checkTransferPlaces("A", undefined, ok).ok).toBe(false);
+    expect(checkTransferPlaces("A", ok, undefined).ok).toBe(false);
+    expect(checkTransferPlaces("A", ok, { firmId: "A", active: false }).ok).toBe(false);
+    expect(checkTransferPlaces("A", { firmId: "B", active: true }, ok).ok).toBe(false);
   });
 });
 

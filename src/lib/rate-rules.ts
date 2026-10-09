@@ -2,15 +2,37 @@
  * Rules for filling the rate, approving/rejecting, and linking a retailer login.
  * Plain functions (no database, no request) so they are easy to test.
  * Status moves and role checks come from order-rules.ts; nothing is repeated here.
+ *
+ * Choices where the spec is silent:
+ * - A rate above MAX_RATE_RUPEES_PER_BAG is refused as a typo (a sanity cap, not a price rule).
+ *   The same cap applies when filling the rate and when logistics edits it at dispatch.
  */
+import { formatINR } from "./money";
 import { canUserTransition, isOrderStatus, isValidReason, isValidRatePaise } from "./order-rules";
 import { hasRole, isAdmin } from "./roles";
 
-/** Keypad gives whole rupees per bag as digits. Returns paise, or null if not a valid rate. */
+/** Highest rate per bag we accept, in whole rupees. Change here if prices rise. */
+export const MAX_RATE_RUPEES_PER_BAG = 2000;
+
+export type RateDigitsCheck = { ok: true; paise: number } | { ok: false; error: string };
+
+/** Keypad gives whole rupees per bag as digits. Returns paise, or the reason it is not a valid rate. */
+export function checkRateDigits(digits: string): RateDigitsCheck {
+  const clean = String(digits ?? "").trim();
+  if (!/^\d{1,7}$/.test(clean)) return { ok: false, error: "Enter a rate per bag." };
+  const rupees = Number(clean);
+  if (rupees > MAX_RATE_RUPEES_PER_BAG) {
+    const max = formatINR(MAX_RATE_RUPEES_PER_BAG * 100, { hidePaise: true });
+    return { ok: false, error: `Rate looks too high (max ${max} per bag).` };
+  }
+  const paise = rupees * 100;
+  return isValidRatePaise(paise) ? { ok: true, paise } : { ok: false, error: "Enter a rate per bag." };
+}
+
+/** Same as checkRateDigits, but just the paise (or null when the rate is not valid). */
 export function ratePaiseFromRupeeDigits(digits: string): number | null {
-  if (!/^\d{1,7}$/.test(digits)) return null;
-  const paise = Number(digits) * 100;
-  return isValidRatePaise(paise) ? paise : null;
+  const check = checkRateDigits(digits);
+  return check.ok ? check.paise : null;
 }
 
 /** Sales can fill the rate on a "placed" order if they are the assigned rep. Admin can always. */

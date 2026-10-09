@@ -18,11 +18,11 @@ const icons = {
 
 export type NavItem = { href: string; label: string; icon: keyof typeof icons };
 
-/** Fixed bottom tabs. Four at most. */
+/** Fixed bottom tabs. Four at most. The active tab gets a soft orange pill. */
 export function BottomNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/90 backdrop-blur-lg supports-[backdrop-filter]:bg-card/75">
       <ul className="mx-auto flex h-16 max-w-md pb-[env(safe-area-inset-bottom)] box-content">
         {items.map(({ href, label, icon }) => {
           const Icon = icons[icon];
@@ -33,17 +33,21 @@ export function BottomNav({ items }: { items: NavItem[] }) {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors duration-150",
-                  active ? "text-foreground" : "text-muted-foreground",
+                  "flex h-16 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors duration-200",
+                  active ? "font-semibold text-primary" : "text-muted-foreground active:text-foreground",
                 )}
               >
-                <Icon
+                <span
                   className={cn(
-                    "size-6 transition-transform duration-150 ease-out",
-                    active && "scale-110",
+                    "flex h-8 w-14 items-center justify-center rounded-full transition-[background-color,transform] duration-200 ease-out",
+                    active ? "bg-primary/12" : "bg-transparent",
                   )}
-                  strokeWidth={active ? 2.4 : 1.8}
-                />
+                >
+                  <Icon
+                    className={cn("size-[22px] transition-transform duration-200 ease-out", active && "scale-110")}
+                    strokeWidth={active ? 2.4 : 1.8}
+                  />
+                </span>
                 {label}
               </Link>
             </li>

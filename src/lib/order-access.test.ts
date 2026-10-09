@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   canCancelOrder,
+  historyForViewer,
+  historyStepLabel,
+  mentionsMoney,
   canPlaceOrder,
   canSeePrice,
   chipLabel,
@@ -109,5 +112,55 @@ describe("canCancelOrder", () => {
     expect(canCancelOrder("admin", "x", { ...after, status: "dispatched" })).toBe(false);
     expect(canCancelOrder("admin", "x", { ...after, status: "cancelled" })).toBe(false);
     expect(canCancelOrder("admin", "x", { ...after, status: "nonsense" })).toBe(false);
+  });
+});
+
+describe("historyForViewer", () => {
+  const events = [
+    { id: "1", toStatus: "placed", reason: "" },
+    { id: "2", toStatus: "rejected", reason: "Dues too high" },
+    { id: "3", toStatus: "assigned", reason: "Rate edited: market went up" },
+    { id: "4", toStatus: "partly_dispatched", reason: "40 bags in KA01AB1234" },
+    { id: "5", toStatus: "cancelled", reason: "Rate too low for this shop" },
+    { id: "6", toStatus: "dispatched", reason: "Closed short: 60 bags not sent. Price dispute" },
+    { id: "7", toStatus: "dispatched", reason: "Closed short: 1 bag not sent. Shop closed" },
+    { id: "8", toStatus: "cancelled", reason: "Gave ₹10 off" },
+  ];
+  it("staff see everything", () => {
+    expect(historyForViewer("sales", events)).toEqual(events);
+    expect(historyForViewer("retailer,sales", events)).toEqual(events);
+    expect(historyForViewer("admin", events)).toEqual(events);
+  });
+  it("a pure retailer never sees rate edits or money talk", () => {
+    const seen = historyForViewer("retailer", events);
+    expect(seen.map((e) => e.id)).toEqual(["1", "2", "4", "5", "6", "7", "8"]);
+    const reason = (id: string) => seen.find((e) => e.id === id)?.reason;
+    expect(reason("2")).toBe("Dues too high");
+    expect(reason("4")).toBe("40 bags in KA01AB1234");
+    expect(reason("5")).toBe("");
+    expect(reason("6")).toBe("Closed short: 60 bags not sent.");
+    expect(reason("7")).toBe("Closed short: 1 bag not sent. Shop closed");
+    expect(reason("8")).toBe("");
+  });
+  it("spots money words", () => {
+    for (const t of ["new RATE", "price", "₹400", "Rs 400", "rs.400", "400/-", "rupees", "discount", "cost"]) {
+      expect(mentionsMoney(t)).toBe(true);
+    }
+    for (const t of ["", "Dues too high", "40 bags in KA01", "wrong firm", "hrs late", "separate truck"]) {
+      expect(mentionsMoney(t)).toBe(false);
+    }
+  });
+});
+
+describe("historyStepLabel", () => {
+  it("shows a rate edit row (status unchanged) as Rate edited", () => {
+    expect(historyStepLabel({ toStatus: "assigned", reason: "Rate edited: market went up" })).toBe("Rate edited");
+    expect(historyStepLabel({ toStatus: "partly_dispatched", reason: "Rate edited: diesel" })).toBe("Rate edited");
+  });
+  it("shows other rows by their new status", () => {
+    expect(historyStepLabel({ toStatus: "assigned", reason: "" })).toBe("Assigned");
+    expect(historyStepLabel({ toStatus: "rate_filled", reason: "" })).toBe("Rate filled");
+    // A second partial load keeps the status but is a real step, not a rate edit.
+    expect(historyStepLabel({ toStatus: "partly_dispatched", reason: "40 bags in KA01AB1234" })).toBe("Partly dispatched");
   });
 });

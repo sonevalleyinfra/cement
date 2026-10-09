@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { user, walletMovements } from "@/db/schema";
 import { findAccessibleFirm } from "@/lib/firm-access";
 import { isUuid } from "@/lib/ids";
+import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole, writeBlock } from "@/lib/session";
 import { canAnswerRequest, canConfirmHandover, validateHandoverRequest, walletBalance } from "@/lib/wallet-rules";
@@ -23,7 +24,7 @@ export async function requestHandover(input: { firmId: string; amountPaise: numb
 
   const res = await db.transaction(async (tx): Promise<WalletResult> => {
     // Lock the collector's row so two requests cannot use the same cash.
-    await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("update");
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
     const rows = await tx
       .select()
       .from(walletMovements)
@@ -54,7 +55,7 @@ export async function answerHandover(requestId: string, confirm: boolean): Promi
       .select()
       .from(walletMovements)
       .where(and(eq(walletMovements.id, requestId), eq(walletMovements.kind, "handover_request")))
-      .for("update");
+      .for("no key update");
     if (!request) return { ok: false, error: "Handover not found." };
     const firm = await findAccessibleFirm(session.user.id, session.user.role, request.firmId);
     if (!firm) return { ok: false, error: "You cannot work on this firm." };
@@ -78,6 +79,15 @@ export async function answerHandover(requestId: string, confirm: boolean): Promi
       amountPaise: confirm ? request.amountPaise : 0,
       refId: request.id,
       actorId: session.user.id,
+    });
+    await notifyMoney(tx, {
+      event: confirm ? "handover_confirmed" : "handover_rejected",
+      firmId: request.firmId,
+      firmNames: [firm.name],
+      amountPaise: request.amountPaise,
+      actorId: session.user.id,
+      collectorId: request.collectorId,
+      link: "/wallet",
     });
     return { ok: true };
   });

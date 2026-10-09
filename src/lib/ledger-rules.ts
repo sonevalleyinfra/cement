@@ -5,9 +5,12 @@
  * Choices where the spec is silent:
  * - Amounts are SIGNED integer paise: positive = debit (retailer owes), negative = credit.
  * - The order debit (bags x rate) is posted when Accounts APPROVES the order, because
- *   that is when the rate is final and the order becomes a real sale. A rate edit at
- *   dispatch adds an adjustment for the difference. Cancelling an approved order adds a
- *   compensating entry that cancels everything posted for that order.
+ *   that is when the rate is final and the order becomes a real sale.
+ * - A rate edit at dispatch is for that truck only (owner's decision): it adds an adjustment
+ *   of that truck's bags x (truck rate - order rate). Other trucks keep the order rate.
+ * - Cancelling adds one compensating entry. Nothing sent: it cancels everything posted for
+ *   the order. Partly sent ("close short"): it takes off only the bags not sent, at the
+ *   order rate (the amount comes from planCancel in order-rules.ts).
  * - Entries are never edited; only new rows are added.
  * - One opening balance per retailer + firm. It may be negative (retailer has advance).
  * - Retailers can see their own ledger (spec: "view dues per firm").
@@ -107,8 +110,12 @@ export function orderDebitPaise(bags: number, ratePaise: number | null | undefin
   if (!Number.isInteger(bags) || bags < 1) return null;
   if (ratePaise == null || !Number.isInteger(ratePaise) || ratePaise < 1) return null;
   const total = bags * ratePaise;
-  return Number.isSafeInteger(total) && total <= 2_147_483_647 ? total : null;
+  // Money columns are bigint, so the only limit is what JavaScript can count exactly.
+  return Number.isSafeInteger(total) ? total : null;
 }
+
+/** Largest opening balance we accept: ₹100 crore (a typo guard, not a real business limit). */
+export const MAX_OPENING_PAISE = 100 * 1_00_00_000 * 100;
 
 /** The debit entry to post when an order is approved. */
 export function orderDebitEntry(order: {
@@ -132,14 +139,18 @@ export function orderDebitEntry(order: {
   };
 }
 
-/** Extra entry when the rate is edited after approval (zero change = no entry). */
-export function rateChangeEntry(
-  order: { id: string; firmId: string; retailerId: string; bags: number },
-  oldRatePaise: number,
-  newRatePaise: number,
+/**
+ * Extra entry when logistics changes the rate for one truck: that truck's bags x
+ * (truck rate - order rate). Null when nothing changes or a value is missing.
+ */
+export function truckRateChangeEntry(
+  order: { id: string; firmId: string; retailerId: string },
+  truckBags: number,
+  orderRatePaise: number | null,
+  truckRatePaise: number | null,
 ): LedgerEntry | null {
-  const oldTotal = orderDebitPaise(order.bags, oldRatePaise);
-  const newTotal = orderDebitPaise(order.bags, newRatePaise);
+  const oldTotal = orderDebitPaise(truckBags, orderRatePaise);
+  const newTotal = orderDebitPaise(truckBags, truckRatePaise);
   if (oldTotal === null || newTotal === null || oldTotal === newTotal) return null;
   return {
     firmId: order.firmId,
@@ -151,20 +162,19 @@ export function rateChangeEntry(
 }
 
 /**
- * Compensating entry for a cancelled order: the negative of everything already posted
- * for it. Returns null if nothing was posted or it already nets to zero.
+ * Compensating entry when an order is cancelled or closed short, for the signed amount
+ * planCancel worked out. Null when there is nothing to post (zero or not whole paise).
  */
-export function cancelReversalEntry(
+export function cancelEntry(
   order: { id: string; firmId: string; retailerId: string },
-  posted: readonly { orderId?: string | null; amountPaise: number }[],
+  amountPaise: number,
 ): LedgerEntry | null {
-  const net = sumPaise(posted.filter((e) => e.orderId === order.id));
-  if (net === 0) return null;
+  if (!Number.isSafeInteger(amountPaise) || amountPaise === 0) return null;
   return {
     firmId: order.firmId,
     retailerId: order.retailerId,
     kind: "adjustment",
-    amountPaise: -net,
+    amountPaise,
     orderId: order.id,
   };
 }
@@ -179,7 +189,7 @@ export function openingEntry(
   if (!Number.isInteger(amountPaise) || amountPaise === 0) {
     return { ok: false, error: "Enter an amount in whole paise that is not zero." };
   }
-  if (Math.abs(amountPaise) > 2_000_000_000) return { ok: false, error: "That amount is too large." };
+  if (Math.abs(amountPaise) > MAX_OPENING_PAISE) return { ok: false, error: "That amount is too large." };
   if (existing.some((e) => e.kind === "opening" && e.retailerId === retailerId && e.firmId === firmId)) {
     return { ok: false, error: "Opening balance is already set for this retailer and firm." };
   }

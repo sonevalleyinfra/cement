@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { ORDER_STATUSES } from "./order-rules";
 import {
   checkRemoveFirm,
   isDuplicateFirmName,
   isValidGstin,
   normalizeGstin,
+  OPEN_ORDER_STATUSES,
+  openBusinessProblem,
   pickFirmSlot,
   usersForNewFirm,
   validateFirm,
@@ -118,4 +121,56 @@ describe("usersForNewFirm", () => {
   });
 
   it("is empty when nobody has firm access", () => expect(usersForNewFirm([], ["A"])).toEqual([]));
+});
+
+describe("openBusinessProblem", () => {
+  const none = {
+    stockPlaces: 0,
+    retailersWithBalance: 0,
+    collectorsHoldingCash: 0,
+    openHandoverRequests: 0,
+    openOrders: 0,
+    unverifiedOnline: 0,
+    pendingCheques: 0,
+  };
+
+  it("lets a firm with nothing open go", () => {
+    expect(openBusinessProblem(none)).toBeNull();
+  });
+
+  it("lists everything still open", () => {
+    const msg = openBusinessProblem({
+      stockPlaces: 2,
+      retailersWithBalance: 1,
+      collectorsHoldingCash: 3,
+      openHandoverRequests: 1,
+      openOrders: 4,
+      unverifiedOnline: 1,
+      pendingCheques: 2,
+    });
+    expect(msg).toContain("stock in 2 places");
+    expect(msg).toContain("1 retailer with a balance");
+    expect(msg).toContain("cash with 3 collectors");
+    expect(msg).toContain("1 handover request");
+    expect(msg).toContain("4 open orders");
+    expect(msg).toContain("1 unverified online payment");
+    expect(msg).toContain("2 pending cheques");
+  });
+
+  it("refuses on any single open item", () => {
+    for (const key of Object.keys(none) as (keyof typeof none)[]) {
+      expect(openBusinessProblem({ ...none, [key]: 1 })).not.toBeNull();
+    }
+  });
+
+  it("open order statuses are real statuses and exclude finished ones", () => {
+    for (const s of OPEN_ORDER_STATUSES) expect(ORDER_STATUSES).toContain(s);
+    for (const s of ["rejected", "delivered", "cancelled"]) {
+      expect(OPEN_ORDER_STATUSES).not.toContain(s);
+    }
+  });
+
+  it("counts a dispatched order (not yet delivered) as open", () => {
+    expect(OPEN_ORDER_STATUSES).toContain("dispatched");
+  });
 });

@@ -22,6 +22,8 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
+    // The admin creates every user (auth.api.createUser is not affected by this).
+    disableSignUp: true,
     requireEmailVerification: true,
     minPasswordLength: MIN_PASSWORD_LENGTH,
     revokeSessionsOnPasswordReset: true,
