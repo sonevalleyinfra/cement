@@ -99,13 +99,18 @@ export async function setFirmActive(id: string, active: boolean): Promise<FirmRe
   } else {
     const problem = checkRemoveFirm(live.map((f) => f.id), id);
     if (problem) return { ok: false, error: problem };
-    // Do not hide a firm that still has bags, balances, cash, orders or payments open.
-    const open = openBusinessProblem(await getOpenBusiness(id));
-    if (open) return { ok: false, error: open };
-    await db.transaction(async (tx) => {
+    const res = await db.transaction(async (tx): Promise<FirmResult> => {
+      // Lock the firm (the same lock an approval takes) and check inside this transaction,
+      // so an approval cannot slip in between the check and the removal.
+      await tx.select({ id: firms.id }).from(firms).where(eq(firms.id, id)).for("no key update");
+      // Do not hide a firm that still has bags, balances, cash, orders or payments open.
+      const open = openBusinessProblem(await getOpenBusiness(id, tx));
+      if (open) return { ok: false, error: open };
       await tx.update(firms).set({ active: false, updatedAt: new Date() }).where(eq(firms.id, id));
       await writeAudit(tx, { actorId: session.user.id, entity: "firm", entityId: id, action: "deactivate" });
+      return { ok: true };
     });
+    if (!res.ok) return res;
   }
   revalidatePath("/", "layout");
   return { ok: true };

@@ -13,6 +13,7 @@ import { planReceipt } from "@/lib/receipt-plan";
 import { planReversal } from "@/lib/receipt-reversal";
 import { PAYMENT_MODES } from "@/lib/receipt-rules";
 import { getFirmDues, getReceiptLines } from "@/lib/receipts";
+import { receiptFirmIds } from "@/lib/receipt-view-rules";
 import { requireRole, writeBlock } from "@/lib/session";
 import { collectedMovements, walletBalance } from "@/lib/wallet-rules";
 
@@ -89,7 +90,7 @@ export async function saveReceipt(input: {
       .select({ id: retailers.id, name: retailers.name })
       .from(retailers)
       .where(eq(retailers.id, input.retailerId))
-      .for("update");
+      .for("no key update");
     if (!retailer) return { ok: false, error: "Retailer not found." };
     const dues = await getFirmDues(input.retailerId, [...allowed], tx);
     const plan = planReceipt(
@@ -170,18 +171,18 @@ export async function reverseReceipt(receiptId: string, reason: string): Promise
   if (!isUuid(receiptId)) return { ok: false, error: "Receipt not found." };
   let retailerId = "";
   const res = await db.transaction(async (tx): Promise<ReverseResult> => {
-    const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("update");
+    const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("no key update");
     if (!receipt) return { ok: false, error: "Receipt not found." };
     retailerId = receipt.retailerId;
     const [retailer] = await tx
       .select({ id: retailers.id, name: retailers.name })
       .from(retailers)
       .where(eq(retailers.id, receipt.retailerId))
-      .for("update");
+      .for("no key update");
     if (!retailer) return { ok: false, error: "Retailer not found." };
 
     const lines = await getReceiptLines(receipt.id, tx);
-    const firmIds = [...new Set([...lines.map((l) => l.firmId), ...(receipt.receivedFirmId ? [receipt.receivedFirmId] : [])])];
+    const firmIds = receiptFirmIds(lines.map((l) => l.firmId), receipt.receivedFirmId);
     const names = new Map<string, string>();
     for (const id of firmIds) {
       const firm = await findAccessibleFirm(session.user.id, session.user.role, id);
@@ -192,7 +193,7 @@ export async function reverseReceipt(receiptId: string, reason: string): Promise
     const available: Record<string, number> = {};
     if (receipt.mode === "cash" && lines.length > 0) {
       // Lock the collector (like a handover request) so the cash cannot be handed over meanwhile.
-      await tx.select({ id: user.id }).from(user).where(eq(user.id, receipt.receivedBy)).for("update");
+      await tx.select({ id: user.id }).from(user).where(eq(user.id, receipt.receivedBy)).for("no key update");
       const moves = await tx
         .select()
         .from(walletMovements)

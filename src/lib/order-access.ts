@@ -144,3 +144,14 @@ export function historyForViewer<T extends { reason: string }>(
       return { ...e, reason: closedShort ? closedShort[0] : "" };
     });
 }
+
+/**
+ * The step name shown in an order's history. A rate edit is saved as a row that keeps the
+ * status (for example "assigned" to "assigned"), so it shows as "Rate edited", not as a
+ * second "Assigned". Other rows show their new status ("partly_dispatched" = "Partly dispatched").
+ */
+export function historyStepLabel(event: { toStatus: string; reason: string }): string {
+  if (isRateEditReason(event.reason)) return "Rate edited";
+  const words = event.toStatus.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}

@@ -250,6 +250,28 @@ export function approvalSteps(assigneeId: string | null): {
 
 export type Assignee = { id: string; active: boolean };
 
+/** Who the history row for one approval step records as picked: only the "assigned" step has one. */
+export function approvalStepAssignee(step: "approved" | "assigned", assigneeId: string | null): string | null {
+  return step === "assigned" ? assigneeId : null;
+}
+
+/**
+ * Round robin's "last" for one firm: who approval's round robin picked most recently.
+ * Only rows with an assignee count (approval writes it); a dispatch take-over or an order
+ * someone took at dispatch has none, so it does not move the turn. Null when there is none.
+ */
+export function lastRoundRobinAssignee(
+  rows: readonly { assigneeId: string | null; createdAt: Date }[],
+): string | null {
+  let last: { assigneeId: string; createdAt: Date } | null = null;
+  for (const r of rows) {
+    if (r.assigneeId && (!last || r.createdAt.getTime() > last.createdAt.getTime())) {
+      last = { assigneeId: r.assigneeId, createdAt: r.createdAt };
+    }
+  }
+  return last?.assigneeId ?? null;
+}
+
 /**
  * Next logistics member after `lastAssignedId`, in the given (stable) list order,
  * wrapping around and skipping inactive people. Returns null if nobody is active.

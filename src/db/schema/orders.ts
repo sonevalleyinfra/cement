@@ -61,6 +61,11 @@ export const orderEvents = pgTable(
       .notNull()
       .references(() => user.id),
     reason: text("reason").default("").notNull(),
+    /**
+     * Who approval's round robin picked. Set only on that "assigned" row, so the next
+     * approval's turn does not move when someone else takes the order at dispatch.
+     */
+    assigneeId: text("assignee_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("order_events_order_idx").on(t.orderId, t.createdAt)],

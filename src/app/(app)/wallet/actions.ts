@@ -24,7 +24,7 @@ export async function requestHandover(input: { firmId: string; amountPaise: numb
 
   const res = await db.transaction(async (tx): Promise<WalletResult> => {
     // Lock the collector's row so two requests cannot use the same cash.
-    await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("update");
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
     const rows = await tx
       .select()
       .from(walletMovements)
@@ -55,7 +55,7 @@ export async function answerHandover(requestId: string, confirm: boolean): Promi
       .select()
       .from(walletMovements)
       .where(and(eq(walletMovements.id, requestId), eq(walletMovements.kind, "handover_request")))
-      .for("update");
+      .for("no key update");
     if (!request) return { ok: false, error: "Handover not found." };
     const firm = await findAccessibleFirm(session.user.id, session.user.role, request.firmId);
     if (!firm) return { ok: false, error: "You cannot work on this firm." };

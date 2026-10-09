@@ -33,7 +33,7 @@ export async function setOpeningBalance(input: {
 
   const res = await db.transaction(async (tx): Promise<LedgerResult> => {
     // Lock the retailer so two clicks cannot both post an opening balance.
-    await tx.select({ id: retailers.id }).from(retailers).where(eq(retailers.id, input.retailerId)).for("update");
+    await tx.select({ id: retailers.id }).from(retailers).where(eq(retailers.id, input.retailerId)).for("no key update");
     const existing = await tx
       .select({ kind: ledgerEntries.kind, firmId: ledgerEntries.firmId, retailerId: ledgerEntries.retailerId })
       .from(ledgerEntries)

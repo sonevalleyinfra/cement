@@ -82,7 +82,7 @@ export async function dispatchOrder(input: {
   const me = session.user;
   const result = await db.transaction(async (tx): Promise<DispatchResult> => {
     // Lock the order and the stock place so two people cannot dispatch the same bags.
-    const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("update");
+    const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("no key update");
     if (!order) return { ok: false, error: "Order not found." };
     // Only the assignee (or anyone, when there is none or they can no longer do it), or admin.
     const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
@@ -93,7 +93,7 @@ export async function dispatchOrder(input: {
       .select()
       .from(stockLocations)
       .where(eq(stockLocations.id, input.locationId as string))
-      .for("update");
+      .for("no key update");
     if (!loc || loc.firmId !== order.firmId || !loc.active) {
       return { ok: false, error: "Pick a stock place of this firm." };
     }
@@ -217,7 +217,7 @@ export async function markDelivered(orderId: string): Promise<DispatchResult> {
 
   const me = session.user;
   const result = await db.transaction(async (tx): Promise<DispatchResult> => {
-    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!order) return { ok: false, error: "Order not found." };
     const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
     if (!canDispatchOrder({ id: me.id, role: me.role, hasFirmAccess: true }, order, assigneeValid)) {

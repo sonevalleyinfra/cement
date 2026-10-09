@@ -22,7 +22,14 @@ import {
   resolveOrderRetailer,
   validatePlaceOrder,
 } from "@/lib/order-access";
-import { approvalSteps, isOrderStatus, pickNextAssignee, planCancel } from "@/lib/order-rules";
+import {
+  approvalStepAssignee,
+  approvalSteps,
+  isOrderStatus,
+  lastRoundRobinAssignee,
+  pickNextAssignee,
+  planCancel,
+} from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
 import { hasRole } from "@/lib/roles";
 import { canDecide, canFillRate, checkRateDigits, checkRejectReason } from "@/lib/rate-rules";
@@ -139,7 +146,7 @@ async function moveOrder(
 ): Promise<PlaceOrderResult> {
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     // Lock the order and check everything before writing, so a refusal saves nothing.
-    const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+    const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!o || o.status !== from) return { ok: false, error: CHANGED };
 
     if (to !== "approved") {
@@ -154,17 +161,19 @@ async function moveOrder(
     if (!debit.ok) return { ok: false, error: debit.error };
 
     // Round robin (spec 4.5). Lock the firm row so two approvals of one firm take turns.
-    await tx.select({ id: firms.id }).from(firms).where(eq(firms.id, o.firmId)).for("update");
+    // "No key update" still makes approvals wait for each other, but does not block other
+    // work that only adds rows pointing at this firm (receipts, wallet), so no deadlocks.
+    await tx.select({ id: firms.id }).from(firms).where(eq(firms.id, o.firmId)).for("no key update");
     const people = await firmPeople(tx, [o.firmId]);
-    // "Last" = whoever got the most recent assignment in this firm.
-    const [last] = await tx
-      .select({ logisticsId: orders.logisticsId })
+    // "Last" = whoever this firm's round robin picked most recently (dispatch take-overs do not count).
+    const recent = await tx
+      .select({ assigneeId: orderEvents.assigneeId, createdAt: orderEvents.createdAt })
       .from(orderEvents)
       .innerJoin(orders, eq(orderEvents.orderId, orders.id))
-      .where(and(eq(orders.firmId, o.firmId), eq(orderEvents.toStatus, "assigned"), isNotNull(orders.logisticsId)))
+      .where(and(eq(orders.firmId, o.firmId), isNotNull(orderEvents.assigneeId)))
       .orderBy(desc(orderEvents.createdAt))
       .limit(1);
-    const logisticsId = pickNextAssignee(logisticsCandidates(people, o.firmId), last?.logisticsId);
+    const logisticsId = pickNextAssignee(logisticsCandidates(people, o.firmId), lastRoundRobinAssignee(recent));
     const next = approvalSteps(logisticsId);
 
     // Save the assignee before notify: "assigned" goes to orders.logistics_id.
@@ -184,6 +193,7 @@ async function moveOrder(
         toStatus: step,
         actorId,
         reason: step === "approved" ? reason : "",
+        assigneeId: approvalStepAssignee(step, logisticsId),
       });
       fromStatus = step;
     }
@@ -262,7 +272,7 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
   await requireFirm(order.firmId);
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
-    const [locked] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+    const [locked] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!locked || !isOrderStatus(locked.status)) return { ok: false, error: "Order not found." };
     if (!canCancelOrder(me.role, me.id, locked)) {
       return { ok: false, error: "You cannot cancel this order." };

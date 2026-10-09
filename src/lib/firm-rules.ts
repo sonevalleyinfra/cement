@@ -84,8 +84,15 @@ export function checkRemoveFirm(activeFirmIds: readonly string[], firmId: string
   return null;
 }
 
-/** Orders in these statuses are still being worked on. */
-export const OPEN_ORDER_STATUSES = ["placed", "rate_filled", "approved", "assigned", "partly_dispatched"] as const;
+/** Orders in these statuses are still being worked on ("dispatched" = on the truck, not yet delivered). */
+export const OPEN_ORDER_STATUSES = [
+  "placed",
+  "rate_filled",
+  "approved",
+  "assigned",
+  "partly_dispatched",
+  "dispatched",
+] as const;
 
 /** What is still open for a firm. Every number is a count (0 = nothing open). */
 export type OpenBusiness = {
@@ -97,10 +104,11 @@ export type OpenBusiness = {
   collectorsHoldingCash: number;
   /** Cash handover requests nobody has answered yet. */
   openHandoverRequests: number;
+  /** Orders not yet delivered, rejected or cancelled. */
   openOrders: number;
-  /** Online payments accounts has not verified yet. */
+  /** Online payments accounts has not verified yet (received by this firm or paying it). */
   unverifiedOnline: number;
-  /** Cheques not yet cleared or bounced. */
+  /** Cheques not yet cleared or bounced (received by this firm or paying it). */
   pendingCheques: number;
 };
 

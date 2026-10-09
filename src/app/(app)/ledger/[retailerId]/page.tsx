@@ -10,20 +10,13 @@ import { getAccessibleFirms } from "@/lib/firm-access";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
 import { withRunningBalance } from "@/lib/ledger-rules";
-import { showLedgerNotes } from "@/lib/ledger-view-rules";
+import { ledgerEntryLabel, showLedgerNotes } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
 import { hasAnyRole, isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 import { mayViewLedger } from "../access";
 import { OpeningForm } from "./opening-form";
-
-const kindLabel: Record<string, string> = {
-  opening: "Opening balance",
-  order_debit: "Order",
-  receipt_credit: "Payment",
-  adjustment: "Adjustment",
-};
 
 export default async function RetailerLedgerPage({
   params,
@@ -101,7 +94,7 @@ export default async function RetailerLedgerPage({
           {entries.map((e) => (
             <li key={e.id} className="flex flex-col gap-1 rounded-2xl bg-card p-3 ring-1 ring-foreground/8">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold">{kindLabel[e.kind] ?? e.kind}</span>
+                <span className="text-sm font-semibold">{ledgerEntryLabel(e.kind, e.amountPaise)}</span>
                 <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-green-700" : ""}`}>
                   {e.amountPaise < 0 ? "- " : ""}
                   {formatINR(Math.abs(e.amountPaise))}

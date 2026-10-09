@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
@@ -14,47 +14,51 @@ import { can } from "@/lib/permissions";
 import { MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { requireUser } from "@/lib/session";
 
-/** Receipt ids to list: a pure retailer sees their own shop's; staff see those touching their firms. */
-async function visibleReceiptIds(user: { id: string; role?: string | null }): Promise<string[] | null> {
+/**
+ * Which receipts to list, as a filter for the query: a pure retailer sees their own shop's;
+ * staff see those with a line for one of their firms. Null = not allowed; "none" = nothing to show.
+ */
+async function receiptFilter(user: { id: string; role?: string | null }): Promise<SQL | "none" | null> {
   if (isRetailerOnly(user.role)) {
     const [own] = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.userId, user.id)).limit(1);
-    if (!own) return [];
-    const rows = await db.select({ id: receipts.id }).from(receipts).where(eq(receipts.retailerId, own.id));
-    return rows.map((r) => r.id);
+    return own ? eq(receipts.retailerId, own.id) : "none";
   }
   if (!can(user.role, "viewReceipts")) return null;
   const firmIds = (await getAccessibleFirms(user.id, user.role)).map((f) => f.id);
-  if (firmIds.length === 0) return [];
-  const rows = await db
-    .selectDistinct({ id: receiptAllocations.receiptId })
-    .from(receiptAllocations)
-    .where(inArray(receiptAllocations.firmId, firmIds));
-  return rows.map((r) => r.id);
+  if (firmIds.length === 0) return "none";
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(receiptAllocations)
+      .where(and(eq(receiptAllocations.receiptId, receipts.id), inArray(receiptAllocations.firmId, firmIds))),
+  );
 }
 
 export default async function ReceiptsPage() {
   const { user } = await requireUser();
-  const ids = await visibleReceiptIds(user);
-  if (ids === null) redirect("/dashboard");
+  const filter = await receiptFilter(user);
+  if (filter === null) redirect("/dashboard");
   const staff = !isRetailerOnly(user.role);
 
-  const rows = ids.length
-    ? await db
-        .select({
-          id: receipts.id,
-          no: receipts.receiptNo,
-          retailer: retailers.name,
-          mode: receipts.mode,
-          status: receipts.status,
-          totalPaise: receipts.totalPaise,
-          createdAt: receipts.createdAt,
-        })
-        .from(receipts)
-        .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
-        .where(inArray(receipts.id, ids))
-        .orderBy(desc(receipts.createdAt))
-        .limit(100)
-    : [];
+  // Newest 100 only, picked in the database.
+  const rows =
+    filter === "none"
+      ? []
+      : await db
+          .select({
+            id: receipts.id,
+            no: receipts.receiptNo,
+            retailer: retailers.name,
+            mode: receipts.mode,
+            status: receipts.status,
+            totalPaise: receipts.totalPaise,
+            createdAt: receipts.createdAt,
+          })
+          .from(receipts)
+          .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
+          .where(filter)
+          .orderBy(desc(receipts.createdAt))
+          .limit(100);
 
   return (
     <div className="flex flex-col gap-3">

@@ -13,6 +13,14 @@ import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
 import { canReverseReceipt } from "@/lib/receipt-reversal";
 import { firmLines, interFirmBalances, MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
+import {
+  receiptFirmIds,
+  showReversalDetails,
+  visibleInterFirm,
+  visibleReceiptLines,
+  type ReceiptViewer,
+} from "@/lib/receipt-view-rules";
+import { isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 import { ReverseForm } from "./reverse-form";
 
@@ -52,35 +60,39 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
     .select({ firmId: receiptAllocations.firmId, amountPaise: receiptAllocations.amountPaise, advance: receiptAllocations.advance })
     .from(receiptAllocations)
     .where(eq(receiptAllocations.receiptId, r.id));
-  const firmIds = [...new Set([...allocs.map((a) => a.firmId), ...(r.receivedFirmId ? [r.receivedFirmId] : [])])];
+  const firmIds = receiptFirmIds(allocs.map((a) => a.firmId), r.receivedFirmId);
 
   // A pure retailer sees only their own shop's receipts; staff need one of the receipt's firms.
+  // The shop's own login and admin see every line; other staff only their firms' lines.
   const retailerView = isRetailerOnly(user.role);
+  let viewer: ReceiptViewer = { seeAll: true, firmIds: [] };
   if (retailerView) {
     const [own] = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.userId, user.id)).limit(1);
     if (own?.id !== r.retailerId) notFound();
   } else {
     if (!can(user.role, "viewReceipts")) notFound();
-    const mine = new Set((await getAccessibleFirms(user.id, user.role)).map((f) => f.id));
-    if (!firmIds.some((f) => mine.has(f))) notFound();
+    const mine = (await getAccessibleFirms(user.id, user.role)).map((f) => f.id);
+    if (!firmIds.some((f) => mine.includes(f))) notFound();
+    viewer = { seeAll: isAdmin(user.role), firmIds: mine };
   }
 
   const firmRows = firmIds.length
     ? await db.select({ id: firms.id, name: firms.name, slot: firms.slot }).from(firms).where(inArray(firms.id, firmIds))
     : [];
   const firmOf = new Map(firmRows.map((f) => [f.id, f]));
-  const reverser = r.reversedBy
+  const showReversal = showReversalDetails(user.role);
+  const reverser = showReversal && r.reversedBy
     ? (await db.select({ name: users.name }).from(users).where(eq(users.id, r.reversedBy)).limit(1))[0]?.name
     : null;
 
   // One row per firm: the part for dues and the part kept as advance.
-  const split = firmLines(allocs).map((l) => ({
+  const split = visibleReceiptLines(firmLines(allocs), viewer).map((l) => ({
     ...l,
     advancePaise: allocs.filter((a) => a.firmId === l.firmId && a.advance).reduce((s, a) => s + a.amountPaise, 0),
   }));
   const owes =
     !retailerView && r.receivedFirmId && r.mode !== "cash" && r.status !== "bounced" && r.status !== "reversed"
-      ? interFirmBalances(r.receivedFirmId, firmLines(allocs))
+      ? visibleInterFirm(interFirmBalances(r.receivedFirmId, firmLines(allocs)), viewer)
       : [];
 
   const { selection } = await getFirmSelection();
@@ -149,10 +161,10 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
         <div className="flex flex-col gap-1 rounded-2xl bg-muted p-4 text-sm">
           <div className="font-semibold">Reversed</div>
           <div className="text-muted-foreground">
-            {reverser ?? ""}
-            {r.reversedAt && <> · {formatDateTime(r.reversedAt)}</>}
+            {reverser ? <>{reverser} · </> : ""}
+            {r.reversedAt && formatDateTime(r.reversedAt)}
           </div>
-          {r.reversalReason && <div>Reason: {r.reversalReason}</div>}
+          {showReversal && r.reversalReason && <div>Reason: {r.reversalReason}</div>}
         </div>
       )}
 

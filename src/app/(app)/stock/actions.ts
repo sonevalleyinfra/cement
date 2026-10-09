@@ -49,7 +49,7 @@ async function checkPlace(tx: Parameters<Parameters<typeof db.transaction>[0]>[0
     .select()
     .from(stockLocations)
     .where(eq(stockLocations.id, input.locationId))
-    .for("update");
+    .for("no key update");
   if (!loc || loc.firmId !== input.firmId || !loc.active) return "Pick an active stock place of this firm.";
   const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).limit(1);
   if (!product || !product.active) return "Pick an active product.";
@@ -168,7 +168,7 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
     // Lock both places in a fixed order (sorted ids) so two moves cannot wait on each other.
     const places = new Map<string, { firmId: string; active: boolean }>();
     for (const id of [input.fromLocationId, input.toLocationId].sort()) {
-      const [loc] = await tx.select().from(stockLocations).where(eq(stockLocations.id, id)).for("update");
+      const [loc] = await tx.select().from(stockLocations).where(eq(stockLocations.id, id)).for("no key update");
       if (loc) places.set(id, { firmId: loc.firmId, active: loc.active });
     }
     const placesOk = checkTransferPlaces(
@@ -262,7 +262,7 @@ export async function setLocationActive(id: string, active: boolean): Promise<St
   if (blocked) return { ok: false, error: blocked };
   const res = await db.transaction(async (tx): Promise<StockResult> => {
     // Same lock as dispatch and purchase, so bags cannot arrive while we switch it off.
-    await tx.select({ id: stockLocations.id }).from(stockLocations).where(eq(stockLocations.id, id)).for("update");
+    await tx.select({ id: stockLocations.id }).from(stockLocations).where(eq(stockLocations.id, id)).for("no key update");
     if (!active) {
       const [left] = await tx
         .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })

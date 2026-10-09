@@ -8,7 +8,7 @@ import { findAccessibleFirm } from "@/lib/firm-access";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
-import { canCancelOrder, canSeePrice, chipLabel, chipStatus, historyForViewer } from "@/lib/order-access";
+import { canCancelOrder, canSeePrice, chipLabel, chipStatus, historyForViewer, historyStepLabel } from "@/lib/order-access";
 import { isCloseShort, isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { canFillRate } from "@/lib/rate-rules";
 import { getFirmSelection } from "@/components/app/firm-switcher";
@@ -151,7 +151,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <ol className="flex flex-col gap-3 border-l pl-4">
         {events.map((e) => (
           <li key={e.id}>
-            <div className="text-sm font-semibold capitalize">{e.toStatus.replace("_", " ")}</div>
+            <div className="text-sm font-semibold">{historyStepLabel(e)}</div>
             <div className="text-xs text-muted-foreground">
               {e.actor} · {formatDateTime(e.createdAt)}
             </div>

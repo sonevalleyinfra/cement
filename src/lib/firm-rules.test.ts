@@ -165,8 +165,12 @@ describe("openBusinessProblem", () => {
 
   it("open order statuses are real statuses and exclude finished ones", () => {
     for (const s of OPEN_ORDER_STATUSES) expect(ORDER_STATUSES).toContain(s);
-    for (const s of ["rejected", "dispatched", "delivered", "cancelled"]) {
+    for (const s of ["rejected", "delivered", "cancelled"]) {
       expect(OPEN_ORDER_STATUSES).not.toContain(s);
     }
+  });
+
+  it("counts a dispatched order (not yet delivered) as open", () => {
+    expect(OPEN_ORDER_STATUSES).toContain("dispatched");
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canCancelOrder,
   historyForViewer,
+  historyStepLabel,
   mentionsMoney,
   canPlaceOrder,
   canSeePrice,
@@ -148,5 +149,18 @@ describe("historyForViewer", () => {
     for (const t of ["", "Dues too high", "40 bags in KA01", "wrong firm", "hrs late", "separate truck"]) {
       expect(mentionsMoney(t)).toBe(false);
     }
+  });
+});
+
+describe("historyStepLabel", () => {
+  it("shows a rate edit row (status unchanged) as Rate edited", () => {
+    expect(historyStepLabel({ toStatus: "assigned", reason: "Rate edited: market went up" })).toBe("Rate edited");
+    expect(historyStepLabel({ toStatus: "partly_dispatched", reason: "Rate edited: diesel" })).toBe("Rate edited");
+  });
+  it("shows other rows by their new status", () => {
+    expect(historyStepLabel({ toStatus: "assigned", reason: "" })).toBe("Assigned");
+    expect(historyStepLabel({ toStatus: "rate_filled", reason: "" })).toBe("Rate filled");
+    // A second partial load keeps the status but is a real step, not a rate edit.
+    expect(historyStepLabel({ toStatus: "partly_dispatched", reason: "40 bags in KA01AB1234" })).toBe("Partly dispatched");
   });
 });

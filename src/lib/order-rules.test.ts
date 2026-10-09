@@ -3,6 +3,7 @@ import { ROLES } from "./roles";
 import {
   ALLOWED_TRANSITIONS,
   ORDER_STATUSES,
+  approvalStepAssignee,
   approvalSteps,
   canTransition,
   canUserTransition,
@@ -13,6 +14,7 @@ import {
   isValidBags,
   isValidRatePaise,
   isValidReason,
+  lastRoundRobinAssignee,
   orderTotalPaise,
   orderValuePaise,
   pickNextAssignee,
@@ -297,5 +299,46 @@ describe("approvalSteps", () => {
       expect(canTransition(from, step)).toBe(true);
       from = step;
     }
+  });
+});
+
+describe("round robin's last assignee", () => {
+  const at = (min: number) => new Date(Date.UTC(2026, 9, 1, 6, min));
+  it("only the assigned step records who was picked", () => {
+    expect(approvalStepAssignee("approved", "l1")).toBeNull();
+    expect(approvalStepAssignee("assigned", "l1")).toBe("l1");
+    expect(approvalStepAssignee("assigned", null)).toBeNull();
+  });
+  it("is whoever approval picked most recently", () => {
+    const rows = [
+      { assigneeId: "a", createdAt: at(1) },
+      { assigneeId: "c", createdAt: at(3) },
+      { assigneeId: "b", createdAt: at(2) },
+    ];
+    expect(lastRoundRobinAssignee(rows)).toBe("c");
+  });
+  it("ignores rows with no assignee (someone took the order at dispatch)", () => {
+    const rows = [
+      { assigneeId: "a", createdAt: at(1) },
+      { assigneeId: null, createdAt: at(5) },
+    ];
+    expect(lastRoundRobinAssignee(rows)).toBe("a");
+  });
+  it("is null when round robin never picked anyone", () => {
+    expect(lastRoundRobinAssignee([])).toBeNull();
+    expect(lastRoundRobinAssignee([{ assigneeId: null, createdAt: at(1) }])).toBeNull();
+  });
+  it("a take-over at dispatch does not move the turn", () => {
+    const list = [
+      { id: "a", active: true },
+      { id: "b", active: true },
+      { id: "c", active: true },
+    ];
+    // Round robin gave "a"; then "c" took some order at dispatch (no assignee recorded).
+    const rows = [
+      { assigneeId: "a", createdAt: at(1) },
+      { assigneeId: null, createdAt: at(2) },
+    ];
+    expect(pickNextAssignee(list, lastRoundRobinAssignee(rows))).toBe("b");
   });
 });
