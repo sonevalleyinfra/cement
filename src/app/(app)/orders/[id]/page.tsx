@@ -7,8 +7,9 @@ import { firms, orderEvents, orders, products, retailers, user as users } from "
 import { findAccessibleFirm } from "@/lib/firm-access";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
-import { canSeePrice, chipStatus } from "@/lib/order-access";
-import { canUserTransition, isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
+import { isUuid } from "@/lib/ids";
+import { canCancelOrder, canSeePrice, chipStatus } from "@/lib/order-access";
+import { isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
 import { canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
 import { CancelForm } from "./cancel-form";
@@ -17,7 +18,7 @@ import { RateForm } from "./rate-form";
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { user } = await requireUser();
-  if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
+  if (!isUuid(id)) notFound();
 
   const [o] = await db
     .select({
@@ -29,6 +30,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       status: orders.status,
       notes: orders.notes,
       salesRepId: orders.salesRepId,
+      placedBy: orders.placedBy,
       retailer: retailers.name,
       product: products.name,
       firmName: firms.name,
@@ -68,8 +70,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     .where(eq(orderEvents.orderId, o.id))
     .orderBy(asc(orderEvents.createdAt));
 
-  const canCancel =
-    showPrice && isOrderStatus(o.status) && canUserTransition(user.role, o.status, "cancelled");
+  const canCancel = showPrice && canCancelOrder(user.role, user.id, o);
   const canRate = canFillRate(user.role, user.id, o.salesRepId, o.status);
 
   return (

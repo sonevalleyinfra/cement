@@ -14,19 +14,22 @@ import {
   user,
   userFirms,
 } from "@/db/schema";
+import { isUuid } from "@/lib/ids";
 import {
+  canCancelOrder,
   isBagsInRange,
   resolveOrderRetailer,
   validatePlaceOrder,
 } from "@/lib/order-access";
-import { cancelDecision, canUserTransition, isOrderStatus, pickNextAssignee } from "@/lib/order-rules";
+import { cancelDecision, isOrderStatus, pickNextAssignee } from "@/lib/order-rules";
+import { rolesFor } from "@/lib/permissions";
 import { reversalMovements, type MovementType } from "@/lib/stock-rules";
 import { hasRole } from "@/lib/roles";
 import { canDecide, canFillRate, checkRejectReason, ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
 import { postEntry } from "@/lib/ledger";
 import { cancelReversalEntry, orderDebitEntry } from "@/lib/ledger-rules";
 import { notify } from "@/lib/notify";
-import { requireFirm, requireRole, requireUser } from "@/lib/session";
+import { requireFirm, requireRole, writeBlock } from "@/lib/session";
 
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
 
@@ -38,7 +41,9 @@ export async function placeOrder(input: {
   bags: number;
   notes?: string;
 }): Promise<PlaceOrderResult> {
-  const session = await requireRole("sales", "retailer");
+  const session = await requireRole(...rolesFor("placeOrder"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
   const check = validatePlaceOrder({
     readOnlyMode: !input.firmId,
     bags: input.bags,
@@ -47,6 +52,9 @@ export async function placeOrder(input: {
   });
   if (!check.ok) return check;
   if (!isBagsInRange(input.bags)) return { ok: false, error: "That is too many bags." };
+  if (!isUuid(input.firmId) || !isUuid(input.productId) || (input.retailerId !== null && !isUuid(input.retailerId))) {
+    return { ok: false, error: "Refresh the page and try again." };
+  }
 
   // Firm access is checked here, never trusted from the screen.
   const { firm } = await requireFirm(input.firmId as string);
@@ -96,7 +104,7 @@ export async function placeOrder(input: {
         productId: product.id,
         bags: input.bags,
         status: "placed",
-        notes: (input.notes ?? "").trim().slice(0, 500),
+        notes: String(input.notes ?? "").trim().slice(0, 500),
         placedBy: me.id,
         salesRepId,
       })
@@ -149,13 +157,16 @@ async function moveOrder(
 }
 
 async function loadOrder(orderId: string) {
+  if (!isUuid(orderId)) return null;
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   return order ?? null;
 }
 
 /** Sales (the assigned rep) or admin enters the rate per bag (whole rupees). Moves to pending approval. */
 export async function fillRate(orderId: string, rupeeDigits: string): Promise<PlaceOrderResult> {
-  const session = await requireRole("sales");
+  const session = await requireRole(...rolesFor("fillRate"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
   const order = await loadOrder(orderId);
   if (!order) return { ok: false, error: "Order not found." };
   await requireFirm(order.firmId);
@@ -163,7 +174,7 @@ export async function fillRate(orderId: string, rupeeDigits: string): Promise<Pl
   if (!canFillRate(me.role, me.id, order.salesRepId, order.status)) {
     return { ok: false, error: "You cannot fill the rate on this order." };
   }
-  const ratePaise = ratePaiseFromRupeeDigits(rupeeDigits);
+  const ratePaise = ratePaiseFromRupeeDigits(String(rupeeDigits ?? ""));
   if (ratePaise === null) return { ok: false, error: "Enter a rate per bag." };
   const ok = await moveOrder(order.id, "placed", "rate_filled", me.id, "", { ratePaise });
   return ok ? { ok: true } : { ok: false, error: "This order was just changed. Refresh." };
@@ -175,7 +186,11 @@ export async function decideOrder(
   decision: "approved" | "rejected",
   reason?: string,
 ): Promise<PlaceOrderResult> {
-  const session = await requireRole("accounts");
+  const session = await requireRole(...rolesFor("decideOrder"));
+  // Only these two outcomes: anything else (e.g. "cancelled") must go through cancelOrder.
+  if (decision !== "approved" && decision !== "rejected") return { ok: false, error: "Pick approve or reject." };
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
   const order = await loadOrder(orderId);
   if (!order) return { ok: false, error: "Order not found." };
   await requireFirm(order.firmId);
@@ -184,7 +199,7 @@ export async function decideOrder(
   }
   let why = "";
   if (decision === "rejected") {
-    const check = checkRejectReason(reason);
+    const check = checkRejectReason(typeof reason === "string" ? reason : "");
     if (!check.ok) return check;
     why = check.reason;
   }
@@ -197,21 +212,23 @@ export async function decideOrder(
  * already dispatched go back to the same firm's stock (reversal movements).
  */
 export async function cancelOrder(orderId: string, reason: string): Promise<PlaceOrderResult> {
-  const session = await requireUser();
+  const { user: me } = await requireRole("sales", "accounts");
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
   const order = await loadOrder(orderId);
   if (!order) return { ok: false, error: "Order not found." };
   await requireFirm(order.firmId);
-  const me = session.user;
+  const why = String(reason ?? "");
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     const [locked] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
     if (!locked || !isOrderStatus(locked.status)) return { ok: false, error: "Order not found." };
-    if (!canUserTransition(me.role, locked.status, "cancelled")) {
+    if (!canCancelOrder(me.role, me.id, locked)) {
       return { ok: false, error: "You cannot cancel this order." };
     }
     const sent = await tx.select().from(dispatches).where(eq(dispatches.orderId, orderId));
     const dispatchedBags = sent.reduce((n, d) => n + d.bags, 0);
-    const decision = cancelDecision(locked.status, dispatchedBags, reason);
+    const decision = cancelDecision(locked.status, dispatchedBags, why);
     if (!decision.ok) return decision;
 
     if (decision.reverseStockBags > 0) {
@@ -234,7 +251,7 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
       fromStatus: locked.status,
       toStatus: "cancelled",
       actorId: me.id,
-      reason: (reason ?? "").trim().slice(0, 300),
+      reason: why.trim().slice(0, 300),
     });
     await notify(tx, orderId, "cancelled", me.id);
     return { ok: true };

@@ -7,7 +7,7 @@
  * - Only a pure retailer is price-blind and limited to their own shop's orders.
  */
 import { hasAnyRole, isAdmin, parseRoles } from "./roles";
-import { isValidBags, type OrderStatus } from "./order-rules";
+import { canUserTransition, isOrderStatus, isValidBags, rolesForTransition, type OrderStatus } from "./order-rules";
 
 /** Pure retailer = has the retailer role and no staff role (and is not admin). */
 export function isRetailerOnly(role: string | null | undefined): boolean {
@@ -89,4 +89,19 @@ export function chipStatus(
     case "delivered":
       return "delivered";
   }
+}
+
+/**
+ * May this person cancel this order now? The status step must allow their role
+ * (order-rules). Before approval only sales may cancel, and only an order they
+ * placed or are the assigned rep for. After approval it is accounts' call. Admin always.
+ */
+export function canCancelOrder(
+  role: string | null | undefined,
+  userId: string,
+  order: { status: string; placedBy: string | null; salesRepId: string | null },
+): boolean {
+  if (!isOrderStatus(order.status) || !canUserTransition(role, order.status, "cancelled")) return false;
+  if (isAdmin(role) || !rolesForTransition(order.status, "cancelled").includes("sales")) return true;
+  return order.placedBy === userId || order.salesRepId === userId;
 }

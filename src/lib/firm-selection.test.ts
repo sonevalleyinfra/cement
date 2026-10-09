@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_FIRMS, isValidFirmChoice, resolveFirmSelection } from "./firm-selection";
+import { ALL_FIRMS, isValidFirmChoice, resolveFirmSelection, writeBlockMessage } from "./firm-selection";
 
 const ids = ["f1", "f2"];
 
@@ -28,5 +28,18 @@ describe("isValidFirmChoice", () => {
     expect(isValidFirmChoice("x", ids, false)).toBe(false);
     expect(isValidFirmChoice(ALL_FIRMS, ids, true)).toBe(true);
     expect(isValidFirmChoice(ALL_FIRMS, ids, false)).toBe(false);
+  });
+});
+
+describe("writeBlockMessage", () => {
+  it("allows writes with one firm picked", () => {
+    expect(writeBlockMessage(resolveFirmSelection("f1", ids, false))).toBeNull();
+    expect(writeBlockMessage(resolveFirmSelection("f2", ids, true))).toBeNull();
+  });
+  it("blocks writes in the admin's All firms view", () => {
+    expect(writeBlockMessage(resolveFirmSelection(ALL_FIRMS, ids, true))).toMatch(/view only/);
+  });
+  it("blocks writes when the user has no firm", () => {
+    expect(writeBlockMessage(resolveFirmSelection(undefined, [], false))).not.toBeNull();
   });
 });

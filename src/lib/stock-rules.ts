@@ -50,6 +50,12 @@ export function isPositiveBags(bags: number): boolean {
   return Number.isInteger(bags) && bags > 0;
 }
 
+/**
+ * Largest number of bags one stock entry (purchase, opening, adjustment) may move.
+ * Guards typos like 10000000 and keeps sums inside the database integer range.
+ */
+export const MAX_STOCK_ENTRY_BAGS = 100000;
+
 /** Can we take `bags` out? Needs whole bags, > 0, and enough in this firm's stock. */
 export function canDispatch(
   currentBalance: number,
@@ -111,6 +117,7 @@ export function adjustmentMovement(
   if (!Number.isInteger(deltaBags) || deltaBags === 0) {
     return { ok: false, error: "Adjustment must be a whole number other than zero." };
   }
+  if (Math.abs(deltaBags) > MAX_STOCK_ENTRY_BAGS) return { ok: false, error: "That is too many bags." };
   const why = reason.trim();
   if (!why) return { ok: false, error: "A reason is required." };
   if (balance(movements, key) + deltaBags < 0) {
@@ -147,6 +154,7 @@ export function inMovement(
   reason = "",
 ): { ok: true; movement: Movement } | { ok: false; error: string } {
   if (!isPositiveBags(bags)) return { ok: false, error: "Bags must be a whole number above zero." };
+  if (bags > MAX_STOCK_ENTRY_BAGS) return { ok: false, error: "That is too many bags." };
   return { ok: true, movement: { ...key, type, bags, reason } };
 }
 

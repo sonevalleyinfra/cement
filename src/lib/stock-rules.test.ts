@@ -8,6 +8,7 @@ import {
   dispatchMovement,
   firmProductTotal,
   inMovement,
+  MAX_STOCK_ENTRY_BAGS,
   reversalMovements,
   transferMovements,
   type Movement,
@@ -116,6 +117,9 @@ describe("adjustmentMovement", () => {
     expect(adjustmentMovement(list, A, 0, "x", "admin").ok).toBe(false);
     expect(adjustmentMovement(list, A, 1.5, "x", "admin").ok).toBe(false);
   });
+  it("refuses more than the per-entry limit", () => {
+    expect(adjustmentMovement(list, A, MAX_STOCK_ENTRY_BAGS + 1, "x", "admin").ok).toBe(false);
+  });
   it("cannot take stock below zero", () => {
     expect(adjustmentMovement(list, A, -21, "count", "admin").ok).toBe(false);
     expect(adjustmentMovement(list, A, -20, "count", "admin").ok).toBe(true);
@@ -148,6 +152,11 @@ describe("inMovement", () => {
     expect(inMovement("purchase", A, 10).ok).toBe(true);
     expect(inMovement("opening", A, 0).ok).toBe(false);
     expect(inMovement("purchase", A, -3).ok).toBe(false);
+  });
+  it("refuses more than the per-entry limit", () => {
+    expect(inMovement("purchase", A, MAX_STOCK_ENTRY_BAGS).ok).toBe(true);
+    expect(inMovement("purchase", A, MAX_STOCK_ENTRY_BAGS + 1).ok).toBe(false);
+    expect(inMovement("purchase", A, Number.MAX_SAFE_INTEGER).ok).toBe(false);
   });
 });
 

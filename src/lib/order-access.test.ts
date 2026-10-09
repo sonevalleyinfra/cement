@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canCancelOrder,
   canPlaceOrder,
   canSeePrice,
   chipStatus,
@@ -71,5 +72,33 @@ describe("chipStatus", () => {
     expect(chipStatus("rate_filled")).toBe("pending");
     expect(chipStatus("cancelled")).toBe("rejected");
     expect(chipStatus("partly_dispatched")).toBe("dispatched");
+  });
+});
+
+describe("canCancelOrder", () => {
+  const before = { status: "placed", placedBy: "u1", salesRepId: "rep" };
+  const after = { status: "approved", placedBy: "u1", salesRepId: "rep" };
+  it("lets the placer or the assigned rep cancel before approval", () => {
+    expect(canCancelOrder("sales", "u1", before)).toBe(true);
+    expect(canCancelOrder("sales", "rep", before)).toBe(true);
+    expect(canCancelOrder("sales", "rep", { ...before, status: "rate_filled" })).toBe(true);
+  });
+  it("refuses another sales person before approval", () => {
+    expect(canCancelOrder("sales", "someone-else", before)).toBe(false);
+  });
+  it("refuses retailers and logistics", () => {
+    expect(canCancelOrder("retailer", "u1", before)).toBe(false);
+    expect(canCancelOrder("logistics", "rep", after)).toBe(false);
+  });
+  it("after approval only accounts or admin", () => {
+    expect(canCancelOrder("accounts", "x", after)).toBe(true);
+    expect(canCancelOrder("sales", "rep", after)).toBe(false);
+    expect(canCancelOrder("admin", "x", after)).toBe(true);
+    expect(canCancelOrder("admin", "x", before)).toBe(true);
+  });
+  it("refuses finished orders", () => {
+    expect(canCancelOrder("admin", "x", { ...after, status: "dispatched" })).toBe(false);
+    expect(canCancelOrder("admin", "x", { ...after, status: "cancelled" })).toBe(false);
+    expect(canCancelOrder("admin", "x", { ...after, status: "nonsense" })).toBe(false);
   });
 });
