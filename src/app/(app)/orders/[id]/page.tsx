@@ -8,7 +8,7 @@ import { findAccessibleFirm } from "@/lib/firm-access";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
-import { canCancelOrder, canSeePrice, chipStatus } from "@/lib/order-access";
+import { canCancelOrder, canSeePrice, chipLabel, chipStatus } from "@/lib/order-access";
 import { isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
 import { canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
@@ -77,7 +77,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <FirmChip name={o.firmName} slot={o.firmSlot} />
-        {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} />}
+        {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} label={chipLabel(o.status)} />}
       </div>
       <div>
         <h1 className="text-xl font-bold">{o.retailer}</h1>

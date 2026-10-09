@@ -69,6 +69,13 @@ export function orderListScope(
   return ownRetailerId ? { kind: "retailer", retailerId: ownRetailerId } : { kind: "none" };
 }
 
+/** Words for the chip when the colour group would be misleading (a cancelled order is not "Rejected"). */
+export function chipLabel(status: OrderStatus): string | undefined {
+  if (status === "cancelled") return "Cancelled";
+  if (status === "partly_dispatched") return "Partly dispatched";
+  return undefined;
+}
+
 /** Maps the detailed order status to the five colours the status chip knows. */
 export function chipStatus(
   status: OrderStatus,

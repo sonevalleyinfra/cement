@@ -3,6 +3,7 @@ import {
   canCancelOrder,
   canPlaceOrder,
   canSeePrice,
+  chipLabel,
   chipStatus,
   isBagsInRange,
   isRetailerOnly,
@@ -72,6 +73,14 @@ describe("chipStatus", () => {
     expect(chipStatus("rate_filled")).toBe("pending");
     expect(chipStatus("cancelled")).toBe("rejected");
     expect(chipStatus("partly_dispatched")).toBe("dispatched");
+  });
+});
+
+describe("chipLabel", () => {
+  it("names cancelled and partly dispatched orders honestly", () => {
+    expect(chipLabel("cancelled")).toBe("Cancelled");
+    expect(chipLabel("partly_dispatched")).toBe("Partly dispatched");
+    expect(chipLabel("placed")).toBeUndefined();
   });
 });
 

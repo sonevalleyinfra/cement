@@ -163,8 +163,16 @@ async function main() {
       const stop = status === "cancelled" ? "approved" : status;
       const path = trail.slice(0, trail.indexOf(stop) + 1).filter((s) => s !== "partly_dispatched" || stop === s);
       let from: string | null = null;
+      let step = 0;
+      // One second apart, so the history shows in the right order.
       for (const to of status === "cancelled" ? [...path, "cancelled"] : path) {
-        await tx.insert(orderEvents).values({ orderId: o.id, fromStatus: from, toStatus: to, actorId: ids.sales });
+        await tx.insert(orderEvents).values({
+          orderId: o.id,
+          fromStatus: from,
+          toStatus: to,
+          actorId: ids.sales,
+          createdAt: new Date(Date.now() - 60_000 + step++ * 1000),
+        });
         from = to;
       }
       const approved = ["assigned", "partly_dispatched", "dispatched", "cancelled"].includes(status);

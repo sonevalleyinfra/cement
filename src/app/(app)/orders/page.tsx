@@ -11,7 +11,7 @@ import { db } from "@/db";
 import { firms, orders, products, retailers } from "@/db/schema";
 import { formatINR } from "@/lib/money";
 import { formatDate } from "@/lib/datetime";
-import { canPlaceOrder, canSeePrice, chipStatus, orderListScope } from "@/lib/order-access";
+import { canPlaceOrder, canSeePrice, chipLabel, chipStatus, orderListScope } from "@/lib/order-access";
 import { isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -73,7 +73,7 @@ export default async function OrdersPage() {
                 top={
                   <>
                     <FirmChip name={o.firmName} slot={o.firmSlot} />
-                    {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} />}
+                    {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} label={chipLabel(o.status)} />}
                   </>
                 }
                 bottom={
