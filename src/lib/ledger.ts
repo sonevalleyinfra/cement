@@ -38,8 +38,8 @@ export async function getRetailerBalances(retailerId: string) {
     .from(ledgerEntries)
     .innerJoin(firms, eq(firms.id, ledgerEntries.firmId))
     .where(eq(ledgerEntries.retailerId, retailerId))
-    .groupBy(ledgerEntries.firmId, firms.name, firms.slot)
-    .orderBy(asc(firms.slot));
+    .groupBy(ledgerEntries.firmId, firms.name, firms.slot, firms.createdAt)
+    .orderBy(asc(firms.createdAt), asc(firms.slot));
 }
 
 /** Net balance per retailer and firm (for the list cards). Server-only. */

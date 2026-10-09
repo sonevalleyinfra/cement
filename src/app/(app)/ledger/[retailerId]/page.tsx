@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
-import { FirmChip } from "@/components/app/firm-chip";
+import { FirmChip, type FirmSlot } from "@/components/app/firm-chip";
 import { db } from "@/db";
 import { firms as firmsTable, retailers, user as users } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
@@ -42,7 +42,7 @@ export default async function RetailerLedgerPage({
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
   const firms = staff
     ? await getAccessibleFirms(user.id, user.role)
-    : await db.select().from(firmsTable).where(eq(firmsTable.active, true)).orderBy(asc(firmsTable.slot));
+    : await db.select().from(firmsTable).where(eq(firmsTable.active, true)).orderBy(asc(firmsTable.createdAt), asc(firmsTable.slot));
   const firm = firms.find((f) => f.id === firmParam) ?? firms[0];
   if (!firm) return <EmptyState title="No firm available" />;
 
@@ -72,7 +72,7 @@ export default async function RetailerLedgerPage({
               href={`/ledger/${retailerId}?firm=${f.id}`}
               className={f.id === firm.id ? "opacity-100" : "opacity-60"}
             >
-              <FirmChip name={f.name} slot={f.slot as "a" | "b" | "c"} />
+              <FirmChip name={f.name} slot={f.slot as FirmSlot} />
             </Link>
           ))}
         </div>

@@ -12,7 +12,7 @@ export default async function UsersPage() {
       .select({ id: user.id, name: user.name, email: user.email, role: user.role, banned: user.banned })
       .from(user)
       .orderBy(asc(user.name)),
-    db.select({ id: firms.id, name: firms.name }).from(firms).where(eq(firms.active, true)).orderBy(asc(firms.slot)),
+    db.select({ id: firms.id, name: firms.name }).from(firms).where(eq(firms.active, true)).orderBy(asc(firms.createdAt), asc(firms.slot)),
     db.select().from(userFirms),
   ]);
   const rows = users.map((u) => ({

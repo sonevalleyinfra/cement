@@ -11,7 +11,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 
 ## Look
 - Warm cement-grey neutrals, light only. Tokens are in `src/app/globals.css`.
-- Each firm has one fixed accent (`firm-a`, `firm-b`, `firm-c`), shown only as the dot in `FirmChip`.
+- Each firm has one fixed accent (`firm-a` to `firm-f`, picked automatically when the firm is added), shown only as the dot in `FirmChip`.
 - Status colours (`status-*`) appear only as the dot in `StatusChip`. Nowhere else.
 - Font: Manrope. Three sizes of text matter: big number (`Stat`, 24px bold), body (16px), caption (12px muted).
 - Numbers: bold, large, `tabular`. Money in paise with `formatINR(p, { hidePaise: true })` in lists.
