@@ -7,20 +7,20 @@ import { canAccessFirm, isAdmin } from "@/lib/roles";
 export type Firm = typeof firms.$inferSelect;
 
 /**
- * The firms this user may work on, in a fixed order (a, b, c).
- * Admin gets every active firm; everyone else only the ones in `user_firms`.
+ * The firms this user may work on, in a fixed order.
+ * Oldest first. Admin gets every active firm; everyone else only the ones in `user_firms`.
  */
 export const getAccessibleFirms = cache(
   async (userId: string, role: string | null | undefined): Promise<Firm[]> => {
     if (isAdmin(role)) {
-      return db.select().from(firms).where(eq(firms.active, true)).orderBy(asc(firms.slot));
+      return db.select().from(firms).where(eq(firms.active, true)).orderBy(asc(firms.createdAt), asc(firms.slot));
     }
     const rows = await db
       .select({ firm: firms })
       .from(userFirms)
       .innerJoin(firms, eq(userFirms.firmId, firms.id))
       .where(eq(userFirms.userId, userId))
-      .orderBy(asc(firms.slot));
+      .orderBy(asc(firms.createdAt), asc(firms.slot));
     return rows.map((r) => r.firm).filter((f) => f.active);
   },
 );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { type FormEvent, useState, useTransition } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -24,7 +24,10 @@ export function VehiclesView({ rows, canEdit }: { rows: Row[]; canEdit: boolean 
     setOpen(true);
   }
 
-  function submit(formData: FormData) {
+  // onSubmit (not a form action) so the fields keep their text when there is an error.
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     start(async () => {
       const res = await saveVehicle(editing?.id ?? null, {
         number: String(formData.get("number") ?? ""),
@@ -87,7 +90,7 @@ export function VehiclesView({ rows, canEdit }: { rows: Row[]; canEdit: boolean 
         </PinnedAction>
       )}
       <Sheet open={open} onOpenChange={setOpen} title={editing ? "Edit vehicle" : "New vehicle"}>
-        <form key={editing?.id ?? "new"} action={submit} className="flex flex-col gap-4">
+        <form key={editing?.id ?? "new"} onSubmit={submit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="number">Vehicle number</Label>
             <Input id="number" name="number" defaultValue={editing?.number ?? ""} autoComplete="off" autoCapitalize="characters" placeholder="BR01AB1234" />

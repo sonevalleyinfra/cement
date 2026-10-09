@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { type FormEvent, useState, useTransition } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -34,7 +34,10 @@ export function RetailersView({
     setOpen(true);
   }
 
-  function submit(formData: FormData) {
+  // onSubmit (not a form action) so the fields keep their text when there is an error.
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     start(async () => {
       const res = await saveRetailer(editing?.id ?? null, {
         name: String(formData.get("name") ?? ""),
@@ -119,7 +122,7 @@ export function RetailersView({
         </PinnedAction>
       )}
       <Sheet open={open} onOpenChange={setOpen} title={editing ? "Edit retailer" : "New retailer"}>
-        <form key={editing?.id ?? "new"} action={submit} className="flex flex-col gap-4">
+        <form key={editing?.id ?? "new"} onSubmit={submit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="name">Name</Label>
             <Input id="name" name="name" defaultValue={editing?.name ?? ""} autoComplete="off" />

@@ -18,6 +18,13 @@ export default async function MorePage() {
           </Link>
         </li>
       )}
+      {can(user.role, "manageFirms") && (
+        <li>
+          <Link href="/firms" className={rowClass}>
+            Firms
+          </Link>
+        </li>
+      )}
       {can(user.role, "viewApprovals") && (
         <li>
           <Link href="/approvals" className={rowClass}>

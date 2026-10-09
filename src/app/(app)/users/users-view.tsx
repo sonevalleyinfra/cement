@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { type FormEvent, useState, useTransition } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -50,7 +50,10 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
     setOpen(true);
   }
 
-  function submit(formData: FormData) {
+  // onSubmit (not a form action) so the fields keep their text when there is an error.
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     start(async () => {
       const res = editing
         ? await updateUserAccess(editing.id, { roles, firmIds })
@@ -120,7 +123,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
         <Button onClick={() => openSheet(null)}>Add</Button>
       </PinnedAction>
       <Sheet open={open} onOpenChange={setOpen} title={editing ? `Edit ${editing.name}` : "New user"}>
-        <form key={editing?.id ?? "new"} action={submit} className="flex flex-col gap-4">
+        <form key={editing?.id ?? "new"} onSubmit={submit} className="flex flex-col gap-4">
           {!editing && (
             <>
               <div className="flex flex-col gap-1.5">

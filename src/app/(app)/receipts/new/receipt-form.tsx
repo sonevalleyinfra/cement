@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { FirmChip } from "@/components/app/firm-chip";
+import { FirmChip, type FirmSlot } from "@/components/app/firm-chip";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
@@ -14,7 +14,7 @@ import { formatINR, parseRupeesToPaise } from "@/lib/money";
 import { autoSplitOldestFirst, clearFull, PAYMENT_MODES, validateModeDetails, type PaymentMode } from "@/lib/receipt-rules";
 import { loadOutstanding, saveReceipt, type DueRow } from "../actions";
 
-type Firm = { id: string; name: string; slot: "a" | "b" | "c" };
+type Firm = { id: string; name: string; slot: FirmSlot };
 type RetailerRow = { id: string; name: string; place: string };
 
 const modeLabel: Record<PaymentMode, string> = { cash: "Cash", online: "Online", cheque: "Cheque" };
