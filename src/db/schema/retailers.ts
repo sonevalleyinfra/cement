@@ -1,4 +1,5 @@
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { user } from "./auth";
 
 /** Shops that buy cement. Shared by all firms. `phone` is 10 plain digits. */
 export const retailers = pgTable("retailers", {
@@ -6,6 +7,10 @@ export const retailers = pgTable("retailers", {
   name: text("name").notNull(),
   phone: text("phone").notNull().unique(),
   place: text("place").default("").notNull(),
+  /** Optional login for this shop (a user with the retailer role). One login per shop. */
+  userId: text("user_id")
+    .unique()
+    .references(() => user.id, { onDelete: "set null" }),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
