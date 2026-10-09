@@ -27,9 +27,9 @@ describe("checkOnlineVerification", () => {
 
 describe("planChequeAction", () => {
   const lines = firmLines([
-    { orderId: "o1", firmId: "A", amountPaise: 6000000 },
-    { orderId: "o2", firmId: "A", amountPaise: 1000000 },
-    { orderId: "o3", firmId: "B", amountPaise: 4000000 },
+    { firmId: "A", amountPaise: 6000000 },
+    { firmId: "A", amountPaise: 1000000 },
+    { firmId: "B", amountPaise: 4000000 },
   ]);
   const pending = { mode: "cheque", status: "pending" };
 

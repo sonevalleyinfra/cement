@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { receipts, retailers } from "@/db/schema";
 import { formatDate } from "@/lib/datetime";
 import { getAccessibleFirms } from "@/lib/firm-access";
-import { rolesFor } from "@/lib/permissions";
+import { can, rolesFor } from "@/lib/permissions";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { requireRole } from "@/lib/session";
 import { ReviewView } from "./review-view";
@@ -43,6 +43,7 @@ export default async function ReviewPage() {
   const firmName = new Map(firms.map((f) => [f.id, f.name]));
   return (
     <ReviewView
+      canReverse={can(user.role, "reverseReceipt")}
       rows={rows.map((r) => ({
         id: r.id,
         no: r.no,

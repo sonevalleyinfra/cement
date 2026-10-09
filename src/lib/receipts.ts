@@ -1,46 +1,50 @@
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { ledgerEntries, orders, receiptAllocations, receipts } from "@/db/schema";
-import { toISTDateKey } from "@/lib/datetime";
-import { outstandingOrders } from "@/lib/outstanding";
-import type { OutstandingItem } from "@/lib/receipt-rules";
+import { firms, ledgerEntries, receiptAllocations } from "@/db/schema";
+import { firmDuesFromLedger, type FirmDues } from "@/lib/firm-dues";
+import { firmLines, type PostingLine } from "@/lib/receipt-rules";
 
-/** Orders of one retailer that still have money due, for the given firms. Server-only. */
 /** A database or a transaction. */
 type Conn = Pick<typeof db, "select">;
 
-export async function getOutstanding(
-  retailerId: string,
-  firmIds: string[],
-  conn: Conn = db,
-): Promise<OutstandingItem[]> {
+/**
+ * What one retailer owes each of the given firms, read from the ledger (see firm-dues.ts).
+ * Firms come back in the order of `firmIds`; firms with no ledger rows are left out.
+ * Server-only. Pass the transaction to read inside it (after locking the retailer).
+ */
+export async function getFirmDues(retailerId: string, firmIds: readonly string[], conn: Conn = db): Promise<FirmDues[]> {
   if (firmIds.length === 0) return [];
-  const billed = await conn
+  const rows = await conn
     .select({
-      orderId: orders.id,
-      firmId: orders.firmId,
-      retailerId: orders.retailerId,
-      createdAt: orders.createdAt,
-      billedPaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
+      firmId: ledgerEntries.firmId,
+      kind: ledgerEntries.kind,
+      amountPaise: ledgerEntries.amountPaise,
+      orderId: ledgerEntries.orderId,
+      createdAt: ledgerEntries.createdAt,
     })
     .from(ledgerEntries)
-    .innerJoin(orders, eq(orders.id, ledgerEntries.orderId))
-    .where(and(eq(orders.retailerId, retailerId), inArray(orders.firmId, firmIds)))
-    .groupBy(orders.id);
-  if (billed.length === 0) return [];
-  const paid = await conn
-    .select({ orderId: receiptAllocations.orderId, amountPaise: receiptAllocations.amountPaise })
+    .where(and(eq(ledgerEntries.retailerId, retailerId), inArray(ledgerEntries.firmId, [...firmIds])))
+    .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id));
+  const byFirm = new Map(firmDuesFromLedger(rows).map((f) => [f.firmId, f]));
+  return firmIds.flatMap((id) => {
+    const f = byFirm.get(id);
+    return f ? [f] : [];
+  });
+}
+
+/** A receipt's posting lines, one per firm (allocations + advance, old per-order rows too). */
+export async function getReceiptLines(receiptId: string, conn: Conn = db): Promise<PostingLine[]> {
+  const rows = await conn
+    .select({ firmId: receiptAllocations.firmId, amountPaise: receiptAllocations.amountPaise })
     .from(receiptAllocations)
-    .innerJoin(receipts, eq(receipts.id, receiptAllocations.receiptId))
-    .where(
-      and(
-        eq(receipts.retailerId, retailerId),
-        inArray(receiptAllocations.firmId, firmIds),
-        ne(receipts.status, "bounced"),
-      ),
-    );
-  return outstandingOrders(
-    billed.map((b) => ({ ...b, dueSinceDate: toISTDateKey(b.createdAt) })),
-    paid,
-  );
+    .where(eq(receiptAllocations.receiptId, receiptId));
+  return firmLines(rows);
+}
+
+/** Firm names for these ids, in the same order (unknown ids are skipped). */
+export async function getFirmNames(firmIds: readonly string[], conn: Conn = db): Promise<string[]> {
+  if (firmIds.length === 0) return [];
+  const rows = await conn.select({ id: firms.id, name: firms.name }).from(firms).where(inArray(firms.id, [...firmIds]));
+  const byId = new Map(rows.map((r) => [r.id, r.name]));
+  return firmIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
 }

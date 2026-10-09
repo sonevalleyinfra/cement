@@ -1,35 +1,44 @@
 import { desc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
+import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
 import { receiptAllocations, receipts, retailers } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { formatINR } from "@/lib/money";
-import { can, rolesFor } from "@/lib/permissions";
-import { requireRole } from "@/lib/session";
+import { isRetailerOnly } from "@/lib/order-access";
+import { can } from "@/lib/permissions";
+import { MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
+import { requireUser } from "@/lib/session";
 
-const modeLabel: Record<string, string> = { cash: "Cash", online: "Online", cheque: "Cheque" };
-const statusLabel: Record<string, string> = {
-  received: "Received",
-  unverified: "Online, unverified",
-  verified: "Online, verified",
-  pending: "Cheque pending",
-  cleared: "Cleared",
-  bounced: "Bounced",
-};
+/** Receipt ids to list: a pure retailer sees their own shop's; staff see those touching their firms. */
+async function visibleReceiptIds(user: { id: string; role?: string | null }): Promise<string[] | null> {
+  if (isRetailerOnly(user.role)) {
+    const [own] = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.userId, user.id)).limit(1);
+    if (!own) return [];
+    const rows = await db.select({ id: receipts.id }).from(receipts).where(eq(receipts.retailerId, own.id));
+    return rows.map((r) => r.id);
+  }
+  if (!can(user.role, "viewReceipts")) return null;
+  const firmIds = (await getAccessibleFirms(user.id, user.role)).map((f) => f.id);
+  if (firmIds.length === 0) return [];
+  const rows = await db
+    .selectDistinct({ id: receiptAllocations.receiptId })
+    .from(receiptAllocations)
+    .where(inArray(receiptAllocations.firmId, firmIds));
+  return rows.map((r) => r.id);
+}
 
 export default async function ReceiptsPage() {
-  const { user } = await requireRole(...rolesFor("viewReceipts"));
-  const firms = await getAccessibleFirms(user.id, user.role);
-  const firmIds = firms.map((f) => f.id);
+  const { user } = await requireUser();
+  const ids = await visibleReceiptIds(user);
+  if (ids === null) redirect("/dashboard");
+  const staff = !isRetailerOnly(user.role);
 
-  // Only receipts that touch a firm this user works on.
-  const mine = firmIds.length
-    ? await db.selectDistinct({ id: receiptAllocations.receiptId }).from(receiptAllocations).where(inArray(receiptAllocations.firmId, firmIds))
-    : [];
-  const rows = mine.length
+  const rows = ids.length
     ? await db
         .select({
           id: receipts.id,
@@ -42,7 +51,7 @@ export default async function ReceiptsPage() {
         })
         .from(receipts)
         .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
-        .where(inArray(receipts.id, mine.map((m) => m.id)))
+        .where(inArray(receipts.id, ids))
         .orderBy(desc(receipts.createdAt))
         .limit(100)
     : [];
@@ -50,46 +59,54 @@ export default async function ReceiptsPage() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Receipts</h1>
-        <div className="flex gap-4">
-          {can(user.role, "verifyPayments") && (
-            <Link href="/receipts/review" className="text-sm font-semibold underline">
-              Verify
-            </Link>
-          )}
-          <Link href="/receipts/new" className="text-sm font-semibold underline">
-            New receipt
-          </Link>
-        </div>
+        <h1 className="text-xl font-bold">{staff ? "Receipts" : "Payments"}</h1>
+        {staff && (
+          <div className="flex gap-4">
+            {can(user.role, "verifyPayments") && (
+              <Link href="/receipts/review" className="text-sm font-semibold underline">
+                Verify
+              </Link>
+            )}
+            {can(user.role, "recordReceipt") && (
+              <Link href="/receipts/new" className="text-sm font-semibold underline">
+                New receipt
+              </Link>
+            )}
+          </div>
+        )}
       </div>
       {rows.length === 0 ? (
-        <EmptyState title="No receipts yet" />
+        <EmptyState title={staff ? "No receipts yet" : "No payments yet"} />
       ) : (
         <ul className="flex flex-col gap-3">
-          {rows.map((r, i) => (
-            <li key={r.id}>
-              <ListCard
-                index={i}
-                title={r.retailer}
-                top={
-                  <>
-                    <span className="inline-flex h-6 items-center rounded-full bg-muted px-2.5 text-xs font-medium">
-                      {modeLabel[r.mode] ?? r.mode}
-                    </span>
-                    <span className="text-xs font-medium text-muted-foreground">{statusLabel[r.status] ?? r.status}</span>
-                  </>
-                }
-                bottom={
-                  <>
-                    <span className="text-xs text-muted-foreground">
-                      #{r.no} · {formatDateTime(r.createdAt)}
-                    </span>
-                    <span className="tabular text-lg font-bold">{formatINR(r.totalPaise)}</span>
-                  </>
-                }
-              />
-            </li>
-          ))}
+          {rows.map((r, i) => {
+            const chip = receiptChip(r.status);
+            return (
+              <li key={r.id}>
+                <ListCard
+                  index={i}
+                  href={`/receipts/${r.id}`}
+                  title={r.retailer}
+                  top={
+                    <>
+                      <span className="inline-flex h-6 items-center rounded-full bg-muted px-2.5 text-xs font-medium">
+                        {MODE_LABELS[r.mode] ?? r.mode}
+                      </span>
+                      <StatusChip status={chip.status} label={chip.label} />
+                    </>
+                  }
+                  bottom={
+                    <>
+                      <span className="text-xs text-muted-foreground">
+                        #{r.no} · {formatDateTime(r.createdAt)}
+                      </span>
+                      <span className="tabular text-lg font-bold">{formatINR(r.totalPaise, { hidePaise: true })}</span>
+                    </>
+                  }
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
