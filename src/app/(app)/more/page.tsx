@@ -44,6 +44,13 @@ export default async function MorePage() {
           </Link>
         </li>
       )}
+      {hasAnyRole(user.role, ["accounts", "sales"]) && (
+        <li>
+          <Link href="/receipts" className={rowClass}>
+            Receipts
+          </Link>
+        </li>
+      )}
       <li>
         <Link href="/vehicles" className={rowClass}>
           Vehicles

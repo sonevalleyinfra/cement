@@ -12,6 +12,7 @@ export async function postEntry(
   entry: LedgerEntry,
   actorId: string,
   note = "",
+  receiptId: string | null = null,
 ): Promise<void> {
   await tx.insert(ledgerEntries).values({
     firmId: entry.firmId,
@@ -19,6 +20,7 @@ export async function postEntry(
     kind: entry.kind,
     amountPaise: entry.amountPaise,
     orderId: entry.orderId ?? null,
+    receiptId,
     note: note.slice(0, 300),
     actorId,
   });
