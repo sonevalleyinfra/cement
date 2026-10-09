@@ -107,8 +107,12 @@ export function orderDebitPaise(bags: number, ratePaise: number | null | undefin
   if (!Number.isInteger(bags) || bags < 1) return null;
   if (ratePaise == null || !Number.isInteger(ratePaise) || ratePaise < 1) return null;
   const total = bags * ratePaise;
-  return Number.isSafeInteger(total) && total <= 2_147_483_647 ? total : null;
+  // Money columns are bigint, so the only limit is what JavaScript can count exactly.
+  return Number.isSafeInteger(total) ? total : null;
 }
+
+/** Largest opening balance we accept: ₹100 crore (a typo guard, not a real business limit). */
+export const MAX_OPENING_PAISE = 100 * 1_00_00_000 * 100;
 
 /** The debit entry to post when an order is approved. */
 export function orderDebitEntry(order: {
@@ -179,7 +183,7 @@ export function openingEntry(
   if (!Number.isInteger(amountPaise) || amountPaise === 0) {
     return { ok: false, error: "Enter an amount in whole paise that is not zero." };
   }
-  if (Math.abs(amountPaise) > 2_000_000_000) return { ok: false, error: "That amount is too large." };
+  if (Math.abs(amountPaise) > MAX_OPENING_PAISE) return { ok: false, error: "That amount is too large." };
   if (existing.some((e) => e.kind === "opening" && e.retailerId === retailerId && e.firmId === firmId)) {
     return { ok: false, error: "Opening balance is already set for this retailer and firm." };
   }

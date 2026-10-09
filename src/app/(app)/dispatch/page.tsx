@@ -25,7 +25,7 @@ export default async function DispatchPage() {
         status: orders.status,
         retailer: retailers.name,
         product: products.name,
-        sent: sql<number>`coalesce((select sum(${dispatches.bags}) from ${dispatches} where ${dispatches.orderId} = ${orders.id}), 0)::int`,
+        sent: sql<number>`coalesce((select sum(${dispatches.bags}) from ${dispatches} where ${dispatches.orderId} = ${orders.id}), 0)`.mapWith(Number),
       })
       .from(orders)
       .innerJoin(retailers, eq(orders.retailerId, retailers.id))

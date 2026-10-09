@@ -18,6 +18,21 @@
 export const PAYMENT_MODES = ["cash", "online", "cheque"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
 
+/**
+ * Every receipt status. Cash: received. Online: unverified -> verified.
+ * Cheque: pending -> cleared | bounced. Any receipt can end as "reversed" (taken back by accounts).
+ */
+export const RECEIPT_STATUSES = [
+  "received",
+  "unverified",
+  "verified",
+  "pending",
+  "cleared",
+  "bounced",
+  "reversed",
+] as const;
+export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];
+
 export type ModeDetails = {
   utr?: string | null;
   receivedFirmId?: string | null;

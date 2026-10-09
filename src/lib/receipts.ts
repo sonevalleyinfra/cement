@@ -21,7 +21,7 @@ export async function getOutstanding(
       firmId: orders.firmId,
       retailerId: orders.retailerId,
       createdAt: orders.createdAt,
-      billedPaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)::int`,
+      billedPaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
     .innerJoin(orders, eq(orders.id, ledgerEntries.orderId))

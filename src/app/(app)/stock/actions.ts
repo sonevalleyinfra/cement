@@ -180,7 +180,7 @@ export async function setLocationActive(id: string, active: boolean): Promise<St
     await tx.select({ id: stockLocations.id }).from(stockLocations).where(eq(stockLocations.id, id)).for("update");
     if (!active) {
       const [left] = await tx
-        .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int` })
+        .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
         .from(stockMovements)
         .where(eq(stockMovements.locationId, id));
       if ((left?.bags ?? 0) > 0) {

@@ -10,7 +10,7 @@ export async function getBalances(firmId: string, productId?: string) {
       locationId: stockMovements.locationId,
       locationName: stockLocations.name,
       kind: stockLocations.kind,
-      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int`,
+      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
     })
     .from(stockMovements)
     .innerJoin(stockLocations, eq(stockLocations.id, stockMovements.locationId))
@@ -31,7 +31,7 @@ export async function getBalances(firmId: string, productId?: string) {
 /** Bags of one product in one location for one firm. */
 export async function getBalance(firmId: string, productId: string, locationId: string) {
   const [row] = await db
-    .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int` })
+    .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
     .from(stockMovements)
     .where(
       and(

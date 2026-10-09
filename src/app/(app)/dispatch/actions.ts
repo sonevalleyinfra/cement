@@ -90,11 +90,11 @@ export async function dispatchOrder(input: {
     if (!vehicle || !vehicle.active) return { ok: false, error: "Pick an active vehicle." };
 
     const [sent] = await tx
-      .select({ bags: sql<number>`coalesce(sum(${dispatches.bags}), 0)::int` })
+      .select({ bags: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
       .from(dispatches)
       .where(eq(dispatches.orderId, order.id));
     const [stock] = await tx
-      .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int` })
+      .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
       .from(stockMovements)
       .where(
         and(

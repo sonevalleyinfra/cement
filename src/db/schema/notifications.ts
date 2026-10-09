@@ -16,6 +16,8 @@ export const notifications = pgTable(
     title: text("title").notNull(),
     body: text("body").default("").notNull(),
     orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+    /** Internal path to open, e.g. "/receipts/<id>" or "/wallet". Empty = open the order. */
+    link: text("link"),
     readAt: timestamp("read_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

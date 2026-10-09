@@ -29,7 +29,7 @@ async function dueRows(firmIds: string[]) {
     .select({
       retailerId: ledgerEntries.retailerId,
       firmId: ledgerEntries.firmId,
-      amountPaise: sql<number>`sum(${ledgerEntries.amountPaise})::int`,
+      amountPaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
     .where(inArray(ledgerEntries.firmId, firmIds))
@@ -56,7 +56,7 @@ async function pendingHandoverPaise(firmIds: string[]) {
       ),
     );
   const [row] = await db
-    .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)::int` })
+    .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number) })
     .from(walletMovements)
     .where(
       and(
@@ -94,7 +94,7 @@ export async function stockByProduct(firmIds: string[]) {
     .select({
       productId: stockMovements.productId,
       name: products.name,
-      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int`,
+      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
     })
     .from(stockMovements)
     .innerJoin(products, eq(products.id, stockMovements.productId))
@@ -114,16 +114,17 @@ export async function getLogisticsHome(firmIds: string[]) {
 
 export async function getAdminHome(firmIds: string[], now = new Date()) {
   const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, approvals] = await Promise.all([
+  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals] = await Promise.all([
     countOrders(firmIds, gte(orders.createdAt, start)),
     db
-      .select({ b: sql<number>`coalesce(sum(${dispatches.bags}), 0)::int` })
+      .select({ b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
       .from(dispatches)
       .where(and(inArray(dispatches.firmId, firmIds), gte(dispatches.createdAt, start))),
     dueRows(firmIds),
     stockByProduct(firmIds),
     walletSum(firmIds, "collected"),
     walletSum(firmIds, "handover_confirmed"),
+    walletSum(firmIds, "reversed"),
     countOrders(firmIds, eq(orders.status, "rate_filled")),
   ]);
   return {
@@ -131,14 +132,14 @@ export async function getAdminHome(firmIds: string[], now = new Date()) {
     bagsDispatched: n(bagsRow[0]?.b),
     duesPaise: totalDuesPaise(dues),
     stockBags: stock.reduce((s, p) => s + p.bags, 0),
-    cashInHandPaise: cashInHandPaise(collected, confirmed),
+    cashInHandPaise: cashInHandPaise(collected, confirmed, reversed),
     approvals,
   };
 }
 
 async function walletSum(firmIds: string[], kind: string) {
   const [row] = await db
-    .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)::int` })
+    .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number) })
     .from(walletMovements)
     .where(and(inArray(walletMovements.firmId, firmIds), eq(walletMovements.kind, kind)));
   return n(row?.p);
@@ -157,7 +158,7 @@ export async function getRetailerHome(userId: string) {
     .from(orders)
     .where(and(eq(orders.retailerId, shop.id), notInArray(orders.status, ["rejected", "delivered", "cancelled"])));
   const [bal] = await db
-    .select({ p: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)::int` })
+    .select({ p: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
     .from(ledgerEntries)
     .where(eq(ledgerEntries.retailerId, shop.id));
   return { openOrders: n(open?.c), balancePaise: n(bal?.p) };

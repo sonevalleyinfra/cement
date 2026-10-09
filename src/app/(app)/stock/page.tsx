@@ -25,7 +25,7 @@ export default async function StockPage() {
     totals = await db
       .select({
         productId: stockMovements.productId,
-        bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)::int`,
+        bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
       })
       .from(stockMovements)
       .groupBy(stockMovements.productId);

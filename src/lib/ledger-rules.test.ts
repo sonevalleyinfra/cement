@@ -6,6 +6,7 @@ import {
   canViewLedger,
   cancelReversalEntry,
   duesFrom,
+  MAX_OPENING_PAISE,
   openingEntry,
   orderDebitEntry,
   orderDebitPaise,
@@ -77,7 +78,10 @@ describe("order debit", () => {
     expect(orderDebitPaise(10, 0)).toBeNull();
     expect(orderDebitPaise(10, 10.5)).toBeNull();
   });
-  it("refuses totals too big for the column", () => expect(orderDebitPaise(100000, 100000)).toBeNull());
+  it("allows totals above the old 32-bit limit (₹2.15 crore)", () =>
+    expect(orderDebitPaise(100000, 100000)).toBe(10_000_000_000));
+  it("refuses totals JavaScript cannot count exactly", () =>
+    expect(orderDebitPaise(1_000_000_000, 100_000_000)).toBeNull());
   it("builds a debit entry", () => {
     const r = orderDebitEntry({ id: "o1", firmId: "A", retailerId: "r1", bags: 10, ratePaise: 40000 });
     expect(r).toEqual({
@@ -139,7 +143,9 @@ describe("opening balance", () => {
   it("refuses zero, fractions and huge amounts; allows negative", () => {
     expect(openingEntry([], "r1", "A", 0).ok).toBe(false);
     expect(openingEntry([], "r1", "A", 1.5).ok).toBe(false);
-    expect(openingEntry([], "r1", "A", 3_000_000_000).ok).toBe(false);
+    expect(openingEntry([], "r1", "A", 3_000_000_000).ok).toBe(true);
+    expect(openingEntry([], "r1", "A", -MAX_OPENING_PAISE).ok).toBe(true);
+    expect(openingEntry([], "r1", "A", MAX_OPENING_PAISE + 1).ok).toBe(false);
     expect(openingEntry([], "r1", "A", -500).ok).toBe(true);
   });
 });

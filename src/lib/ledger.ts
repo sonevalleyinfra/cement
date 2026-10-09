@@ -33,7 +33,7 @@ export async function getRetailerBalances(retailerId: string) {
       firmId: ledgerEntries.firmId,
       firmName: firms.name,
       firmSlot: firms.slot,
-      balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)::int`,
+      balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
     .innerJoin(firms, eq(firms.id, ledgerEntries.firmId))
@@ -49,7 +49,7 @@ export async function getAllBalances(firmIds: string[]) {
     .select({
       retailerId: ledgerEntries.retailerId,
       firmId: ledgerEntries.firmId,
-      balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)::int`,
+      balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
     .where(sql`${ledgerEntries.firmId} in ${firmIds}`)

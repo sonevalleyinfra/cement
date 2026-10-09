@@ -9,13 +9,21 @@
  *     handover_request   -amount  collector says "I am handing this over" (not counted until confirmed)
  *     handover_confirmed -amount  accounts/admin confirmed the request (refId = the request row)
  *     handover_rejected   0       accounts/admin refused the request (refId = the request row)
- * - balance = collected - confirmed handovers. available = balance - still-pending requests,
- *   so a collector cannot ask to hand over the same cash twice.
+ *     reversed           -amount  a cash receipt was reversed, so its cash leaves the wallet
+ *                                 (receiptId = the reversed receipt)
+ * - balance = collected - reversed - confirmed handovers. available = balance - still-pending
+ *   requests, so a collector cannot ask to hand over the same cash twice.
  * - Only accounts or admin confirm a handover, and nobody confirms their own handover.
  */
-import { hasAnyRole } from "@/lib/roles";
+import { hasAnyRole } from "./roles";
 
-export const WALLET_KINDS = ["collected", "handover_request", "handover_confirmed", "handover_rejected"] as const;
+export const WALLET_KINDS = [
+  "collected",
+  "handover_request",
+  "handover_confirmed",
+  "handover_rejected",
+  "reversed",
+] as const;
 export type WalletKind = (typeof WALLET_KINDS)[number];
 
 export type WalletMovement = {
@@ -29,6 +37,8 @@ export type WalletMovement = {
 
 export type WalletBalance = {
   collectedPaise: number;
+  /** Cash taken back out because its receipt was reversed. */
+  reversedPaise: number;
   handedOverPaise: number;
   pendingPaise: number;
   /** Cash the collector should be holding. */
@@ -39,11 +49,13 @@ export type WalletBalance = {
 
 export function walletBalance(movements: readonly WalletMovement[]): WalletBalance {
   let collected = 0;
+  let reversed = 0;
   let handed = 0;
   const requests = new Map<string, number>();
   const answered = new Set<string>();
   for (const m of movements) {
     if (m.kind === "collected") collected += m.amountPaise;
+    else if (m.kind === "reversed") reversed += m.amountPaise;
     else if (m.kind === "handover_confirmed") {
       handed += m.amountPaise;
       if (m.refId) answered.add(m.refId);
@@ -53,9 +65,10 @@ export function walletBalance(movements: readonly WalletMovement[]): WalletBalan
   }
   let pending = 0;
   for (const [id, amount] of requests) if (!answered.has(id)) pending += amount;
-  const balance = collected - handed;
+  const balance = collected - reversed - handed;
   return {
     collectedPaise: collected,
+    reversedPaise: reversed,
     handedOverPaise: handed,
     pendingPaise: pending,
     balancePaise: balance,

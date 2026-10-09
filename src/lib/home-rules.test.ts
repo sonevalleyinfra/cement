@@ -54,6 +54,7 @@ describe("dues totals", () => {
 describe("cash and open orders", () => {
   it("cash in hand is collected minus confirmed", () => {
     expect(cashInHandPaise(1000_00, 400_00)).toBe(600_00);
+    expect(cashInHandPaise(1000_00, 400_00, 100_00)).toBe(500_00); // a reversed cash receipt left the wallet
   });
   it("open orders exclude finished ones", () => {
     expect(isOpenOrderStatus("placed")).toBe(true);

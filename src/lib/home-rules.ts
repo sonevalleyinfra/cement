@@ -58,9 +58,9 @@ export function retailersWithDues(rows: readonly BalanceRow[]): number {
   return set.size;
 }
 
-/** Cash a collector should still be holding. */
-export function cashInHandPaise(collectedPaise: number, confirmedPaise: number): number {
-  return collectedPaise - confirmedPaise;
+/** Cash collectors should still be holding: collected - reversed receipts - confirmed handovers. */
+export function cashInHandPaise(collectedPaise: number, confirmedPaise: number, reversedPaise = 0): number {
+  return collectedPaise - reversedPaise - confirmedPaise;
 }
 
 /** Orders that are not finished (a retailer's "open orders"). */

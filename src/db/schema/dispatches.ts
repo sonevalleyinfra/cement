@@ -1,4 +1,5 @@
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { firms } from "./firms";
 import { orders } from "./orders";
@@ -35,5 +36,10 @@ export const dispatches = pgTable(
       .references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("dispatches_order_idx").on(t.orderId), index("dispatches_firm_idx").on(t.firmId)],
+  (t) => [
+    index("dispatches_order_idx").on(t.orderId),
+    index("dispatches_firm_idx").on(t.firmId),
+    check("dispatches_bags_positive", sql`${t.bags} > 0`),
+    check("dispatches_rate_positive", sql`${t.ratePaise} is null or ${t.ratePaise} > 0`),
+  ],
 );

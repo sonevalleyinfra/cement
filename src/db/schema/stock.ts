@@ -1,4 +1,6 @@
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { oneOf } from "../check-helpers";
 import { user } from "./auth";
 import { firms, products } from "./firms";
 import { orders } from "./orders";
@@ -22,7 +24,10 @@ export const stockLocations = pgTable(
     active: boolean("active").default(true).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("stock_locations_firm_idx").on(t.firmId)],
+  (t) => [
+    index("stock_locations_firm_idx").on(t.firmId),
+    check("stock_locations_kind_valid", oneOf(t.kind, ["godown", "vehicle"])),
+  ],
 );
 
 /**
@@ -49,5 +54,8 @@ export const stockMovements = pgTable(
     actorId: text("actor_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("stock_movements_balance_idx").on(t.firmId, t.productId, t.locationId)],
+  (t) => [
+    index("stock_movements_balance_idx").on(t.firmId, t.productId, t.locationId),
+    check("stock_movements_bags_not_zero", sql`${t.bags} <> 0`),
+  ],
 );
