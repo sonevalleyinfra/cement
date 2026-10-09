@@ -11,6 +11,8 @@ import {
   checkRateEdit,
   planDispatch,
 } from "@/lib/dispatch-rules";
+import { postEntry } from "@/lib/ledger";
+import { rateChangeEntry } from "@/lib/ledger-rules";
 import { notify } from "@/lib/notify";
 import { canUserTransition, isOrderStatus } from "@/lib/order-rules";
 import { ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
@@ -130,6 +132,11 @@ export async function dispatchOrder(input: {
 
     let from = order.status;
     if (rate.newRatePaise !== null) {
+      // Keep the retailer's ledger in step with the new rate (difference only).
+      if (order.ratePaise !== null) {
+        const change = rateChangeEntry(order, order.ratePaise, rate.newRatePaise);
+        if (change) await postEntry(tx, change, me.id, `Rate edited: ${rate.reason}`);
+      }
       // The history never shows the price itself (retailers read it); the rate is on the dispatch.
       await tx.insert(orderEvents).values({
         orderId: order.id,

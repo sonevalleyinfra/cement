@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
   dispatches,
+  ledgerEntries,
   orderEvents,
   orders,
   products,
@@ -22,6 +23,8 @@ import { cancelDecision, canUserTransition, isOrderStatus, pickNextAssignee } fr
 import { reversalMovements, type MovementType } from "@/lib/stock-rules";
 import { hasRole } from "@/lib/roles";
 import { canDecide, canFillRate, checkRejectReason, ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
+import { postEntry } from "@/lib/ledger";
+import { cancelReversalEntry, orderDebitEntry } from "@/lib/ledger-rules";
 import { notify } from "@/lib/notify";
 import { requireFirm, requireRole, requireUser } from "@/lib/session";
 
@@ -127,6 +130,13 @@ async function moveOrder(
       .where(and(eq(orders.id, orderId), eq(orders.status, from)))
       .returning({ id: orders.id });
     if (updated.length === 0) return false;
+    if (to === "approved") {
+      // The money side: approval bills the retailer (bags x rate) in this firm's ledger.
+      const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+      const debit = orderDebitEntry({ ...o });
+      if (!debit.ok) throw new Error(debit.error);
+      await postEntry(tx, debit.entry, actorId, "Order approved");
+    }
     await tx.insert(orderEvents).values({ orderId, fromStatus: from, toStatus: to, actorId, reason });
     await notify(tx, orderId, to === "rate_filled" ? "rate_filled" : to, actorId);
     return true;
@@ -214,6 +224,10 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
         await tx.insert(stockMovements).values(back.map((m) => ({ ...m, actorId: me.id })));
       }
     }
+    // Compensating entry: cancels whatever was billed for this order (nothing before approval).
+    const posted = await tx.select().from(ledgerEntries).where(eq(ledgerEntries.orderId, orderId));
+    const reversal = cancelReversalEntry(locked, posted);
+    if (reversal) await postEntry(tx, reversal, me.id, "Order cancelled");
     await tx.update(orders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(orderEvents).values({
       orderId,

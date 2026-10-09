@@ -1,11 +1,23 @@
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { ledgerEntries } from "@/db/schema";
+import { summariseDues } from "@/lib/ledger-rules";
+
 /**
- * Retailer dues. The ledger does not exist yet (task 12), so for now every
- * lookup returns "unknown". When the ledger is built, replace `getDues` only;
- * the approvals screen already shows whatever this returns.
+ * Retailer dues, read from the ledger. `withFirmPaise` is what the retailer owes
+ * this firm; `allFirmsPaise` is the total owed across all firms (advances do not count as negative dues).
  */
 export type Dues = { known: false } | { known: true; withFirmPaise: number; allFirmsPaise: number };
 
 export async function getDues(retailerId: string, firmId: string): Promise<Dues> {
-  void [retailerId, firmId];
-  return { known: false };
+  const rows = await db
+    .select({
+      retailerId: ledgerEntries.retailerId,
+      firmId: ledgerEntries.firmId,
+      amountPaise: ledgerEntries.amountPaise,
+    })
+    .from(ledgerEntries)
+    .where(eq(ledgerEntries.retailerId, retailerId));
+  const s = summariseDues(rows, retailerId, firmId);
+  return { known: true, withFirmPaise: s.withFirmPaise, allFirmsPaise: s.allFirmsPaise };
 }

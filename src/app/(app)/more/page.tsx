@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { hasAnyRole, isAdmin } from "@/lib/roles";
+import { hasAnyRole, hasRole, isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 import { signOut } from "../../dashboard/actions";
 
@@ -34,6 +34,13 @@ export default async function MorePage() {
         <li>
           <Link href="/dispatch" className={rowClass}>
             Dispatch
+          </Link>
+        </li>
+      )}
+      {(hasAnyRole(user.role, ["accounts", "sales"]) || hasRole(user.role, "retailer")) && (
+        <li>
+          <Link href="/ledger" className={rowClass}>
+            Ledger
           </Link>
         </li>
       )}
