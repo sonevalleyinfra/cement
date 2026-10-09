@@ -9,3 +9,4 @@ export * from "./notifications";
 export * from "./stock";
 export * from "./dispatches";
 export * from "./ledger";
+export * from "./receipts";

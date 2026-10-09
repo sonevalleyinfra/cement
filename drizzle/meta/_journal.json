@@ -71,6 +71,13 @@
       "when": 1791543898611,
       "tag": "0009_ledger_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791544749864,
+      "tag": "0010_receipts",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@ import { retailers } from "./retailers";
  *
  * `amountPaise` is SIGNED: positive = the retailer owes more (debit),
  * negative = the retailer owes less (credit). Balance = sum of the amounts.
- * `receiptId` is a plain uuid for now (the receipts table comes later, so no foreign key).
+ * `receiptId` is a plain uuid (no foreign key, to keep this table independent).
  */
 export const ledgerEntries = pgTable(
   "ledger_entries",
