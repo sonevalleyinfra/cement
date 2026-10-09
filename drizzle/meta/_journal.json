@@ -57,6 +57,13 @@
       "when": 1791542554623,
       "tag": "0007_stock_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791542944522,
+      "tag": "0008_dispatches",
+      "breakpoints": true
     }
   ]
 }
