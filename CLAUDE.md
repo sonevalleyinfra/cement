@@ -66,6 +66,7 @@ Next.js docs are bundled in `node_modules/next/dist/docs/`.
 
 ## UI
 
+- **Follow `docs/DESIGN.md`** (locked rules: phone first, minimal text, subtle motion). Build screens from `src/components/app`.
 - Use shadcn/ui components from `src/components/ui` (add more with `pnpm dlx shadcn@latest add <name>`).
   Style with Tailwind classes.
 
