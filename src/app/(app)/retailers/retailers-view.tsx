@@ -8,11 +8,21 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { saveRetailer, setRetailerActive } from "./actions";
+import { linkRetailerUser, saveRetailer, setRetailerActive } from "./actions";
 
-type Row = { id: string; name: string; phone: string; place: string; active: boolean };
+type Row = { id: string; name: string; phone: string; place: string; active: boolean; userId: string | null };
+type Login = { id: string; label: string };
 
-export function RetailersView({ rows, canEdit }: { rows: Row[]; canEdit: boolean }) {
+export function RetailersView({
+  rows,
+  canEdit,
+  logins,
+}: {
+  rows: Row[];
+  canEdit: boolean;
+  logins: Login[] | null;
+}) {
+  const [linkError, setLinkError] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [error, setError] = useState("");
@@ -42,6 +52,7 @@ export function RetailersView({ rows, canEdit }: { rows: Row[]; canEdit: boolean
         <EmptyState title="No retailers" />
       ) : (
         <ul className="flex flex-col gap-3">
+          {linkError && <p className="text-sm text-destructive">{linkError}</p>}
           {rows.map((r, i) => (
             <li key={r.id}>
               <ListCard
@@ -59,6 +70,27 @@ export function RetailersView({ rows, canEdit }: { rows: Row[]; canEdit: boolean
                       <span className="tabular">{r.phone}</span>
                       {r.place && ` · ${r.place}`}
                     </div>
+                    {logins && (
+                      <select
+                        aria-label={`Login for ${r.name}`}
+                        className="h-9 max-w-40 rounded-lg border bg-background px-2 text-xs"
+                        value={r.userId ?? ""}
+                        disabled={pending}
+                        onChange={(e) =>
+                          start(async () => {
+                            const res = await linkRetailerUser(r.id, e.target.value || null);
+                            setLinkError(res.ok ? "" : res.error);
+                          })
+                        }
+                      >
+                        <option value="">No login</option>
+                        {logins.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {canEdit && (
                       <div className="flex gap-2">
                         <Button variant="outline" onClick={() => openSheet(r)}>

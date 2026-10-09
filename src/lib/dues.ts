@@ -5,6 +5,7 @@
  */
 export type Dues = { known: false } | { known: true; withFirmPaise: number; allFirmsPaise: number };
 
-export async function getDues(_retailerId: string, _firmId: string): Promise<Dues> {
+export async function getDues(retailerId: string, firmId: string): Promise<Dues> {
+  void [retailerId, firmId];
   return { known: false };
 }

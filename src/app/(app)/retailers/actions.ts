@@ -3,9 +3,11 @@
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { retailers } from "@/db/schema";
+import { retailers, user } from "@/db/schema";
+import { canLinkRetailerUser } from "@/lib/rate-rules";
+import { hasRole } from "@/lib/roles";
 import { validateRetailer } from "@/lib/retailer-rules";
-import { requireRole } from "@/lib/session";
+import { requireAdmin, requireRole } from "@/lib/session";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
@@ -39,6 +41,27 @@ export async function saveRetailer(
 export async function setRetailerActive(id: string, active: boolean): Promise<RetailerResult> {
   await requireRole("sales");
   await db.update(retailers).set({ active, updatedAt: new Date() }).where(eq(retailers.id, id));
+  revalidatePath("/retailers");
+  return { ok: true };
+}
+
+/** Admin links a retailer to a login (a user with the retailer role), or unlinks with null. */
+export async function linkRetailerUser(
+  retailerId: string,
+  userId: string | null,
+): Promise<RetailerResult> {
+  await requireAdmin();
+  if (userId) {
+    const [u] = await db.select({ role: user.role }).from(user).where(eq(user.id, userId)).limit(1);
+    if (!u || !hasRole(u.role, "retailer")) return { ok: false, error: "Pick a user with the retailer role." };
+    const links = await db
+      .select({ retailerId: retailers.id, userId: retailers.userId })
+      .from(retailers)
+      .where(eq(retailers.userId, userId));
+    const check = canLinkRetailerUser(userId, retailerId, links);
+    if (!check.ok) return check;
+  }
+  await db.update(retailers).set({ userId, updatedAt: new Date() }).where(eq(retailers.id, retailerId));
   revalidatePath("/retailers");
   return { ok: true };
 }
