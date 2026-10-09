@@ -60,7 +60,9 @@ export default async function OrdersPage() {
 
   return (
     <>
-      {rows.length === 0 ? (
+      {selection.mode === "none" ? (
+        <EmptyState title="No firm assigned to you. Ask admin." />
+      ) : rows.length === 0 ? (
         <EmptyState title="No orders" />
       ) : (
         <ul className="flex flex-col gap-3">

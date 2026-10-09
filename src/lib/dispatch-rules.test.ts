@@ -3,6 +3,7 @@ import {
   canMarkDelivered,
   checkDispatchFields,
   checkRateEdit,
+  stepTimes,
   isDispatchable,
   planDispatch,
 } from "./dispatch-rules";
@@ -84,5 +85,12 @@ describe("planDispatch", () => {
     expect(planDispatch({ ...base, status: "rate_filled" }).ok).toBe(false);
     expect(planDispatch({ ...base, status: "cancelled" }).ok).toBe(false);
     expect(planDispatch({ ...base, status: "dispatched" }).ok).toBe(false);
+  });
+});
+
+describe("stepTimes", () => {
+  it("spaces history rows 1 ms apart, in order", () => {
+    const t = stepTimes(new Date(1000), 3).map((d) => d.getTime());
+    expect(t).toEqual([1000, 1001, 1002]);
   });
 });

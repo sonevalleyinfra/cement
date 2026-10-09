@@ -98,3 +98,11 @@ export function planDispatch(input: {
   const steps: OrderStatus[] = input.status === "approved" ? ["assigned", newStatus] : [newStatus];
   return { ok: true, newStatus, statusSteps: steps };
 }
+
+/**
+ * Timestamps for history rows saved together in one transaction. The database gives them all the
+ * same time, so the history cannot tell which came first; this spaces them 1 ms apart, in order.
+ */
+export function stepTimes(base: Date, count: number): Date[] {
+  return Array.from({ length: count }, (_, i) => new Date(base.getTime() + i));
+}

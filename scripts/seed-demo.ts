@@ -57,11 +57,11 @@ async function main() {
   const productRows = await db.select().from(products).orderBy(products.name);
   if (firmRows.length < 3 || productRows.length < 1) throw new Error("Firms/products missing. Run migrations first.");
 
-  // Users and firm access (admin sees every firm; the others get all three).
+  // Users and firm access (admin sees every firm; the others get all three, the retailer too, so the order screens work).
   const ids: Record<string, string> = {};
   for (const u of DEMO_USERS) {
     ids[u.role] = await ensureUser(u.email, u.name, u.role);
-    if (u.role !== "retailer" && u.role !== "admin") {
+    if (u.role !== "admin") {
       await db
         .insert(userFirms)
         .values(firmRows.map((f) => ({ userId: ids[u.role], firmId: f.id })))

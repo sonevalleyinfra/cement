@@ -10,6 +10,7 @@ import {
   checkDispatchFields,
   checkRateEdit,
   planDispatch,
+  stepTimes,
 } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
@@ -152,8 +153,10 @@ export async function dispatchOrder(input: {
         reason: `Rate edited: ${rate.reason}`,
       });
     }
-    for (const step of plan.statusSteps) {
+    const times = stepTimes(new Date(Date.now() + 5), plan.statusSteps.length);
+    for (const [i, step] of plan.statusSteps.entries()) {
       await tx.insert(orderEvents).values({
+        createdAt: times[i],
         orderId: order.id,
         fromStatus: from,
         toStatus: step,
