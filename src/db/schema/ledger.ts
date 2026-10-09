@@ -1,0 +1,44 @@
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { user } from "./auth";
+import { firms } from "./firms";
+import { orders } from "./orders";
+import { retailers } from "./retailers";
+
+/**
+ * Retailer ledger, one per retailer per firm. Append-only: rows are never edited
+ * or deleted, a mistake is fixed by adding a new compensating row.
+ *
+ * `amountPaise` is SIGNED: positive = the retailer owes more (debit),
+ * negative = the retailer owes less (credit). Balance = sum of the amounts.
+ * `receiptId` is a plain uuid (no foreign key, to keep this table independent).
+ */
+export const ledgerEntries = pgTable(
+  "ledger_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    firmId: uuid("firm_id")
+      .notNull()
+      .references(() => firms.id),
+    retailerId: uuid("retailer_id")
+      .notNull()
+      .references(() => retailers.id),
+    /** opening | order_debit | receipt_credit | adjustment */
+    kind: text("kind").notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    orderId: uuid("order_id").references(() => orders.id),
+    receiptId: uuid("receipt_id"),
+    note: text("note").default("").notNull(),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => user.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("ledger_entries_retailer_firm_idx").on(t.retailerId, t.firmId, t.createdAt),
+    index("ledger_entries_order_idx").on(t.orderId),
+    uniqueIndex("ledger_entries_one_opening_idx")
+      .on(t.retailerId, t.firmId)
+      .where(sql`${t.kind} = 'opening'`),
+  ],
+);

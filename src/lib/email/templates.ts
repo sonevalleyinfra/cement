@@ -59,3 +59,12 @@ export function existingAccountMessage(to: string, signInUrl: string): EmailMess
     text: `Someone tried to create an account with this email address, but you already have one.\n\nSign in here: ${signInUrl}\n\nIf this was not you, you can ignore this email.`,
   };
 }
+
+export function accountCreatedMessage(to: string, name: string, signInUrl: string): EmailMessage {
+  return {
+    to,
+    subject: "Your account is ready",
+    text: `Hi ${name},\n\nAn account was created for you. You will get a separate email with a link to choose your password.\n\nSign in here once that is done: ${signInUrl}`,
+    html: `<p>Hi ${escapeHtml(name)},</p><p>An account was created for you. You will get a separate email with a link to choose your password.</p><p><a href="${escapeHtml(signInUrl)}">Sign in</a> once that is done.</p>`,
+  };
+}

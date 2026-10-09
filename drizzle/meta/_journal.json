@@ -22,6 +22,69 @@
       "when": 1791536560912,
       "tag": "0002_seed_firms_products",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791540105641,
+      "tag": "0003_retailers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791540306558,
+      "tag": "0004_vehicles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791541346197,
+      "tag": "0005_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791542159407,
+      "tag": "0006_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791542554623,
+      "tag": "0007_stock_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791542944522,
+      "tag": "0008_dispatches",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791543898611,
+      "tag": "0009_ledger_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791544749864,
+      "tag": "0010_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791545291150,
+      "tag": "0011_wallet_movements",
+      "breakpoints": true
     }
   ]
 }

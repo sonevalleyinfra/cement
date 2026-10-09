@@ -1,0 +1,24 @@
+import { Bell } from "lucide-react";
+import Link from "next/link";
+import { countUnread } from "@/lib/notify";
+import { requireUser } from "@/lib/session";
+
+/** Bell with the unread count. Rendered on the server, so it is right on every page load. */
+export async function NotificationBell() {
+  const { user } = await requireUser();
+  const unread = await countUnread(user.id);
+  return (
+    <Link
+      href="/notifications"
+      aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+      className="relative flex size-10 items-center justify-center rounded-full"
+    >
+      <Bell className="size-5" />
+      {unread > 0 && (
+        <span className="absolute top-1 right-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-4 font-semibold text-primary-foreground">
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
+    </Link>
+  );
+}

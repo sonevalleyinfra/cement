@@ -14,6 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env scripts/seed-admin.ts",
+    "seed:demo": "tsx --env-file-if-exists=.env scripts/seed-demo.ts",
     "db:studio": "drizzle-kit studio",
     "auth:generate": "auth generate --config src/lib/auth.ts --output src/db/schema/auth.ts",
     "build:scripts": "node scripts/build-scripts.mjs",

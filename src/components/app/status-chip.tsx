@@ -11,8 +11,9 @@ const config: Record<OrderStatus, { label: string; dot: string }> = {
 };
 
 /** A still dot plus a word. Colour carries the meaning; nothing blinks. */
-export function StatusChip({ status, className }: { status: OrderStatus; className?: string }) {
-  const { label, dot } = config[status];
+export function StatusChip({ status, label: labelOverride, className }: { status: OrderStatus; label?: string; className?: string }) {
+  const { label: defaultLabel, dot } = config[status];
+  const label = labelOverride ?? defaultLabel;
   return (
     <span
       className={cn(

@@ -35,3 +35,14 @@ export function isValidFirmChoice(
 ): boolean {
   return (admin && value === ALL_FIRMS) || allowedFirmIds.includes(value);
 }
+
+/**
+ * Writes are only allowed while one firm is picked. "All firms" (admin) is a
+ * read-only view, and "none" means the user has no firm at all.
+ * Returns the message to show, or null when writing is fine.
+ */
+export function writeBlockMessage(selection: FirmSelection): string | null {
+  if (selection.mode === "all") return "All firms is view only. Pick one firm to make changes.";
+  if (selection.mode === "none") return "You do not have access to any firm.";
+  return null;
+}
