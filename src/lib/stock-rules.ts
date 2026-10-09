@@ -135,6 +135,7 @@ export function transferMovements(
   reason = "",
 ): { ok: true; movements: [Movement, Movement] } | { ok: false; error: string } {
   if (from.locationId === toLocationId) return { ok: false, error: "Pick two different places." };
+  if (Number.isInteger(bags) && bags > MAX_STOCK_ENTRY_BAGS) return { ok: false, error: "That is too many bags." };
   const check = canDispatch(balance(movements, from), bags);
   if (!check.ok) return check;
   return {
@@ -144,6 +145,20 @@ export function transferMovements(
       { ...from, locationId: toLocationId, type: "transfer", bags, reason },
     ],
   };
+}
+
+/** What we know about a place when checking a transfer. */
+export type PlaceInfo = { firmId: string; active: boolean };
+
+/** Both places must exist, belong to this firm and be active. */
+export function checkTransferPlaces(
+  firmId: string,
+  from: PlaceInfo | undefined,
+  to: PlaceInfo | undefined,
+): { ok: true } | { ok: false; error: string } {
+  const good = (p: PlaceInfo | undefined) => !!p && p.firmId === firmId && p.active;
+  if (!good(from) || !good(to)) return { ok: false, error: "Pick active places of this firm." };
+  return { ok: true };
 }
 
 /** Purchase and opening stock add bags (admin entry; caller checks admin). */

@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { db } from "@/db";
-import { retailers } from "@/db/schema";
+import { firms as firmsTable, retailers } from "@/db/schema";
 import { getAccessibleFirms } from "@/lib/firm-access";
 import { getAllBalances } from "@/lib/ledger";
 import { duesFrom } from "@/lib/ledger-rules";
@@ -20,7 +20,7 @@ export default async function LedgerPage() {
   const own = staff ? null : await ownRetailerId(user.id);
   if (!staff && !own) return <EmptyState title="Your login is not linked to a retailer" />;
 
-  const firms = staff ? await getAccessibleFirms(user.id, user.role) : await db.query.firms.findMany();
+  const firms = staff ? await getAccessibleFirms(user.id, user.role) : await db.select().from(firmsTable).where(eq(firmsTable.active, true));
   const balances = await getAllBalances(firms.map((f) => f.id));
   const list = await db
     .select({ id: retailers.id, name: retailers.name, place: retailers.place })

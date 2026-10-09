@@ -84,6 +84,53 @@ export function checkRemoveFirm(activeFirmIds: readonly string[], firmId: string
   return null;
 }
 
+/** Orders in these statuses are still being worked on. */
+export const OPEN_ORDER_STATUSES = ["placed", "rate_filled", "approved", "assigned", "partly_dispatched"] as const;
+
+/** What is still open for a firm. Every number is a count (0 = nothing open). */
+export type OpenBusiness = {
+  /** Places that still hold (or owe) bags of any product. */
+  stockPlaces: number;
+  /** Retailers whose ledger balance with this firm is not zero. */
+  retailersWithBalance: number;
+  /** Collectors still holding this firm's cash. */
+  collectorsHoldingCash: number;
+  /** Cash handover requests nobody has answered yet. */
+  openHandoverRequests: number;
+  openOrders: number;
+  /** Online payments accounts has not verified yet. */
+  unverifiedOnline: number;
+  /** Cheques not yet cleared or bounced. */
+  pendingCheques: number;
+};
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * Removing a firm hides it everywhere, so it must not hide money or bags still open.
+ * Returns an error listing what is still open, or null when the firm can go.
+ */
+export function openBusinessProblem(open: OpenBusiness): string | null {
+  const parts: string[] = [];
+  if (open.stockPlaces > 0) parts.push(`stock in ${plural(open.stockPlaces, "place", "places")}`);
+  if (open.retailersWithBalance > 0) {
+    parts.push(`${plural(open.retailersWithBalance, "retailer", "retailers")} with a balance`);
+  }
+  if (open.collectorsHoldingCash > 0) {
+    parts.push(`cash with ${plural(open.collectorsHoldingCash, "collector", "collectors")}`);
+  }
+  if (open.openHandoverRequests > 0) {
+    parts.push(plural(open.openHandoverRequests, "handover request", "handover requests"));
+  }
+  if (open.openOrders > 0) parts.push(plural(open.openOrders, "open order", "open orders"));
+  if (open.unverifiedOnline > 0) {
+    parts.push(plural(open.unverifiedOnline, "unverified online payment", "unverified online payments"));
+  }
+  if (open.pendingCheques > 0) parts.push(plural(open.pendingCheques, "pending cheque", "pending cheques"));
+  if (parts.length === 0) return null;
+  return `Cannot remove this firm yet. Still open: ${parts.join(", ")}.`;
+}
+
 /**
  * Who gets access to a newly added firm: everyone who already works on at least one
  * active firm, whatever their role (sales, accounts, logistics, retailer).

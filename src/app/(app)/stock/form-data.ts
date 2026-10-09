@@ -6,9 +6,9 @@ import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { getBalances } from "@/lib/stock";
 
-/** Shared by the three admin forms: admin check, one firm, its places, products, balances. */
-export async function loadFormData() {
-  await requireRole(...rolesFor("manageStock"));
+/** Shared by the stock forms: role check, one firm, its places, products, balances. */
+async function loadData(action: "manageStock" | "transferStock") {
+  await requireRole(...rolesFor(action));
   const { selection } = await getFirmSelection();
   if (selection.mode !== "firm") return null;
   const firmId = selection.firmId;
@@ -27,4 +27,14 @@ export async function loadFormData() {
     products: prods.map((p) => ({ id: p.id, name: p.name })),
     balances: balances.map((b) => ({ productId: b.productId, locationId: b.locationId, bags: b.bags })),
   };
+}
+
+/** For the three admin forms (purchase, opening, adjust). */
+export function loadFormData() {
+  return loadData("manageStock");
+}
+
+/** For moving bags between places: logistics may do it too (admin always passes). */
+export function loadTransferData() {
+  return loadData("transferStock");
 }

@@ -4,7 +4,17 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { firms, userFirms } from "@/db/schema";
-import { checkRemoveFirm, isDuplicateFirmName, pickFirmSlot, usersForNewFirm, validateFirm } from "@/lib/firm-rules";
+import { writeAudit } from "@/lib/audit";
+import { changedFields } from "@/lib/audit-rules";
+import { getOpenBusiness } from "@/lib/firm-open-business";
+import {
+  checkRemoveFirm,
+  isDuplicateFirmName,
+  openBusinessProblem,
+  pickFirmSlot,
+  usersForNewFirm,
+  validateFirm,
+} from "@/lib/firm-rules";
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
@@ -19,18 +29,24 @@ type FirmForm = { name: string; ownerName: string; phone: string; gstin: string;
  * active firm (every role) is given access to it.
  */
 export async function saveFirm(id: string | null, form: FirmForm): Promise<FirmResult> {
-  await requireRole(...rolesFor("manageFirms"));
+  const session = await requireRole(...rolesFor("manageFirms"));
   if (id !== null && !isUuid(id)) return { ok: false, error: "Firm not found." };
   const check = validateFirm(form);
   if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
   const details = check.value;
 
+  const actorId = session.user.id;
   const all = await db.select({ id: firms.id, name: firms.name }).from(firms);
   if (id && !all.some((f) => f.id === id)) return { ok: false, error: "Firm not found." };
   if (isDuplicateFirmName(details.name, all, id ?? undefined)) return { ok: false, error: "Firm name already used" };
 
   if (id) {
-    await db.update(firms).set({ ...details, updatedAt: new Date() }).where(eq(firms.id, id));
+    await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(firms).where(eq(firms.id, id)).limit(1);
+      await tx.update(firms).set({ ...details, updatedAt: new Date() }).where(eq(firms.id, id));
+      const diff = changedFields(before, details);
+      if (diff) await writeAudit(tx, { actorId, entity: "firm", entityId: id, action: "update", details: diff });
+    });
   } else {
     // The firm and its staff access are added together, or not at all.
     await db.transaction(async (tx) => {
@@ -47,6 +63,13 @@ export async function saveFirm(id: string | null, form: FirmForm): Promise<FirmR
           .values(userIds.map((userId) => ({ userId, firmId: created.id })))
           .onConflictDoNothing();
       }
+      await writeAudit(tx, {
+        actorId,
+        entity: "firm",
+        entityId: created.id,
+        action: "create",
+        details: { ...details, accessGivenTo: userIds.length },
+      });
     });
   }
   // Firm names show in the header switcher on every screen.
@@ -59,7 +82,7 @@ export async function saveFirm(id: string | null, form: FirmForm): Promise<FirmR
  * The last active firm cannot be removed. A restored firm gets a free colour again.
  */
 export async function setFirmActive(id: string, active: boolean): Promise<FirmResult> {
-  await requireRole(...rolesFor("manageFirms"));
+  const session = await requireRole(...rolesFor("manageFirms"));
   if (!isUuid(id)) return { ok: false, error: "Firm not found." };
   const rows = await db.select({ id: firms.id, slot: firms.slot, active: firms.active }).from(firms);
   const target = rows.find((f) => f.id === id);
@@ -69,11 +92,20 @@ export async function setFirmActive(id: string, active: boolean): Promise<FirmRe
   if (active) {
     if (target.active) return { ok: true };
     const slot = pickFirmSlot(live.map((f) => f.slot));
-    await db.update(firms).set({ active: true, slot, updatedAt: new Date() }).where(eq(firms.id, id));
+    await db.transaction(async (tx) => {
+      await tx.update(firms).set({ active: true, slot, updatedAt: new Date() }).where(eq(firms.id, id));
+      await writeAudit(tx, { actorId: session.user.id, entity: "firm", entityId: id, action: "activate" });
+    });
   } else {
     const problem = checkRemoveFirm(live.map((f) => f.id), id);
     if (problem) return { ok: false, error: problem };
-    await db.update(firms).set({ active: false, updatedAt: new Date() }).where(eq(firms.id, id));
+    // Do not hide a firm that still has bags, balances, cash, orders or payments open.
+    const open = openBusinessProblem(await getOpenBusiness(id));
+    if (open) return { ok: false, error: open };
+    await db.transaction(async (tx) => {
+      await tx.update(firms).set({ active: false, updatedAt: new Date() }).where(eq(firms.id, id));
+      await writeAudit(tx, { actorId: session.user.id, entity: "firm", entityId: id, action: "deactivate" });
+    });
   }
   revalidatePath("/", "layout");
   return { ok: true };

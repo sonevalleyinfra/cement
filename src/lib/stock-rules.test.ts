@@ -10,6 +10,7 @@ import {
   inMovement,
   MAX_STOCK_ENTRY_BAGS,
   reversalMovements,
+  checkTransferPlaces,
   transferMovements,
   type Movement,
   type StockKey,
@@ -144,6 +145,26 @@ describe("transferMovements", () => {
     expect(transferMovements([mv(A, 5)], A, "v1", 6).ok).toBe(false);
     expect(transferMovements([mv(A, 5)], A, "g1", 1).ok).toBe(false);
     expect(transferMovements([mv(B, 50)], A, "v1", 1).ok).toBe(false);
+  });
+  it("refuses zero, fractions and more than the per-entry limit", () => {
+    const big = [mv(A, MAX_STOCK_ENTRY_BAGS + 10)];
+    expect(transferMovements(big, A, "v1", 0).ok).toBe(false);
+    expect(transferMovements(big, A, "v1", 1.5).ok).toBe(false);
+    expect(transferMovements(big, A, "v1", MAX_STOCK_ENTRY_BAGS).ok).toBe(true);
+    expect(transferMovements(big, A, "v1", MAX_STOCK_ENTRY_BAGS + 1).ok).toBe(false);
+  });
+});
+
+describe("checkTransferPlaces", () => {
+  const ok = { firmId: "A", active: true };
+  it("accepts two active places of the firm", () => {
+    expect(checkTransferPlaces("A", ok, ok).ok).toBe(true);
+  });
+  it("refuses a missing, inactive or other-firm place", () => {
+    expect(checkTransferPlaces("A", undefined, ok).ok).toBe(false);
+    expect(checkTransferPlaces("A", ok, undefined).ok).toBe(false);
+    expect(checkTransferPlaces("A", ok, { firmId: "A", active: false }).ok).toBe(false);
+    expect(checkTransferPlaces("A", { firmId: "B", active: true }, ok).ok).toBe(false);
   });
 });
 

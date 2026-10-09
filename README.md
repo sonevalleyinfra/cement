@@ -169,7 +169,7 @@ Optional but needed for a real launch:
 - `~/.config/coolify/resend_api_key.txt`: a [Resend](https://resend.com/api-keys) API key ("Sending access").
 - `~/.config/coolify/email_domain.txt`: the domain you verified in Resend, e.g. `mail.buildcity.cloud`.
   Apps send from `noreply@<that domain>`. If the file is missing, the server's wildcard domain is used.
-  With it, launched apps send real email (sign-up verification, password reset). Without it, new users
+  With it, launched apps send real email (new-user password links, password reset). Without it, new users
   **cannot verify their email and cannot sign in**.
 
 Coolify also needs your GitHub connected (**Sources → GitHub App**). For off-site backups, add an S3
@@ -283,7 +283,7 @@ src/
     money.ts             paise helpers and ₹ formatting
     datetime.ts          Asia/Kolkata date formatting
   app/
-    (auth)/              sign-in, sign-up, forgot/reset password
+    (auth)/              sign-in, forgot/reset password (no public sign-up: the admin creates users; /sign-up redirects to /sign-in)
     dashboard/           example protected page + server actions
     admin/               admin-only page
     api/auth/[...all]    Better Auth endpoints

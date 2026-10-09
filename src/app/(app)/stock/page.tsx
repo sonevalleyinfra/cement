@@ -6,13 +6,13 @@ import { Stat } from "@/components/app/stat";
 import { db } from "@/db";
 import { products, stockMovements } from "@/db/schema";
 import { getBalances } from "@/lib/stock";
-import { rolesFor } from "@/lib/permissions";
+import { can, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 
 const linkClass = "rounded-xl bg-card px-3 py-2 text-sm font-semibold ring-1 ring-foreground/8";
 
 export default async function StockPage() {
-  await requireRole(...rolesFor("viewStock"));
+  const session = await requireRole(...rolesFor("viewStock"));
   const { selection, admin } = await getFirmSelection();
   if (selection.mode === "none") return <EmptyState title="No firm available" />;
 
@@ -43,12 +43,13 @@ export default async function StockPage() {
       <h1 className="text-xl font-bold">
         Stock {selection.mode === "all" && <span className="text-sm font-normal text-muted-foreground">(all firms)</span>}
       </h1>
-      {admin && selection.mode === "firm" && (
+      {selection.mode === "firm" && (admin || can(session.user.role, "transferStock")) && (
         <div className="flex flex-wrap gap-2">
-          <Link href="/stock/purchase" className={linkClass}>Purchase</Link>
-          <Link href="/stock/opening" className={linkClass}>Opening</Link>
-          <Link href="/stock/adjust" className={linkClass}>Adjust</Link>
-          <Link href="/stock/locations" className={linkClass}>Places</Link>
+          {admin && <Link href="/stock/purchase" className={linkClass}>Purchase</Link>}
+          {admin && <Link href="/stock/opening" className={linkClass}>Opening</Link>}
+          {admin && <Link href="/stock/adjust" className={linkClass}>Adjust</Link>}
+          {can(session.user.role, "transferStock") && <Link href="/stock/transfer" className={linkClass}>Move bags</Link>}
+          {admin && <Link href="/stock/locations" className={linkClass}>Places</Link>}
         </div>
       )}
       {prods.length === 0 && <EmptyState title="No products yet" />}

@@ -10,7 +10,9 @@ import { getAccessibleFirms } from "@/lib/firm-access";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
 import { withRunningBalance } from "@/lib/ledger-rules";
+import { showLedgerNotes } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
+import { isRetailerOnly } from "@/lib/order-access";
 import { hasAnyRole, isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 import { mayViewLedger } from "../access";
@@ -40,6 +42,7 @@ export default async function RetailerLedgerPage({
   if (!retailer) notFound();
 
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
+  const showNotes = showLedgerNotes(user.role);
   const firms = staff
     ? await getAccessibleFirms(user.id, user.role)
     : await db.select().from(firmsTable).where(eq(firmsTable.active, true)).orderBy(asc(firmsTable.createdAt), asc(firmsTable.slot));
@@ -61,6 +64,11 @@ export default async function RetailerLedgerPage({
         {staff && (
           <Link href="/ledger" className="text-sm text-muted-foreground underline">
             All retailers
+          </Link>
+        )}
+        {isRetailerOnly(user.role) && (
+          <Link href="/receipts" className="text-sm text-muted-foreground underline">
+            Payments
           </Link>
         )}
       </div>
@@ -102,7 +110,7 @@ export default async function RetailerLedgerPage({
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>
                   {formatDateTime(e.createdAt)}
-                  {e.note ? ` · ${e.note}` : ""}
+                  {showNotes && e.note ? ` · ${e.note}` : ""}
                   {staff ? ` · ${actors.get(e.actorId) ?? ""}` : ""}
                 </span>
                 <span className="tabular">Balance {formatINR(e.balancePaise)}</span>
