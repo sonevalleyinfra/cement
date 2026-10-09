@@ -2,7 +2,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
-import { isAdmin } from "@/lib/roles";
+import { findAccessibleFirm } from "@/lib/firm-access";
+import { hasAnyRole, isAdmin, type Role } from "@/lib/roles";
 
 /**
  * Auth checks for pages and server actions.
@@ -29,4 +30,26 @@ export async function requireAdmin() {
   const session = await requireUser();
   if (!isAdmin(session.user.role)) redirect("/dashboard");
   return session;
+}
+
+/**
+ * Returns the session if the user holds one of `roles` (admin always passes),
+ * otherwise redirects to the dashboard.
+ */
+export async function requireRole(...roles: Role[]) {
+  const session = await requireUser();
+  if (!hasAnyRole(session.user.role, roles)) redirect("/dashboard");
+  return session;
+}
+
+/**
+ * Returns the session and the firm if the user may work on `firmId`,
+ * otherwise redirects to the dashboard. Call it in every server action that
+ * touches a firm's data, with the firm id the request asks for.
+ */
+export async function requireFirm(firmId: string) {
+  const session = await requireUser();
+  const firm = await findAccessibleFirm(session.user.id, session.user.role, firmId);
+  if (!firm) redirect("/dashboard");
+  return { session, firm };
 }
