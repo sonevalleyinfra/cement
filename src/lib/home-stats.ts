@@ -10,7 +10,9 @@ import {
   stockMovements,
   walletMovements,
 } from "@/db/schema";
-import { cashInHandPaise, istDayStart, retailersWithDues, totalDuesPaise } from "@/lib/home-rules";
+import { ordersUserMayDispatch } from "@/lib/dispatch-rules";
+import { cashInHandPaise, istDayStart, logisticsCounts, retailersWithDues, totalDuesPaise } from "@/lib/home-rules";
+import { firmPeople } from "@/lib/logistics";
 
 /** Read-only numbers for the home screens. Server-only. `firmIds` is the firms in view (never empty here). */
 
@@ -103,13 +105,17 @@ export async function stockByProduct(firmIds: string[]) {
     .orderBy(products.name);
 }
 
-export async function getLogisticsHome(firmIds: string[]) {
-  const [ready, partly, stock] = await Promise.all([
-    countOrders(firmIds, inArray(orders.status, ["approved", "assigned"])),
-    countOrders(firmIds, eq(orders.status, "partly_dispatched")),
+/** Orders waiting for this logistics person: the same ones the dispatch list shows them. */
+export async function getLogisticsHome(user: { id: string; role: string | null | undefined }, firmIds: string[]) {
+  const [open, people, stock] = await Promise.all([
+    db
+      .select({ firmId: orders.firmId, logisticsId: orders.logisticsId, status: orders.status })
+      .from(orders)
+      .where(and(inArray(orders.firmId, firmIds), inArray(orders.status, ["approved", "assigned", "partly_dispatched"]))),
+    firmPeople(db, firmIds),
     stockByProduct(firmIds),
   ]);
-  return { ready, partly, stock };
+  return { ...logisticsCounts(ordersUserMayDispatch(user, open, people)), stock };
 }
 
 export async function getAdminHome(firmIds: string[], now = new Date()) {

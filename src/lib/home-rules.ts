@@ -10,6 +10,9 @@
  * - Dues add up each retailer's positive balance per firm (an advance with one firm
  *   does not cancel what is owed to another).
  * - Cash in hand = cash collected - handovers confirmed (pending requests still count as in hand).
+ * - Logistics "Ready" = approved or assigned orders they may dispatch (their own, unassigned, or
+ *   whose assignee can no longer do it); "Partly sent" = partly dispatched ones. Same rule as
+ *   the dispatch list (ordersUserMayDispatch in dispatch-rules.ts).
  */
 import { toISTDateKey } from "./datetime";
 import { duesFrom, type LedgerEntry } from "./ledger-rules";
@@ -67,4 +70,15 @@ export function cashInHandPaise(collectedPaise: number, confirmedPaise: number, 
 const CLOSED = ["rejected", "delivered", "cancelled"];
 export function isOpenOrderStatus(status: string): boolean {
   return !CLOSED.includes(status);
+}
+
+/** Logistics home numbers from the orders this person may dispatch. */
+export function logisticsCounts(orders: readonly { status: string }[]): { ready: number; partly: number } {
+  let ready = 0;
+  let partly = 0;
+  for (const o of orders) {
+    if (o.status === "approved" || o.status === "assigned") ready++;
+    else if (o.status === "partly_dispatched") partly++;
+  }
+  return { ready, partly };
 }

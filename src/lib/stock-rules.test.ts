@@ -9,7 +9,6 @@ import {
   firmProductTotal,
   inMovement,
   MAX_STOCK_ENTRY_BAGS,
-  reversalMovements,
   checkTransferPlaces,
   transferMovements,
   type Movement,
@@ -77,31 +76,6 @@ describe("dispatchMovement and firm isolation", () => {
       expect(balance(list, A)).toBeGreaterThanOrEqual(0);
       expect(balance(list, B)).toBeGreaterThanOrEqual(0);
     }
-  });
-});
-
-describe("reversalMovements", () => {
-  it("returns the dispatched bags to the same place", () => {
-    const list = [mv(A, 100), dispatchMovement([mv(A, 100)], A, 40, "o1")];
-    const rev = reversalMovements(list, "o1");
-    expect(rev).toHaveLength(1);
-    expect(rev[0]).toMatchObject({ ...A, type: "dispatch_reversal", bags: 40, orderId: "o1" });
-    expect(balance([...list, ...rev], A)).toBe(100);
-  });
-  it("does nothing for other orders or when already reversed", () => {
-    const d = dispatchMovement([mv(A, 100)], A, 40, "o1");
-    const list = [mv(A, 100), d];
-    expect(reversalMovements(list, "o2")).toEqual([]);
-    const again = [...list, ...reversalMovements(list, "o1")];
-    expect(reversalMovements(again, "o1")).toEqual([]);
-  });
-  it("handles a dispatch split over two vehicles", () => {
-    const list = [
-      { ...A, type: "dispatch" as const, bags: -10, orderId: "o1" },
-      { ...A, locationId: "v1", type: "dispatch" as const, bags: -5, orderId: "o1" },
-    ];
-    const rev = reversalMovements(list, "o1");
-    expect(rev.map((r) => r.bags).sort((a, b) => a - b)).toEqual([5, 10]);
   });
 });
 

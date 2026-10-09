@@ -80,31 +80,6 @@ export function dispatchMovement(
   return { ...key, type: "dispatch", bags: -bags, orderId };
 }
 
-/**
- * Reversal for a cancelled order: one positive movement per dispatch of that order,
- * minus what was already reversed. Same firm, product and location as the original.
- */
-export function reversalMovements(movements: readonly Movement[], orderId: string): Movement[] {
-  const net = new Map<string, Movement>();
-  for (const m of movements) {
-    if (m.orderId !== orderId) continue;
-    if (m.type !== "dispatch" && m.type !== "dispatch_reversal") continue;
-    const k = `${m.firmId}|${m.productId}|${m.locationId}`;
-    const entry = net.get(k) ?? {
-      firmId: m.firmId,
-      productId: m.productId,
-      locationId: m.locationId,
-      type: "dispatch_reversal" as const,
-      bags: 0,
-      orderId,
-      reason: "Order cancelled",
-    };
-    entry.bags -= m.bags; // dispatch is negative, so this adds back
-    net.set(k, entry);
-  }
-  return [...net.values()].filter((m) => m.bags > 0);
-}
-
 /** Admin-only adjustment (damage, burst, shortage, physical count). Reason is required. */
 export function adjustmentMovement(
   movements: readonly Movement[],

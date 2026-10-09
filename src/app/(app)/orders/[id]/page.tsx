@@ -3,13 +3,13 @@ import { notFound } from "next/navigation";
 import { FirmChip } from "@/components/app/firm-chip";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
-import { firms, orderEvents, orders, products, retailers, user as users } from "@/db/schema";
+import { dispatches, firms, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
 import { findAccessibleFirm } from "@/lib/firm-access";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
-import { canCancelOrder, canSeePrice, chipLabel, chipStatus } from "@/lib/order-access";
-import { isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
+import { canCancelOrder, canSeePrice, chipLabel, chipStatus, historyForViewer } from "@/lib/order-access";
+import { isCloseShort, isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { canFillRate } from "@/lib/rate-rules";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { requireUser } from "@/lib/session";
@@ -58,18 +58,39 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     if (own?.id !== o.retailerId) notFound();
   }
 
-  const events = await db
-    .select({
-      id: orderEvents.id,
-      toStatus: orderEvents.toStatus,
-      reason: orderEvents.reason,
-      createdAt: orderEvents.createdAt,
-      actor: users.name,
-    })
-    .from(orderEvents)
-    .innerJoin(users, eq(orderEvents.actorId, users.id))
-    .where(eq(orderEvents.orderId, o.id))
-    .orderBy(asc(orderEvents.createdAt));
+  const [allEvents, loads] = await Promise.all([
+    db
+      .select({
+        id: orderEvents.id,
+        toStatus: orderEvents.toStatus,
+        reason: orderEvents.reason,
+        createdAt: orderEvents.createdAt,
+        actor: users.name,
+      })
+      .from(orderEvents)
+      .innerJoin(users, eq(orderEvents.actorId, users.id))
+      .where(eq(orderEvents.orderId, o.id))
+      .orderBy(asc(orderEvents.createdAt)),
+    // Truck loads: shown to everyone who may see the order (spec 4.6); the rate to staff only.
+    db
+      .select({
+        id: dispatches.id,
+        bags: dispatches.bags,
+        ratePaise: dispatches.ratePaise,
+        driverName: dispatches.driverName,
+        driverPhone: dispatches.driverPhone,
+        createdAt: dispatches.createdAt,
+        vehicle: vehicles.number,
+      })
+      .from(dispatches)
+      .innerJoin(vehicles, eq(dispatches.vehicleId, vehicles.id))
+      .where(eq(dispatches.orderId, o.id))
+      .orderBy(asc(dispatches.createdAt)),
+  ]);
+  // A retailer never sees rate edits or staff reasons about money.
+  const events = historyForViewer(user.role, allEvents);
+  const sentBags = loads.reduce((n, l) => n + l.bags, 0);
+  const valuePaise = orderValuePaise({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads });
 
   // Admin's "All firms" view is read only: no buttons that change anything.
   const { selection } = await getFirmSelection();
@@ -89,18 +110,44 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         </p>
         {o.notes && <p className="mt-1 text-sm">{o.notes}</p>}
       </div>
-      {showPrice && o.ratePaise !== null && (
+      {showPrice && o.ratePaise !== null && valuePaise !== null && (
         <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
           <div className="text-xs text-muted-foreground">
             Rate {formatINR(o.ratePaise)} per bag
           </div>
-          <div className="tabular text-2xl font-bold">
-            {formatINR(orderTotalPaise(o.bags, o.ratePaise))}
-          </div>
+          <div className="tabular text-2xl font-bold">{formatINR(valuePaise)}</div>
         </div>
       )}
+      {loads.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {loads.map((l) => (
+            <li key={l.id} className="rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="tabular text-lg font-bold">{l.bags} bags</span>
+                <span className="text-sm font-semibold">{l.vehicle}</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {l.driverName}
+                {l.driverPhone && (
+                  <>
+                    {" · "}
+                    <a href={`tel:${l.driverPhone}`} className="tabular underline">
+                      {l.driverPhone}
+                    </a>
+                  </>
+                )}
+                {" · "}
+                {formatDateTime(l.createdAt)}
+              </div>
+              {showPrice && l.ratePaise !== null && l.ratePaise !== o.ratePaise && (
+                <div className="text-xs text-muted-foreground">Rate {formatINR(l.ratePaise)} per bag</div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {canRate && <RateForm orderId={o.id} bags={o.bags} />}
-      {canCancel && <CancelForm orderId={o.id} />}
+      {canCancel && <CancelForm orderId={o.id} closeShort={isCloseShort(o.status, sentBags)} />}
       <ol className="flex flex-col gap-3 border-l pl-4">
         {events.map((e) => (
           <li key={e.id}>

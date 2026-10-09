@@ -6,19 +6,23 @@ import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, stockLocations, stockMovements, vehicles } from "@/db/schema";
 import {
+  assigneeAfterDispatch,
+  canDispatchOrder,
   canMarkDelivered,
   checkDispatchFields,
   checkRateEdit,
   planDispatch,
+  rateEditReason,
   stepTimes,
 } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
-import { rateChangeEntry } from "@/lib/ledger-rules";
+import { truckRateChangeEntry } from "@/lib/ledger-rules";
+import { isAssigneeStillValid } from "@/lib/logistics";
 import { notify } from "@/lib/notify";
 import { canUserTransition, isOrderStatus } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
-import { ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
+import { checkRateDigits } from "@/lib/rate-rules";
 import { requireAdmin, requireFirm, requireRole, writeBlock } from "@/lib/session";
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
@@ -43,6 +47,8 @@ export async function dispatchOrder(input: {
   rateReason?: string;
 }): Promise<DispatchResult> {
   const session = await requireRole(...rolesFor("dispatch"));
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
   if (!isUuid(input.orderId)) return { ok: false, error: "Order not found." };
   if ((input.vehicleId && !isUuid(input.vehicleId)) || (input.locationId && !isUuid(input.locationId))) {
     return { ok: false, error: "Refresh the page and try again." };
@@ -66,14 +72,23 @@ export async function dispatchOrder(input: {
   if (!fields.ok) return fields;
 
   const digits = String(input.newRateRupees ?? "").trim();
-  const wantedRate = digits ? ratePaiseFromRupeeDigits(digits) : null;
-  if (digits && wantedRate === null) return { ok: false, error: "Enter a valid rate per bag." };
+  let wantedRate: number | null = null;
+  if (digits) {
+    const checked = checkRateDigits(digits);
+    if (!checked.ok) return checked;
+    wantedRate = checked.paise;
+  }
 
   const me = session.user;
   const result = await db.transaction(async (tx): Promise<DispatchResult> => {
     // Lock the order and the stock place so two people cannot dispatch the same bags.
     const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("update");
     if (!order) return { ok: false, error: "Order not found." };
+    // Only the assignee (or anyone, when there is none or they can no longer do it), or admin.
+    const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
+    if (!canDispatchOrder({ id: me.id, role: me.role, hasFirmAccess: true }, order, assigneeValid)) {
+      return { ok: false, error: "This order is assigned to someone else." };
+    }
     const [loc] = await tx
       .select()
       .from(stockLocations)
@@ -114,6 +129,10 @@ export async function dispatchOrder(input: {
     if (!plan.ok) return plan;
     const rate = checkRateEdit(order.ratePaise, wantedRate, input.rateReason);
     if (!rate.ok) return rate;
+    // A truck rate is billed as the difference from the order rate, so the order needs one.
+    const rateChange =
+      rate.newRatePaise === null ? null : truckRateChangeEntry(order, input.bags, order.ratePaise, rate.newRatePaise);
+    if (rate.newRatePaise !== null && !rateChange) return { ok: false, error: "This order has no rate yet." };
 
     await tx.insert(dispatches).values({
       firmId: order.firmId,
@@ -138,19 +157,16 @@ export async function dispatchOrder(input: {
     });
 
     let from = order.status;
-    if (rate.newRatePaise !== null) {
-      // Keep the retailer's ledger in step with the new rate (difference only).
-      if (order.ratePaise !== null) {
-        const change = rateChangeEntry(order, order.ratePaise, rate.newRatePaise);
-        if (change) await postEntry(tx, change, me.id, `Rate edited: ${rate.reason}`);
-      }
-      // The history never shows the price itself (retailers read it); the rate is on the dispatch.
+    if (rateChange) {
+      // This truck only: the order rate stays for the other trucks (the truck rate is on the dispatch).
+      await postEntry(tx, rateChange, me.id, rateEditReason(rate.reason));
+      // The history never shows the price itself (retailers read it).
       await tx.insert(orderEvents).values({
         orderId: order.id,
         fromStatus: from,
         toStatus: from,
         actorId: me.id,
-        reason: `Rate edited: ${rate.reason}`,
+        reason: rateEditReason(rate.reason),
       });
     }
     const times = stepTimes(new Date(Date.now() + 5), plan.statusSteps.length);
@@ -169,10 +185,12 @@ export async function dispatchOrder(input: {
       .update(orders)
       .set({
         status: plan.newStatus,
+        // An order with nobody (valid) on it becomes the dispatcher's.
+        logisticsId: assigneeAfterDispatch(order.logisticsId, me.id, assigneeValid),
         updatedAt: new Date(),
-        ...(rate.newRatePaise !== null ? { ratePaise: rate.newRatePaise } : {}),
       })
       .where(eq(orders.id, order.id));
+    if (rateChange) await notify(tx, order.id, "rate_edited", me.id, input.bags);
     await notify(tx, order.id, "dispatched", me.id, input.bags);
     return { ok: true };
   });
@@ -191,13 +209,20 @@ export async function markDelivered(orderId: string): Promise<DispatchResult> {
     .limit(1);
   if (!found) return { ok: false, error: "Order not found." };
   await requireFirm(found.firmId);
+  const blocked = await writeBlock();
+  if (blocked) return { ok: false, error: blocked };
+  // Same as dispatch: the firm on screen must be the order's firm.
   const { selection } = await getFirmSelection();
-  if (selection.readOnly) return { ok: false, error: "Pick one firm first." };
+  if (selection.readOnly || selection.firmId !== found.firmId) return { ok: false, error: "Pick this order's firm first." };
 
   const me = session.user;
   const result = await db.transaction(async (tx): Promise<DispatchResult> => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
     if (!order) return { ok: false, error: "Order not found." };
+    const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
+    if (!canDispatchOrder({ id: me.id, role: me.role, hasFirmAccess: true }, order, assigneeValid)) {
+      return { ok: false, error: "This order is assigned to someone else." };
+    }
     if (
       !canMarkDelivered(order.status) ||
       !isOrderStatus(order.status) ||
