@@ -21,6 +21,7 @@ export async function updateName(_prev: UpdateNameState, formData: FormData): Pr
 
   await auth.api.updateUser({ body: { name: parsed.data }, headers: await headers() });
   revalidatePath("/dashboard");
+  revalidatePath("/account");
   return { success: "Name updated." };
 }
 
