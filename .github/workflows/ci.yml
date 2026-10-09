@@ -1,0 +1,28 @@
+# Runs the same checks as before a pull request (see CLAUDE.md) on every pull request
+# and on every push to the default branch. A red cross on the pull request = do not merge yet
+# (`pnpm release` refuses to merge it). Also started by weekly-updates.yml for its pull requests.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Installs the pnpm version from package.json "packageManager".
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      # Works without environment variables, same as on Coolify.
+      - run: pnpm build

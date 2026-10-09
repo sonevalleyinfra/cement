@@ -1,0 +1,19 @@
+# Keep the Docker build context small and free of secrets.
+.git
+.github
+.claude
+node_modules
+.next
+dist-scripts
+coverage
+*.log
+.DS_Store
+
+# Never copy real env files into the image. Coolify injects them at runtime.
+.env
+.env.*
+!.env.example
+
+Dockerfile
+docker-compose*.yml
+.dockerignore

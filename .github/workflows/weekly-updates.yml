@@ -1,0 +1,51 @@
+# Every Monday morning: safe package updates (same major version, released at least a day ago),
+# opened as a pull request named "Weekly dependency updates". Nothing goes live by itself:
+# check the pull request (green checks, preview), then run `pnpm release <number>`.
+# Run it by hand: GitHub → Actions → Weekly updates → Run workflow.
+name: Weekly updates
+
+on:
+  schedule:
+    - cron: "30 3 * * 1" # Mondays 09:00 India time (03:30 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the update branch
+  pull-requests: write # open the pull request
+  actions: write # start the CI checks on it
+
+concurrency: weekly-updates
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm update-deps --summary "$RUNNER_TEMP/summary.md"
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet; then
+            echo "Everything is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C weekly-updates
+          git commit -am "Weekly dependency updates"
+          git push --force origin weekly-updates
+          if [ "$(gh pr view weekly-updates --json state -q .state 2>/dev/null)" != "OPEN" ]; then
+            gh pr create --head weekly-updates --title "Weekly dependency updates" --body-file "$RUNNER_TEMP/summary.md"
+          else
+            gh pr edit weekly-updates --body-file "$RUNNER_TEMP/summary.md"
+          fi
+          # Pull requests opened by this workflow don't start other workflows by themselves,
+          # so start the checks (lint, typecheck, tests, build) on the branch explicitly.
+          gh workflow run ci.yml --ref weekly-updates
