@@ -8,9 +8,10 @@ import { findAccessibleFirm } from "@/lib/firm-access";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { canSeePrice, chipStatus } from "@/lib/order-access";
-import { isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
+import { canUserTransition, isOrderStatus, orderTotalPaise } from "@/lib/order-rules";
 import { canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
+import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -67,6 +68,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     .where(eq(orderEvents.orderId, o.id))
     .orderBy(asc(orderEvents.createdAt));
 
+  const canCancel =
+    showPrice && isOrderStatus(o.status) && canUserTransition(user.role, o.status, "cancelled");
   const canRate = canFillRate(user.role, user.id, o.salesRepId, o.status);
 
   return (
@@ -93,6 +96,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         </div>
       )}
       {canRate && <RateForm orderId={o.id} bags={o.bags} />}
+      {canCancel && <CancelForm orderId={o.id} />}
       <ol className="flex flex-col gap-3 border-l pl-4">
         {events.map((e) => (
           <li key={e.id}>

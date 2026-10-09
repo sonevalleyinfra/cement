@@ -3,17 +3,27 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { orderEvents, orders, products, retailers, user, userFirms } from "@/db/schema";
+import {
+  dispatches,
+  orderEvents,
+  orders,
+  products,
+  retailers,
+  stockMovements,
+  user,
+  userFirms,
+} from "@/db/schema";
 import {
   isBagsInRange,
   resolveOrderRetailer,
   validatePlaceOrder,
 } from "@/lib/order-access";
-import { pickNextAssignee } from "@/lib/order-rules";
+import { cancelDecision, canUserTransition, isOrderStatus, pickNextAssignee } from "@/lib/order-rules";
+import { reversalMovements, type MovementType } from "@/lib/stock-rules";
 import { hasRole } from "@/lib/roles";
 import { canDecide, canFillRate, checkRejectReason, ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
 import { notify } from "@/lib/notify";
-import { requireFirm, requireRole } from "@/lib/session";
+import { requireFirm, requireRole, requireUser } from "@/lib/session";
 
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
 
@@ -170,4 +180,56 @@ export async function decideOrder(
   }
   const ok = await moveOrder(order.id, "rate_filled", decision, session.user.id, why);
   return ok ? { ok: true } : { ok: false, error: "This order was just changed. Refresh." };
+}
+
+/**
+ * Cancels an order. Before approval no stock was touched; after approval the bags
+ * already dispatched go back to the same firm's stock (reversal movements).
+ */
+export async function cancelOrder(orderId: string, reason: string): Promise<PlaceOrderResult> {
+  const session = await requireUser();
+  const order = await loadOrder(orderId);
+  if (!order) return { ok: false, error: "Order not found." };
+  await requireFirm(order.firmId);
+  const me = session.user;
+
+  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
+    const [locked] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+    if (!locked || !isOrderStatus(locked.status)) return { ok: false, error: "Order not found." };
+    if (!canUserTransition(me.role, locked.status, "cancelled")) {
+      return { ok: false, error: "You cannot cancel this order." };
+    }
+    const sent = await tx.select().from(dispatches).where(eq(dispatches.orderId, orderId));
+    const dispatchedBags = sent.reduce((n, d) => n + d.bags, 0);
+    const decision = cancelDecision(locked.status, dispatchedBags, reason);
+    if (!decision.ok) return decision;
+
+    if (decision.reverseStockBags > 0) {
+      const rows = await tx.select().from(stockMovements).where(eq(stockMovements.orderId, orderId));
+      const back = reversalMovements(
+        rows.map((r) => ({ ...r, type: r.type as MovementType })),
+        orderId,
+      );
+      if (back.length > 0) {
+        await tx.insert(stockMovements).values(back.map((m) => ({ ...m, actorId: me.id })));
+      }
+    }
+    await tx.update(orders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(orders.id, orderId));
+    await tx.insert(orderEvents).values({
+      orderId,
+      fromStatus: locked.status,
+      toStatus: "cancelled",
+      actorId: me.id,
+      reason: (reason ?? "").trim().slice(0, 300),
+    });
+    await notify(tx, orderId, "cancelled", me.id);
+    return { ok: true };
+  });
+  if (result.ok) {
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/dispatch");
+    revalidatePath("/notifications");
+  }
+  return result;
 }
