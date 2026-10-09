@@ -76,9 +76,15 @@ export async function AccountsHome({ firmIds }: { firmIds: string[] }) {
   );
 }
 
-export async function LogisticsHome({ firmIds }: { firmIds: string[] }) {
+export async function LogisticsHome({
+  user,
+  firmIds,
+}: {
+  user: { id: string; role: string | null | undefined };
+  firmIds: string[];
+}) {
   if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getLogisticsHome(firmIds);
+  const s = await getLogisticsHome(user, firmIds);
   return (
     <Cards>
       <Card index={0} href="/dispatch" title="Dispatch" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} />

@@ -19,6 +19,8 @@ type OrderRow = {
   sent: number;
   ratePaise: number | null;
   status: string;
+  /** Logistics person on the order (shown to admin). */
+  assignee: string | null;
 };
 type Vehicle = { id: string; number: string; driverName: string; driverPhone: string };
 type Place = { id: string; name: string };
@@ -163,6 +165,7 @@ export function DispatchView({
                     <div className="text-xs text-muted-foreground">
                       {o.product} · <span className="tabular">{o.sent}</span> of{" "}
                       <span className="tabular">{o.bags}</span> bags sent
+                      {isAdmin && <> · {o.assignee ?? "Not assigned"}</>}
                     </div>
                   }
                 />
@@ -230,9 +233,10 @@ export function DispatchView({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold">
-              New rate per bag in ₹ (only to change it)
+              New rate per bag in ₹ for this truck (only to change it)
               <Input
                 inputMode="numeric"
+                maxLength={5}
                 value={rate}
                 onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))}
                 placeholder={open.ratePaise !== null ? String(open.ratePaise / 100) : ""}

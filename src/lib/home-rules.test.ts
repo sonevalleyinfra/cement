@@ -3,6 +3,7 @@ import {
   cashInHandPaise,
   homeSections,
   isOpenOrderStatus,
+  logisticsCounts,
   istDayStart,
   retailersWithDues,
   totalDuesPaise,
@@ -62,5 +63,15 @@ describe("cash and open orders", () => {
     expect(isOpenOrderStatus("delivered")).toBe(false);
     expect(isOpenOrderStatus("cancelled")).toBe(false);
     expect(isOpenOrderStatus("rejected")).toBe(false);
+  });
+});
+
+describe("logisticsCounts", () => {
+  it("counts ready and partly sent orders, ignores the rest", () => {
+    const orders = ["approved", "assigned", "partly_dispatched", "dispatched", "placed", "assigned"].map((status) => ({
+      status,
+    }));
+    expect(logisticsCounts(orders)).toEqual({ ready: 3, partly: 1 });
+    expect(logisticsCounts([])).toEqual({ ready: 0, partly: 0 });
   });
 });

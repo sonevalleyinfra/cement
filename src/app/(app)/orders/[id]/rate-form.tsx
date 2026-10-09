@@ -6,7 +6,7 @@ import { Keypad } from "@/components/app/keypad";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/money";
 import { orderTotalPaise } from "@/lib/order-rules";
-import { ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
+import { checkRateDigits } from "@/lib/rate-rules";
 import { fillRate } from "../actions";
 
 export function RateForm({ orderId, bags }: { orderId: string; bags: number }) {
@@ -14,7 +14,8 @@ export function RateForm({ orderId, bags }: { orderId: string; bags: number }) {
   const [digits, setDigits] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
-  const paise = ratePaiseFromRupeeDigits(digits);
+  const check = checkRateDigits(digits);
+  const paise = check.ok ? check.paise : null;
 
   function submit() {
     start(async () => {
@@ -34,6 +35,7 @@ export function RateForm({ orderId, bags }: { orderId: string; bags: number }) {
         </div>
       )}
       <Keypad value={digits} onChange={setDigits} maxLength={5} />
+      {digits && !check.ok && <p className="text-sm text-destructive">{check.error}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button onClick={submit} disabled={pending || paise === null}>
         Send for approval

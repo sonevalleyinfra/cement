@@ -1,19 +1,20 @@
 "use server";
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
   dispatches,
+  firms,
   ledgerEntries,
   orderEvents,
   orders,
   products,
   retailers,
-  stockMovements,
   user,
   userFirms,
 } from "@/db/schema";
+import { logisticsCandidates, stepTimes } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import {
   canCancelOrder,
@@ -21,13 +22,13 @@ import {
   resolveOrderRetailer,
   validatePlaceOrder,
 } from "@/lib/order-access";
-import { cancelDecision, isOrderStatus, pickNextAssignee } from "@/lib/order-rules";
+import { approvalSteps, isOrderStatus, pickNextAssignee, planCancel } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
-import { reversalMovements, type MovementType } from "@/lib/stock-rules";
 import { hasRole } from "@/lib/roles";
-import { canDecide, canFillRate, checkRejectReason, ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
+import { canDecide, canFillRate, checkRateDigits, checkRejectReason } from "@/lib/rate-rules";
 import { postEntry } from "@/lib/ledger";
-import { cancelReversalEntry, orderDebitEntry } from "@/lib/ledger-rules";
+import { cancelEntry, orderDebitEntry, sumPaise } from "@/lib/ledger-rules";
+import { firmPeople } from "@/lib/logistics";
 import { notify } from "@/lib/notify";
 import { requireFirm, requireRole, writeBlock } from "@/lib/session";
 
@@ -122,7 +123,12 @@ export async function placeOrder(input: {
   return { ok: true };
 }
 
-/** Moves an order one step inside a transaction, with a history row. Fails if it changed meanwhile. */
+const CHANGED = "This order was just changed. Refresh.";
+
+/**
+ * Moves an order one step inside a transaction, with a history row. Fails (nothing saved)
+ * if it changed meanwhile. Approving also bills the retailer and picks logistics.
+ */
 async function moveOrder(
   orderId: string,
   from: "placed" | "rate_filled",
@@ -130,30 +136,67 @@ async function moveOrder(
   actorId: string,
   reason: string,
   extra: { ratePaise?: number } = {},
-): Promise<boolean> {
-  const done = await db.transaction(async (tx) => {
-    const updated = await tx
-      .update(orders)
-      .set({ status: to, updatedAt: new Date(), ...extra })
-      .where(and(eq(orders.id, orderId), eq(orders.status, from)))
-      .returning({ id: orders.id });
-    if (updated.length === 0) return false;
-    if (to === "approved") {
-      // The money side: approval bills the retailer (bags x rate) in this firm's ledger.
-      const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-      const debit = orderDebitEntry({ ...o });
-      if (!debit.ok) throw new Error(debit.error);
-      await postEntry(tx, debit.entry, actorId, "Order approved");
+): Promise<PlaceOrderResult> {
+  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
+    // Lock the order and check everything before writing, so a refusal saves nothing.
+    const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
+    if (!o || o.status !== from) return { ok: false, error: CHANGED };
+
+    if (to !== "approved") {
+      await tx.update(orders).set({ status: to, updatedAt: new Date(), ...extra }).where(eq(orders.id, orderId));
+      await tx.insert(orderEvents).values({ orderId, fromStatus: from, toStatus: to, actorId, reason });
+      await notify(tx, orderId, to, actorId);
+      return { ok: true };
     }
-    await tx.insert(orderEvents).values({ orderId, fromStatus: from, toStatus: to, actorId, reason });
-    await notify(tx, orderId, to === "rate_filled" ? "rate_filled" : to, actorId);
-    return true;
+
+    // The money side: approval bills the retailer (bags x rate) in this firm's ledger.
+    const debit = orderDebitEntry(o);
+    if (!debit.ok) return { ok: false, error: debit.error };
+
+    // Round robin (spec 4.5). Lock the firm row so two approvals of one firm take turns.
+    await tx.select({ id: firms.id }).from(firms).where(eq(firms.id, o.firmId)).for("update");
+    const people = await firmPeople(tx, [o.firmId]);
+    // "Last" = whoever got the most recent assignment in this firm.
+    const [last] = await tx
+      .select({ logisticsId: orders.logisticsId })
+      .from(orderEvents)
+      .innerJoin(orders, eq(orderEvents.orderId, orders.id))
+      .where(and(eq(orders.firmId, o.firmId), eq(orderEvents.toStatus, "assigned"), isNotNull(orders.logisticsId)))
+      .orderBy(desc(orderEvents.createdAt))
+      .limit(1);
+    const logisticsId = pickNextAssignee(logisticsCandidates(people, o.firmId), last?.logisticsId);
+    const next = approvalSteps(logisticsId);
+
+    // Save the assignee before notify: "assigned" goes to orders.logistics_id.
+    await tx
+      .update(orders)
+      .set({ status: next.status, logisticsId, updatedAt: new Date() })
+      .where(eq(orders.id, orderId));
+    await postEntry(tx, debit.entry, actorId, "Order approved");
+    // Times taken after the firm lock, so the next approval's rows always come later.
+    const times = stepTimes(new Date(), next.steps.length);
+    let fromStatus: string = from;
+    for (const [i, step] of next.steps.entries()) {
+      await tx.insert(orderEvents).values({
+        createdAt: times[i],
+        orderId,
+        fromStatus,
+        toStatus: step,
+        actorId,
+        reason: step === "approved" ? reason : "",
+      });
+      fromStatus = step;
+    }
+    await notify(tx, orderId, "approved", actorId);
+    if (logisticsId) await notify(tx, orderId, "assigned", actorId);
+    return { ok: true };
   });
   revalidatePath("/orders");
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/approvals");
+  revalidatePath("/dispatch");
   revalidatePath("/notifications");
-  return done;
+  return result;
 }
 
 async function loadOrder(orderId: string) {
@@ -174,10 +217,9 @@ export async function fillRate(orderId: string, rupeeDigits: string): Promise<Pl
   if (!canFillRate(me.role, me.id, order.salesRepId, order.status)) {
     return { ok: false, error: "You cannot fill the rate on this order." };
   }
-  const ratePaise = ratePaiseFromRupeeDigits(String(rupeeDigits ?? ""));
-  if (ratePaise === null) return { ok: false, error: "Enter a rate per bag." };
-  const ok = await moveOrder(order.id, "placed", "rate_filled", me.id, "", { ratePaise });
-  return ok ? { ok: true } : { ok: false, error: "This order was just changed. Refresh." };
+  const rate = checkRateDigits(String(rupeeDigits ?? ""));
+  if (!rate.ok) return rate;
+  return moveOrder(order.id, "placed", "rate_filled", me.id, "", { ratePaise: rate.paise });
 }
 
 /** Accounts or admin approves or rejects (reason needed to reject). */
@@ -203,13 +245,13 @@ export async function decideOrder(
     if (!check.ok) return check;
     why = check.reason;
   }
-  const ok = await moveOrder(order.id, "rate_filled", decision, session.user.id, why);
-  return ok ? { ok: true } : { ok: false, error: "This order was just changed. Refresh." };
+  return moveOrder(order.id, "rate_filled", decision, session.user.id, why);
 }
 
 /**
- * Cancels an order. Before approval no stock was touched; after approval the bags
- * already dispatched go back to the same firm's stock (reversal movements).
+ * Cancels an order (rules in planCancel). No stock moves. Before any bag is sent the whole
+ * bill is reversed. Once some bags went out it "closes short": the order becomes dispatched
+ * and only the bags not sent come off the bill.
  */
 export async function cancelOrder(orderId: string, reason: string): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole("sales", "accounts");
@@ -218,7 +260,6 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
   const order = await loadOrder(orderId);
   if (!order) return { ok: false, error: "Order not found." };
   await requireFirm(order.firmId);
-  const why = String(reason ?? "");
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     const [locked] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
@@ -226,34 +267,33 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
     if (!canCancelOrder(me.role, me.id, locked)) {
       return { ok: false, error: "You cannot cancel this order." };
     }
-    const sent = await tx.select().from(dispatches).where(eq(dispatches.orderId, orderId));
-    const dispatchedBags = sent.reduce((n, d) => n + d.bags, 0);
-    const decision = cancelDecision(locked.status, dispatchedBags, why);
-    if (!decision.ok) return decision;
+    const sent = await tx.select({ bags: dispatches.bags }).from(dispatches).where(eq(dispatches.orderId, orderId));
+    const posted = await tx
+      .select({ amountPaise: ledgerEntries.amountPaise })
+      .from(ledgerEntries)
+      .where(eq(ledgerEntries.orderId, orderId));
+    const plan = planCancel({
+      status: locked.status,
+      orderedBags: locked.bags,
+      dispatchedBags: sent.reduce((n, d) => n + d.bags, 0),
+      ratePaise: locked.ratePaise,
+      postedNetPaise: sumPaise(posted),
+      reason: String(reason ?? ""),
+    });
+    if (!plan.ok) return plan;
+    const closedShort = plan.closedShortBags !== null;
 
-    if (decision.reverseStockBags > 0) {
-      const rows = await tx.select().from(stockMovements).where(eq(stockMovements.orderId, orderId));
-      const back = reversalMovements(
-        rows.map((r) => ({ ...r, type: r.type as MovementType })),
-        orderId,
-      );
-      if (back.length > 0) {
-        await tx.insert(stockMovements).values(back.map((m) => ({ ...m, actorId: me.id })));
-      }
-    }
-    // Compensating entry: cancels whatever was billed for this order (nothing before approval).
-    const posted = await tx.select().from(ledgerEntries).where(eq(ledgerEntries.orderId, orderId));
-    const reversal = cancelReversalEntry(locked, posted);
-    if (reversal) await postEntry(tx, reversal, me.id, "Order cancelled");
-    await tx.update(orders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(orders.id, orderId));
+    const entry = cancelEntry(locked, plan.ledgerPaise);
+    if (entry) await postEntry(tx, entry, me.id, closedShort ? "Order closed short" : "Order cancelled");
+    await tx.update(orders).set({ status: plan.newStatus, updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(orderEvents).values({
       orderId,
       fromStatus: locked.status,
-      toStatus: "cancelled",
+      toStatus: plan.newStatus,
       actorId: me.id,
-      reason: why.trim().slice(0, 300),
+      reason: plan.historyReason,
     });
-    await notify(tx, orderId, "cancelled", me.id);
+    await notify(tx, orderId, "cancelled", me.id, plan.closedShortBags ?? undefined);
     return { ok: true };
   });
   if (result.ok) {

@@ -5,7 +5,13 @@
  * Choices where the spec is silent:
  * - A person with the retailer role AND any staff role counts as staff.
  * - Only a pure retailer is price-blind and limited to their own shop's orders.
+ * - A pure retailer sees the order history without rate-edit rows, and a staff reason that
+ *   talks about money (rate, price, ₹, rs, discount...) is hidden. A "Closed short" row keeps
+ *   its first sentence (how many bags were not sent) and drops the staff part.
+ * - Dispatch loads (bags, vehicle, driver, phone, date) are shown to everyone who may see the
+ *   order (spec 4.6: "Visible to retailer and sales rep"); the load's rate only to staff.
  */
+import { isRateEditReason } from "./dispatch-rules";
 import { hasAnyRole, isAdmin, parseRoles } from "./roles";
 import { canUserTransition, isOrderStatus, isValidBags, rolesForTransition, type OrderStatus } from "./order-rules";
 
@@ -111,4 +117,30 @@ export function canCancelOrder(
   if (!isOrderStatus(order.status) || !canUserTransition(role, order.status, "cancelled")) return false;
   if (isAdmin(role) || !rolesForTransition(order.status, "cancelled").includes("sales")) return true;
   return order.placedBy === userId || order.salesRepId === userId;
+}
+
+/** Words that give a price away in a free-text staff reason. */
+const MONEY_WORDS = /(\brate|\bpric|₹|\brs\b|\brs\.|rupee|paise|discount|\bcost|\bamount|\/-)/i;
+const CLOSED_SHORT = /^Closed short: \d+ bags? not sent\./;
+
+export function mentionsMoney(text: string | null | undefined): boolean {
+  return MONEY_WORDS.test(text ?? "");
+}
+
+/**
+ * The order history this person may read. Staff see everything. A pure retailer does not
+ * see rate edits, nor staff reasons that mention money.
+ */
+export function historyForViewer<T extends { reason: string }>(
+  role: string | null | undefined,
+  events: readonly T[],
+): T[] {
+  if (!isRetailerOnly(role)) return [...events];
+  return events
+    .filter((e) => !isRateEditReason(e.reason))
+    .map((e) => {
+      if (!mentionsMoney(e.reason)) return e;
+      const closedShort = CLOSED_SHORT.exec(e.reason);
+      return { ...e, reason: closedShort ? closedShort[0] : "" };
+    });
 }
