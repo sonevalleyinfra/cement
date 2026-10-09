@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   adjustmentMovement,
   balance,
+  canSetOpening,
+  cleanLocationName,
   canDispatch,
   dispatchMovement,
   firmProductTotal,
@@ -147,4 +149,20 @@ describe("inMovement", () => {
     expect(inMovement("opening", A, 0).ok).toBe(false);
     expect(inMovement("purchase", A, -3).ok).toBe(false);
   });
+});
+
+describe("canSetOpening", () => {
+  it("allows the first opening", () => expect(canSetOpening([], A).ok).toBe(true));
+  it("blocks a second opening for the same firm, product and place", () => {
+    const first = mv(A, 10, { type: "opening" });
+    expect(canSetOpening([first], A).ok).toBe(false);
+    expect(canSetOpening([first], B).ok).toBe(true);
+    expect(canSetOpening([first], { ...A, productId: "p2" }).ok).toBe(true);
+  });
+  it("ignores purchases", () => expect(canSetOpening([mv(A, 10)], A).ok).toBe(true));
+});
+
+describe("cleanLocationName", () => {
+  it("tidies spaces", () => expect(cleanLocationName("  Main   godown ")).toBe("Main godown"));
+  it("rejects empty", () => expect(cleanLocationName("   ")).toBeNull());
 });

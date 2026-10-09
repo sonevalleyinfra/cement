@@ -149,3 +149,26 @@ export function inMovement(
   if (!isPositiveBags(bags)) return { ok: false, error: "Bags must be a whole number above zero." };
   return { ok: true, movement: { ...key, type, bags, reason } };
 }
+
+/** Opening stock is set once per firm + product + location. A second one must be an adjustment. */
+export function canSetOpening(
+  movements: readonly Movement[],
+  key: StockKey,
+): { ok: true } | { ok: false; error: string } {
+  const done = movements.some(
+    (m) =>
+      m.type === "opening" &&
+      m.firmId === key.firmId &&
+      m.productId === key.productId &&
+      m.locationId === key.locationId,
+  );
+  return done
+    ? { ok: false, error: "Opening stock is already set here. Use an adjustment to change it." }
+    : { ok: true };
+}
+
+/** Clean a godown name: single spaces, max 60 chars, not empty. */
+export function cleanLocationName(name: string): string | null {
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, 60);
+  return clean || null;
+}
