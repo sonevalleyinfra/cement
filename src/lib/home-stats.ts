@@ -105,7 +105,7 @@ export async function stockByProduct(firmIds: string[]) {
 
 export async function getLogisticsHome(firmIds: string[]) {
   const [ready, partly, stock] = await Promise.all([
-    countOrders(firmIds, eq(orders.status, "assigned")),
+    countOrders(firmIds, inArray(orders.status, ["approved", "assigned"])),
     countOrders(firmIds, eq(orders.status, "partly_dispatched")),
     stockByProduct(firmIds),
   ]);
