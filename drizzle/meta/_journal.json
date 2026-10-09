@@ -29,6 +29,13 @@
       "when": 1791540105641,
       "tag": "0003_retailers",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791540306558,
+      "tag": "0004_vehicles",
+      "breakpoints": true
     }
   ]
 }
