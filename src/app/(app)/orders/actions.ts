@@ -12,6 +12,7 @@ import {
 import { pickNextAssignee } from "@/lib/order-rules";
 import { hasRole } from "@/lib/roles";
 import { canDecide, canFillRate, checkRejectReason, ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
+import { notify } from "@/lib/notify";
 import { requireFirm, requireRole } from "@/lib/session";
 
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
@@ -93,8 +94,10 @@ export async function placeOrder(input: {
       toStatus: "placed",
       actorId: me.id,
     });
+    await notify(tx, order.id, "placed", me.id);
   });
   revalidatePath("/orders");
+  revalidatePath("/notifications");
   return { ok: true };
 }
 
@@ -115,11 +118,13 @@ async function moveOrder(
       .returning({ id: orders.id });
     if (updated.length === 0) return false;
     await tx.insert(orderEvents).values({ orderId, fromStatus: from, toStatus: to, actorId, reason });
+    await notify(tx, orderId, to === "rate_filled" ? "rate_filled" : to, actorId);
     return true;
   });
   revalidatePath("/orders");
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/approvals");
+  revalidatePath("/notifications");
   return done;
 }
 

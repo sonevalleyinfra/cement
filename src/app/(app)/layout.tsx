@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/app/app-shell";
 import { FirmSwitcher } from "@/components/app/firm-switcher";
 import type { NavItem } from "@/components/app/bottom-nav";
+import { NotificationBell } from "@/components/app/notification-bell";
 import { requireUser } from "@/lib/session";
 
 const nav: NavItem[] = [
@@ -14,7 +15,12 @@ const nav: NavItem[] = [
 export default async function AppLayout({ children }: { children: ReactNode }) {
   await requireUser();
   return (
-    <AppShell title="Cement" headerRight={<FirmSwitcher />} nav={nav}>
+    <AppShell title="Cement" headerRight={
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <FirmSwitcher />
+        </div>
+      } nav={nav}>
       {children}
     </AppShell>
   );
