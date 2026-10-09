@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { isAdmin } from "@/lib/roles";
+import { hasAnyRole, isAdmin } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 import { signOut } from "../../dashboard/actions";
 
@@ -15,6 +15,13 @@ export default async function MorePage() {
         <li>
           <Link href="/users" className={rowClass}>
             Users
+          </Link>
+        </li>
+      )}
+      {hasAnyRole(user.role, ["accounts"]) && (
+        <li>
+          <Link href="/approvals" className={rowClass}>
+            Approvals
           </Link>
         </li>
       )}

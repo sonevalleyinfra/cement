@@ -1,6 +1,6 @@
 "use server";
 
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { orderEvents, orders, products, retailers, user, userFirms } from "@/db/schema";
@@ -11,6 +11,7 @@ import {
 } from "@/lib/order-access";
 import { pickNextAssignee } from "@/lib/order-rules";
 import { hasRole } from "@/lib/roles";
+import { canDecide, canFillRate, checkRejectReason, ratePaiseFromRupeeDigits } from "@/lib/rate-rules";
 import { requireFirm, requireRole } from "@/lib/session";
 
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
@@ -95,4 +96,73 @@ export async function placeOrder(input: {
   });
   revalidatePath("/orders");
   return { ok: true };
+}
+
+/** Moves an order one step inside a transaction, with a history row. Fails if it changed meanwhile. */
+async function moveOrder(
+  orderId: string,
+  from: "placed" | "rate_filled",
+  to: "rate_filled" | "approved" | "rejected",
+  actorId: string,
+  reason: string,
+  extra: { ratePaise?: number } = {},
+): Promise<boolean> {
+  const done = await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(orders)
+      .set({ status: to, updatedAt: new Date(), ...extra })
+      .where(and(eq(orders.id, orderId), eq(orders.status, from)))
+      .returning({ id: orders.id });
+    if (updated.length === 0) return false;
+    await tx.insert(orderEvents).values({ orderId, fromStatus: from, toStatus: to, actorId, reason });
+    return true;
+  });
+  revalidatePath("/orders");
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/approvals");
+  return done;
+}
+
+async function loadOrder(orderId: string) {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  return order ?? null;
+}
+
+/** Sales (the assigned rep) or admin enters the rate per bag (whole rupees). Moves to pending approval. */
+export async function fillRate(orderId: string, rupeeDigits: string): Promise<PlaceOrderResult> {
+  const session = await requireRole("sales");
+  const order = await loadOrder(orderId);
+  if (!order) return { ok: false, error: "Order not found." };
+  await requireFirm(order.firmId);
+  const me = session.user;
+  if (!canFillRate(me.role, me.id, order.salesRepId, order.status)) {
+    return { ok: false, error: "You cannot fill the rate on this order." };
+  }
+  const ratePaise = ratePaiseFromRupeeDigits(rupeeDigits);
+  if (ratePaise === null) return { ok: false, error: "Enter a rate per bag." };
+  const ok = await moveOrder(order.id, "placed", "rate_filled", me.id, "", { ratePaise });
+  return ok ? { ok: true } : { ok: false, error: "This order was just changed. Refresh." };
+}
+
+/** Accounts or admin approves or rejects (reason needed to reject). */
+export async function decideOrder(
+  orderId: string,
+  decision: "approved" | "rejected",
+  reason?: string,
+): Promise<PlaceOrderResult> {
+  const session = await requireRole("accounts");
+  const order = await loadOrder(orderId);
+  if (!order) return { ok: false, error: "Order not found." };
+  await requireFirm(order.firmId);
+  if (!canDecide(session.user.role, order.status, decision)) {
+    return { ok: false, error: "This order is not waiting for approval." };
+  }
+  let why = "";
+  if (decision === "rejected") {
+    const check = checkRejectReason(reason);
+    if (!check.ok) return check;
+    why = check.reason;
+  }
+  const ok = await moveOrder(order.id, "rate_filled", decision, session.user.id, why);
+  return ok ? { ok: true } : { ok: false, error: "This order was just changed. Refresh." };
 }

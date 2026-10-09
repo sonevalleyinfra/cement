@@ -68,6 +68,7 @@ export default async function OrdersPage() {
             <li key={o.id}>
               <ListCard
                 index={i}
+                href={`/orders/${o.id}`}
                 title={o.retailer}
                 top={
                   <>
