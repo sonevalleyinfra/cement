@@ -1,12 +1,20 @@
 "use client";
 
-import { ClipboardList, Home, Package, Wallet } from "lucide-react";
+import { ClipboardList, Home, MoreHorizontal, Package, Store, Truck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 /** Icons are picked by name because components cannot be passed from server to client. */
-const icons = { home: Home, orders: ClipboardList, stock: Package, money: Wallet };
+const icons = {
+  home: Home,
+  orders: ClipboardList,
+  stock: Package,
+  money: Wallet,
+  retailers: Store,
+  vehicles: Truck,
+  more: MoreHorizontal,
+};
 
 export type NavItem = { href: string; label: string; icon: keyof typeof icons };
 

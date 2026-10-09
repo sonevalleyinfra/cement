@@ -2,3 +2,4 @@
 // After changing a table run `pnpm db:generate` to create a migration in /drizzle.
 export * from "./auth";
 export * from "./firms";
+export * from "./retailers";
