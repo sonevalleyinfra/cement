@@ -639,3 +639,31 @@ In Claude Code, type `/` and the command. They do the same as the `pnpm` command
 `/status` and `/upgrade` already mean something else in Claude Code, which is why these are `/health` and `/major-upgrade`.
 Commands that change things (ship, release, launch...) only run when **you** type them; Claude won't start them on its own.
 
+
+## 17. Phase 1: the cement app
+
+### Roles
+- **Admin**: sees every firm, manages users, retailers' logins, stock and opening balances. "All firms" is view only.
+- **Sales**: places orders, fills the rate, cancels own orders before approval.
+- **Accounts**: approves or rejects orders, verifies online payments and cheques, confirms cash handovers.
+- **Logistics**: dispatches (partly or fully), marks delivered, looks after vehicles.
+- **Retailer**: places own orders and sees own orders and dues. Never sees prices on orders.
+
+### The daily flow
+1. Sales (or the retailer) places an order for one firm.
+2. Sales fills the rate per bag and sends it for approval.
+3. Accounts approves it. This bills the retailer in that firm's ledger.
+4. Logistics dispatches from a godown with a vehicle (partly now, the rest later).
+5. Every dispatch takes bags out of that firm's stock.
+6. Logistics marks the order delivered.
+7. Anyone on staff records a receipt (cash, online or cheque) and splits it across firms and orders.
+8. Cancelling an approved order puts dispatched bags back in stock and reverses the bill.
+
+### Try it with demo data (your computer only)
+1. `pnpm dev` (creates the tables and the admin), then in another terminal `pnpm seed:demo`.
+2. Sign in with password `Demo@12345` and one of: `admin@demo.test`, `sales@demo.test`, `accounts@demo.test`,
+   `logistics@demo.test`, `retailer@demo.test`.
+3. It adds 6 retailers, 2 vehicles, a godown with 500 bags of every product per firm, 6 orders in different
+   statuses and one cash receipt. Running it twice is safe.
+4. It refuses to run on production or on a database that is not on localhost. This password is public: never
+   use these accounts anywhere real.
