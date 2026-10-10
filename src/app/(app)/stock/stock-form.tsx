@@ -4,14 +4,16 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { productGroups } from "@/lib/catalogue-rules";
+import { placeGroups } from "@/lib/stock-rules";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
 
-type Option = { id: string; name: string };
-type Balance = { productId: string; locationId: string; bags: number };
-
-const selectClass = "h-11 w-full rounded-xl border bg-background px-3 text-base";
+type ProductOption = { id: string; name: string; channel: string };
+type PlaceOption = { key: string; kind: string; name: string };
+type Balance = { productId: string; placeKey: string; bags: number };
 
 const copy = {
   purchase: { button: "Add purchase", note: "Supplier / note (optional)", done: "Purchase added." },
@@ -28,20 +30,20 @@ export function StockForm({
 }: {
   mode: keyof typeof copy;
   firmId: string;
-  places: Option[];
-  products: Option[];
+  places: PlaceOption[];
+  products: ProductOption[];
   balances: Balance[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [productId, setProductId] = useState(products[0]?.id ?? "");
-  const [locationId, setLocationId] = useState(places[0]?.id ?? "");
+  const [place, setPlace] = useState(places[0]?.key ?? "");
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const current = balances.find((b) => b.productId === productId && b.locationId === locationId)?.bags ?? 0;
+  const current = balances.find((b) => b.productId === productId && b.placeKey === place)?.bags ?? 0;
   const bags = Number(digits || 0);
 
   function submit() {
@@ -49,7 +51,7 @@ export function StockForm({
     const input = {
       firmId,
       productId,
-      locationId,
+      place,
       bags: mode === "adjust" && minus ? -bags : bags,
       note,
     };
@@ -68,33 +70,15 @@ export function StockForm({
   if (places.length === 0 || products.length === 0) {
     return (
       <p className="rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
-        Add a godown or vehicle place for this firm first (Stock, then Places).
+        Add a godown or vehicle first.
       </p>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1 text-sm font-medium">
-        Product
-        <select className={selectClass} value={productId} onChange={(e) => setProductId(e.target.value)}>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium">
-        Place
-        <select className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-          {places.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SelectField label="Product" value={productId} onChange={setProductId} groups={productGroups(products)} />
+      <SelectField label="Place" value={place} onChange={setPlace} groups={placeGroups(places)} />
       <p className="text-sm text-muted-foreground">In stock here now: {current} bags</p>
       {mode === "adjust" && (
         <div className="grid grid-cols-2 gap-2">

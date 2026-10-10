@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
-import { dispatches, orderEvents, orders, stockLocations, stockMovements, vehicles } from "@/db/schema";
+import { dispatches, godowns, orderEvents, orders, stockLocations, stockMovements, vehicles } from "@/db/schema";
 import {
   assigneeAfterDispatch,
   canDispatchOrder,
@@ -23,7 +23,7 @@ import { notify } from "@/lib/notify";
 import { canUserTransition, isOrderStatus } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
 import { checkRateDigits } from "@/lib/rate-rules";
-import { requireAdmin, requireFirm, requireRole, writeBlock } from "@/lib/session";
+import { requireFirm, requireRole, writeBlock } from "@/lib/session";
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
 
@@ -90,10 +90,17 @@ export async function dispatchOrder(input: {
       return { ok: false, error: "This order is assigned to someone else." };
     }
     const [loc] = await tx
-      .select()
+      .select({
+        id: stockLocations.id,
+        firmId: stockLocations.firmId,
+        // The godown or vehicle itself must still be switched on.
+        active: sql<boolean>`coalesce(${godowns.active}, ${vehicles.active}, false)`,
+      })
       .from(stockLocations)
+      .leftJoin(godowns, eq(godowns.id, stockLocations.godownId))
+      .leftJoin(vehicles, eq(vehicles.id, stockLocations.vehicleId))
       .where(eq(stockLocations.id, input.locationId as string))
-      .for("no key update");
+      .for("no key update", { of: stockLocations });
     if (!loc || loc.firmId !== order.firmId || !loc.active) {
       return { ok: false, error: "Pick a stock place of this firm." };
     }
@@ -242,17 +249,4 @@ export async function markDelivered(orderId: string): Promise<DispatchResult> {
   });
   if (result.ok) refresh(orderId);
   return result;
-}
-
-/** Admin adds a godown for the chosen firm (task 11 adds a full screen for this). */
-export async function createGodown(firmId: string, name: string): Promise<DispatchResult> {
-  await requireAdmin();
-  await requireFirm(firmId);
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
-  const clean = String(name ?? "").trim().replace(/\s+/g, " ").slice(0, 60);
-  if (!clean) return { ok: false, error: "Enter a name for the godown." };
-  await db.insert(stockLocations).values({ firmId, kind: "godown", name: clean });
-  revalidatePath("/dispatch");
-  return { ok: true };
 }

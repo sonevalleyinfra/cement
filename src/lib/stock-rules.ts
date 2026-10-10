@@ -122,20 +122,6 @@ export function transferMovements(
   };
 }
 
-/** What we know about a place when checking a transfer. */
-export type PlaceInfo = { firmId: string; active: boolean };
-
-/** Both places must exist, belong to this firm and be active. */
-export function checkTransferPlaces(
-  firmId: string,
-  from: PlaceInfo | undefined,
-  to: PlaceInfo | undefined,
-): { ok: true } | { ok: false; error: string } {
-  const good = (p: PlaceInfo | undefined) => !!p && p.firmId === firmId && p.active;
-  if (!good(from) || !good(to)) return { ok: false, error: "Pick active places of this firm." };
-  return { ok: true };
-}
-
 /** Purchase and opening stock add bags (admin entry; caller checks admin). */
 export function inMovement(
   type: "purchase" | "opening",
@@ -169,4 +155,44 @@ export function canSetOpening(
 export function cleanLocationName(name: string): string | null {
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 60);
   return clean || null;
+}
+
+/** The two kinds of place where bags can be. */
+export const PLACE_KINDS = ["godown", "vehicle"] as const;
+export type PlaceKind = (typeof PLACE_KINDS)[number];
+export type PlaceRef = { kind: PlaceKind; id: string };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** One text value for a place in a drop-down: "godown:<id>" or "vehicle:<id>". */
+export function placeKey(place: PlaceRef): string {
+  return `${place.kind}:${place.id}`;
+}
+
+/** Reads a place key back. Null when it is not a valid one. */
+export function parsePlaceKey(text: unknown): PlaceRef | null {
+  if (typeof text !== "string") return null;
+  const [kind, id, extra] = text.split(":");
+  if (extra !== undefined || !(PLACE_KINDS as readonly string[]).includes(kind) || !UUID_RE.test(id ?? "")) return null;
+  return { kind: kind as PlaceKind, id: id.toLowerCase() };
+}
+
+/** A godown or vehicle can be switched off only when no firm has any bags there. */
+export function canSwitchOffPlace(bagsThere: number): { ok: true } | { ok: false; error: string } {
+  return bagsThere > 0 ? { ok: false, error: "Move the bags out first." } : { ok: true };
+}
+
+/** Places for a drop-down, in Godowns / Vehicles sections (empty sections left out). Keeps the given order. */
+export function placeGroups(
+  places: readonly { key: string; kind: string; name: string }[],
+): { label: string; options: { value: string; label: string }[] }[] {
+  return [
+    { label: "Godowns", kind: "godown" },
+    { label: "Vehicles", kind: "vehicle" },
+  ]
+    .map((g) => ({
+      label: g.label,
+      options: places.filter((p) => p.kind === g.kind).map((p) => ({ value: p.key, label: p.name })),
+    }))
+    .filter((g) => g.options.length > 0);
 }

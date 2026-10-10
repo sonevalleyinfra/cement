@@ -4,14 +4,15 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { productGroups } from "@/lib/catalogue-rules";
 import { placeOrder } from "../actions";
 
 type Retailer = { id: string; name: string; place: string };
-type Product = { id: string; name: string };
+type Product = { id: string; name: string; channel: string };
 
 export function NewOrderForm({
   firmId,
@@ -73,25 +74,7 @@ export function NewOrderForm({
         </button>
       )}
 
-      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Product">
-        {products.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            role="radio"
-            aria-checked={p.id === productId}
-            onClick={() => setProductId(p.id)}
-            className={cn(
-              "h-12 rounded-full px-5 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97]",
-              p.id === productId
-                ? "bg-primary text-primary-foreground shadow-brand ring-primary"
-                : "bg-card ring-foreground/10",
-            )}
-          >
-            {p.name}
-          </button>
-        ))}
-      </div>
+      <SelectField label="Product" value={productId ?? ""} onChange={setProductId} groups={productGroups(products)} />
 
       <div className="tabular text-center text-5xl font-bold">
         {bags || "0"}
