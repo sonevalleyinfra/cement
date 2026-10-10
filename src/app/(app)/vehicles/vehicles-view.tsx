@@ -41,6 +41,7 @@ export function VehiclesView({ rows, canEdit }: { rows: Row[]; canEdit: boolean 
 
   return (
     <>
+      {error && !open && <p className="text-sm text-destructive">{error}</p>}
       {rows.length === 0 ? (
         <EmptyState title="No vehicles" />
       ) : (
@@ -71,7 +72,13 @@ export function VehiclesView({ rows, canEdit }: { rows: Row[]; canEdit: boolean 
                          
                           variant="ghost"
                           disabled={pending}
-                          onClick={() => start(async () => void (await setVehicleActive(r.id, !r.active)))}
+                          onClick={() =>
+                            start(async () => {
+                              setError("");
+                              const res = await setVehicleActive(r.id, !r.active);
+                              if (!res.ok) setError(res.error);
+                            })
+                          }
                         >
                           {r.active ? "Turn off" : "Turn on"}
                         </Button>
@@ -89,7 +96,14 @@ export function VehiclesView({ rows, canEdit }: { rows: Row[]; canEdit: boolean 
           <Button onClick={() => openSheet(null)}>Add</Button>
         </PinnedAction>
       )}
-      <Sheet open={open} onOpenChange={setOpen} title={editing ? "Edit vehicle" : "New vehicle"}>
+      <Sheet
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) setError("");
+        }}
+        title={editing ? "Edit vehicle" : "New vehicle"}
+      >
         <form key={editing?.id ?? "new"} onSubmit={submit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="number">Vehicle number</Label>

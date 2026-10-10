@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { EmptyState } from "@/components/app/empty-state";
@@ -8,7 +9,7 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { remainingBags } from "@/lib/order-rules";
-import { createGodown, dispatchOrder, markDelivered } from "./actions";
+import { dispatchOrder, markDelivered } from "./actions";
 
 type OrderRow = {
   id: string;
@@ -29,7 +30,6 @@ type Balance = { productId: string; locationId: string; bags: number };
 const selectClass = "h-11 w-full rounded-xl border bg-background px-3 text-base";
 
 export function DispatchView({
-  firmId,
   isAdmin,
   orders,
   locations,
@@ -53,7 +53,6 @@ export function DispatchView({
   const [driverPhone, setDriverPhone] = useState("");
   const [rate, setRate] = useState("");
   const [reason, setReason] = useState("");
-  const [godown, setGodown] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
@@ -61,7 +60,9 @@ export function DispatchView({
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
     setVehicleId("");
-    setLocationId(locations[0]?.id ?? "");
+    // Start with the place holding the most bags of this product.
+    const fullest = [...locations].sort((a, b) => stockHere(o, b.id) - stockHere(o, a.id))[0];
+    setLocationId(fullest?.id ?? "");
     setDriverName("");
     setDriverPhone("");
     setRate("");
@@ -110,36 +111,15 @@ export function DispatchView({
     });
   }
 
-  function addGodown() {
-    start(async () => {
-      const res = await createGodown(firmId, godown);
-      if (res.ok) {
-        setGodown("");
-        router.refresh();
-      } else setError(res.error);
-    });
-  }
-
   return (
     <div className="flex flex-col gap-3">
       {locations.length === 0 && (
-        <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-          <p className="text-sm">
-            This firm has no godown yet, so nothing can be dispatched.{" "}
-            {isAdmin ? "Add one:" : "Ask admin to add a godown."}
-          </p>
+        <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+          <p className="text-sm font-medium">No stock yet</p>
           {isAdmin && (
-            <div className="flex gap-2">
-              <Input
-                value={godown}
-                onChange={(e) => setGodown(e.target.value)}
-                placeholder="Godown name"
-                aria-label="Godown name"
-              />
-              <Button onClick={addGodown} disabled={pending}>
-                Add
-              </Button>
-            </div>
+            <Link href="/stock/purchase" className="text-sm font-semibold underline">
+              Add stock
+            </Link>
           )}
         </div>
       )}

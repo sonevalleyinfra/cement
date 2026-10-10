@@ -124,6 +124,12 @@ export function CatalogueView({
     });
   }
 
+  function close(isOpen: boolean) {
+    if (isOpen) return;
+    setSheet(null);
+    setError("");
+  }
+
   function open(which: NonNullable<typeof sheet>) {
     setError("");
     setSheet(which);
@@ -230,7 +236,7 @@ export function CatalogueView({
         <Button onClick={() => open(addSheet)}>{addLabel}</Button>
       </PinnedAction>
 
-      <Sheet open={sheet === "product"} onOpenChange={(o) => !o && setSheet(null)} title="New product">
+      <Sheet open={sheet === "product"} onOpenChange={close} title="New product">
         <div className="flex flex-col gap-4">
           <SelectField
             label="Brand"
@@ -279,7 +285,7 @@ export function CatalogueView({
 
       <Sheet
         open={sheet === "brand" || sheet === "type" || sheet === "grade"}
-        onOpenChange={(o) => !o && setSheet(null)}
+        onOpenChange={close}
         title={sheet === "brand" ? "New brand" : sheet === "type" ? "New type" : "New grade"}
       >
         <form key={sheet ?? "none"} onSubmit={submitText} className="flex flex-col gap-4">

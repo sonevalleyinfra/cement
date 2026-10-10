@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
-import { dispatches, orders, products, retailers, stockLocations, user as users, vehicles } from "@/db/schema";
+import { dispatches, orders, products, retailers, user as users, vehicles } from "@/db/schema";
 import { ordersUserMayDispatch } from "@/lib/dispatch-rules";
 import { firmPeople } from "@/lib/logistics";
 import { getBalances } from "@/lib/stock";
@@ -17,7 +17,7 @@ export default async function DispatchPage() {
   if (selection.mode === "all") return <EmptyState title="Pick one firm to dispatch" />;
   const firmId = selection.firmId;
 
-  const [rows, locations, vehicleRows, balances, people] = await Promise.all([
+  const [rows, vehicleRows, balances, people] = await Promise.all([
     db
       .select({
         id: orders.id,
@@ -44,11 +44,19 @@ export default async function DispatchPage() {
       )
       .orderBy(asc(orders.createdAt))
       .limit(100),
-    db.select().from(stockLocations).where(eq(stockLocations.firmId, firmId)).orderBy(asc(stockLocations.name)),
     db.select().from(vehicles).orderBy(asc(vehicles.number)),
     getBalances(firmId),
     firmPeople(db, [firmId]),
   ]);
+  // Places this firm has stock history at (godown or vehicle still switched on), godowns first.
+  const locations = [
+    ...new Map(
+      balances
+        .filter((b) => b.placeActive)
+        .sort((a, b) => a.kind.localeCompare(b.kind) || a.locationName.localeCompare(b.locationName))
+        .map((b) => [b.locationId, { id: b.locationId, name: b.kind === "vehicle" ? `Vehicle ${b.locationName}` : b.locationName }]),
+    ).values(),
+  ];
   // Only the orders this person may dispatch: their own, unassigned, or orphaned (admin: all).
   const mine = ordersUserMayDispatch({ id: user.id, role: user.role }, rows, people);
 
@@ -67,7 +75,7 @@ export default async function DispatchPage() {
         status: r.status,
         assignee: r.assignee,
       }))}
-      locations={locations.filter((l) => l.active).map((l) => ({ id: l.id, name: l.name }))}
+      locations={locations}
       vehicles={vehicleRows
         .filter((v) => v.active)
         .map((v) => ({ id: v.id, number: v.number, driverName: v.driverName, driverPhone: v.driverPhone }))}

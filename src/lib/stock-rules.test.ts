@@ -5,11 +5,14 @@ import {
   canSetOpening,
   cleanLocationName,
   canDispatch,
+  canSwitchOffPlace,
   dispatchMovement,
   firmProductTotal,
   inMovement,
+  parsePlaceKey,
+  placeGroups,
+  placeKey,
   MAX_STOCK_ENTRY_BAGS,
-  checkTransferPlaces,
   transferMovements,
   type Movement,
   type StockKey,
@@ -129,19 +132,6 @@ describe("transferMovements", () => {
   });
 });
 
-describe("checkTransferPlaces", () => {
-  const ok = { firmId: "A", active: true };
-  it("accepts two active places of the firm", () => {
-    expect(checkTransferPlaces("A", ok, ok).ok).toBe(true);
-  });
-  it("refuses a missing, inactive or other-firm place", () => {
-    expect(checkTransferPlaces("A", undefined, ok).ok).toBe(false);
-    expect(checkTransferPlaces("A", ok, undefined).ok).toBe(false);
-    expect(checkTransferPlaces("A", ok, { firmId: "A", active: false }).ok).toBe(false);
-    expect(checkTransferPlaces("A", { firmId: "B", active: true }, ok).ok).toBe(false);
-  });
-});
-
 describe("inMovement", () => {
   it("adds positive whole bags", () => {
     expect(inMovement("purchase", A, 10).ok).toBe(true);
@@ -169,4 +159,41 @@ describe("canSetOpening", () => {
 describe("cleanLocationName", () => {
   it("tidies spaces", () => expect(cleanLocationName("  Main   godown ")).toBe("Main godown"));
   it("rejects empty", () => expect(cleanLocationName("   ")).toBeNull());
+});
+
+describe("place keys", () => {
+  const id = "0b9c7f2e-1d4a-4c3b-9a8e-123456789abc";
+  it("round-trips a godown and a vehicle", () => {
+    expect(parsePlaceKey(placeKey({ kind: "godown", id }))).toEqual({ kind: "godown", id });
+    expect(parsePlaceKey(placeKey({ kind: "vehicle", id }))).toEqual({ kind: "vehicle", id });
+  });
+  it("refuses anything else", () => {
+    expect(parsePlaceKey(`shop:${id}`)).toBeNull();
+    expect(parsePlaceKey("godown:not-a-uuid")).toBeNull();
+    expect(parsePlaceKey(`godown:${id}:x`)).toBeNull();
+    expect(parsePlaceKey(id)).toBeNull();
+    expect(parsePlaceKey(42)).toBeNull();
+  });
+});
+
+describe("canSwitchOffPlace", () => {
+  it("refuses while any firm has bags there", () => {
+    expect(canSwitchOffPlace(1)).toEqual({ ok: false, error: "Move the bags out first." });
+    expect(canSwitchOffPlace(0)).toEqual({ ok: true });
+  });
+});
+
+describe("placeGroups", () => {
+  it("puts godowns first and drops empty sections", () => {
+    expect(
+      placeGroups([
+        { key: "vehicle:1", kind: "vehicle", name: "BR01AB1234" },
+        { key: "godown:2", kind: "godown", name: "Main Godown" },
+      ]),
+    ).toEqual([
+      { label: "Godowns", options: [{ value: "godown:2", label: "Main Godown" }] },
+      { label: "Vehicles", options: [{ value: "vehicle:1", label: "BR01AB1234" }] },
+    ]);
+    expect(placeGroups([{ key: "godown:2", kind: "godown", name: "Main Godown" }])).toHaveLength(1);
+  });
 });

@@ -17,6 +17,7 @@ import {
   receiptAllocations,
   receipts,
   retailers,
+  godowns,
   stockLocations,
   stockMovements,
   user,
@@ -105,12 +106,13 @@ async function main() {
     ])
     .returning();
 
-  // One godown per firm with opening stock (500 bags of each product).
+  // One shared godown; each firm gets its own stock row there with opening stock (500 bags of each product).
+  const [godown] = await db.insert(godowns).values({ name: "Main Godown" }).returning({ id: godowns.id, name: godowns.name });
   const godownByFirm: Record<string, string> = {};
   for (const f of firmRows) {
     const [loc] = await db
       .insert(stockLocations)
-      .values({ firmId: f.id, kind: "godown", name: "Main Godown" })
+      .values({ firmId: f.id, kind: "godown", name: godown.name, godownId: godown.id })
       .returning({ id: stockLocations.id });
     godownByFirm[f.id] = loc.id;
     await db.insert(stockMovements).values(

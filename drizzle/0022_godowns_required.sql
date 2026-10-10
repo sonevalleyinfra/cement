@@ -1,0 +1,3 @@
+CREATE UNIQUE INDEX "stock_locations_firm_godown_unique" ON "stock_locations" USING btree ("firm_id","godown_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "stock_locations_firm_vehicle_unique" ON "stock_locations" USING btree ("firm_id","vehicle_id");--> statement-breakpoint
+ALTER TABLE "stock_locations" ADD CONSTRAINT "stock_locations_one_place" CHECK (("stock_locations"."kind" = 'godown' and "stock_locations"."godown_id" is not null and "stock_locations"."vehicle_id" is null) or ("stock_locations"."kind" = 'vehicle' and "stock_locations"."vehicle_id" is not null and "stock_locations"."godown_id" is null));

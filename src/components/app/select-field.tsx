@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 export type SelectOption = { value: string; label: string };
@@ -32,10 +33,14 @@ export function SelectField({
       {o.label}
     </option>
   );
+  const id = useId();
   return (
-    <label className={cn("flex flex-col gap-1 text-sm font-medium", className)}>
-      {label}
+    <div className={cn("flex flex-col gap-1", className)}>
+      <label htmlFor={id} className="text-sm font-medium">
+        {label}
+      </label>
       <select
+        id={id}
         className="h-12 w-full rounded-xl border bg-background px-3 text-base font-normal disabled:opacity-60"
         value={value}
         disabled={disabled}
@@ -55,6 +60,6 @@ export function SelectField({
             </optgroup>
           ))}
       </select>
-    </label>
+    </div>
   );
 }
