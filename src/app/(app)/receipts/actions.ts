@@ -131,6 +131,17 @@ export async function saveReceipt(input: {
           actorId: session.user.id,
         });
       }
+      if (input.mode === "cash") {
+        // Admins hear about every cash payment (spec section 8); the person who recorded it is never told.
+        await notifyMoney(tx, {
+          event: "cash_recorded",
+          retailerName: retailer.name,
+          amountPaise: input.totalPaise,
+          actorId: session.user.id,
+          collectorId: session.user.id,
+          link: `/receipts/${receipt.id}`,
+        });
+      }
       if (plan.status === "unverified") {
         await notifyMoney(tx, {
           event: "online_recorded",

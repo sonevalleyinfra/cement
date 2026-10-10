@@ -33,7 +33,7 @@ export async function insertNotifications(
 }
 
 /**
- * Saves notifications for a money event (see MONEY_EVENTS). Loads the accounts people itself;
+ * Saves notifications for a money event (see MONEY_EVENTS). Loads the accounts people and admins itself;
  * `collectorId` is the staff member the event is about.
  */
 export async function notifyMoney(
@@ -41,8 +41,10 @@ export async function notifyMoney(
   input: Omit<MoneyNotificationInput, "people"> & { collectorId?: string | null },
 ): Promise<void> {
   const { collectorId = null, ...rest } = input;
-  const accountsIds = (await activePeople(tx)).filter((p) => hasRole(p.role, "accounts")).map((p) => p.id);
-  const drafts = buildMoneyNotifications({ ...rest, people: { accountsIds, collectorId } });
+  const people = await activePeople(tx);
+  const accountsIds = people.filter((p) => hasRole(p.role, "accounts")).map((p) => p.id);
+  const adminIds = people.filter((p) => isAdmin(p.role)).map((p) => p.id);
+  const drafts = buildMoneyNotifications({ ...rest, people: { accountsIds, adminIds, collectorId } });
   await insertNotifications(tx, drafts);
 }
 

@@ -107,7 +107,7 @@ describe("buildNotifications", () => {
 });
 
 describe("money notifications", () => {
-  const people = { accountsIds: ["acc1", "acc2"], collectorId: "col" };
+  const people = { accountsIds: ["acc1", "acc2"], adminIds: ["adm1", "adm2"], collectorId: "col" };
   const base = {
     retailerName: "Raju Stores",
     amountPaise: 500000,
@@ -119,6 +119,19 @@ describe("money notifications", () => {
     for (const event of ["online_recorded", "handover_requested"] as const) {
       expect(moneyRecipientIds(event, people, "col")).toEqual(["acc1", "acc2"]);
     }
+  });
+  it("a cash payment goes to every admin only (never accounts, the collector or a retailer)", () => {
+    expect(moneyRecipientIds("cash_recorded", people, "col")).toEqual(["adm1", "adm2"]);
+  });
+  it("an admin who records cash is not told about it", () => {
+    expect(moneyRecipientIds("cash_recorded", people, "adm1")).toEqual(["adm2"]);
+    expect(moneyRecipientIds("cash_recorded", { ...people, adminIds: ["adm1"] }, "adm1")).toEqual([]);
+  });
+  it("cash recorded: shop name and amount, opens the payment", () => {
+    expect(buildMoneyNotifications({ ...base, event: "cash_recorded", link: "/receipts/r9" })).toEqual([
+      { userId: "adm1", type: "cash_recorded", title: "Cash payment", body: "₹5,000.00 cash from Raju Stores.", link: "/receipts/r9" },
+      { userId: "adm2", type: "cash_recorded", title: "Cash payment", body: "₹5,000.00 cash from Raju Stores.", link: "/receipts/r9" },
+    ]);
   });
   it("an accounts person who records a payment is not told about it", () => {
     expect(moneyRecipientIds("online_recorded", people, "acc1")).toEqual(["acc2"]);
@@ -137,7 +150,7 @@ describe("money notifications", () => {
     }
   });
   it("nobody is told twice", () => {
-    expect(moneyRecipientIds("online_recorded", { accountsIds: ["a", "a", "b"], collectorId: null }, null)).toEqual([
+    expect(moneyRecipientIds("online_recorded", { accountsIds: ["a", "a", "b"], adminIds: [], collectorId: null }, null)).toEqual([
       "a",
       "b",
     ]);

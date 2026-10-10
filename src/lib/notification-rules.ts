@@ -15,7 +15,7 @@
  * - Online payment recorded and cash handover request: accounts.
  * - Handover confirmed / partly confirmed / rejected: the staff member who handed over.
  * - Online verified / rejected and payment reversed: the staff member who recorded the payment.
- * - A cash payment tells nobody (its dues change at once and the cash shows as held).
+ * - Cash payment recorded: every admin (spec section 8), so the owner sees cash coming in.
  * Rules: the person who did the action is never told about their own action; nobody
  * gets the same notification twice; ORDER messages never contain a price (retailers also read these).
  * Money messages go to staff only, so they may show the amount.
@@ -50,6 +50,7 @@ export type OrderPeople = {
 
 /** Money events: not about one order, staff only. */
 export const MONEY_EVENTS = [
+  "cash_recorded",
   "online_recorded",
   "online_verified",
   "online_rejected",
@@ -140,16 +141,27 @@ export function buildNotifications(input: {
   }));
 }
 
-/** Events that go to accounts; every other money event goes to the staff member it is about. */
+/** Events that go to accounts. A cash payment goes to admins; every other money event goes to the staff member it is about. */
 const TO_ACCOUNTS: readonly MoneyEvent[] = ["online_recorded", "handover_requested"];
 
+/** The people a money event may go to (all staff, never a retailer). */
+export type MoneyPeople = {
+  /** Accounts people (not banned). */
+  accountsIds: readonly string[];
+  /** Admins (not banned). */
+  adminIds: readonly string[];
+  /** The staff member the event is about (who recorded the payment / handed over the cash). */
+  collectorId: string | null;
+};
+
 /** Who is told about a money event. */
-export function moneyRecipientIds(
-  event: MoneyEvent,
-  people: { accountsIds: readonly string[]; collectorId: string | null },
-  actorId: string | null,
-): string[] {
-  const list = TO_ACCOUNTS.includes(event) ? people.accountsIds : [people.collectorId];
+export function moneyRecipientIds(event: MoneyEvent, people: MoneyPeople, actorId: string | null): string[] {
+  const list =
+    event === "cash_recorded"
+      ? people.adminIds
+      : TO_ACCOUNTS.includes(event)
+        ? people.accountsIds
+        : [people.collectorId];
   return uniqueRecipients(list, actorId);
 }
 
@@ -162,6 +174,7 @@ export function defaultMoneyLink(event: MoneyEvent): string {
 type MoneyText = { amount: string; from: string; of: string };
 
 const MONEY_MESSAGES: Record<MoneyEvent, (t: MoneyText) => { title: string; body: string }> = {
+  cash_recorded: (t) => ({ title: "Cash payment", body: `${t.amount} cash${t.from}.` }),
   online_recorded: (t) => ({ title: "Online payment to verify", body: `${t.amount}${t.from}.` }),
   online_verified: (t) => ({ title: "Online payment verified", body: `${t.amount}${t.from} verified.` }),
   online_rejected: (t) => ({ title: "Online payment rejected", body: `${t.amount}${t.from} rejected.` }),
@@ -182,7 +195,7 @@ export type MoneyNotificationInput = {
   amountPaise: number;
   /** For a handover confirmed in part: the amount that was asked for. */
   requestedPaise?: number | null;
-  people: { accountsIds: readonly string[]; collectorId: string | null };
+  people: MoneyPeople;
   actorId: string | null;
   /** Internal path to open, e.g. "/receipts/<id>". Default: see defaultMoneyLink. */
   link?: string | null;

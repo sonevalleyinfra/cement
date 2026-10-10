@@ -76,7 +76,7 @@ opening balance, **purchase** (+ bags × cost per bag, also adds stock), **payme
 
 Order placed → its sales person (if rate missing) and accounts. Approved / rejected → placer, sales person.
 Approved → logistics. Dispatched → retailer, sales person. Rate changed → accounts, sales person, admin.
-Online payment recorded → accounts. Cash handover request → accounts. Handover confirmed / payment verified → the staff member.
+Cash payment recorded → admin. Online payment recorded → accounts. Cash handover request → accounts. Handover confirmed / payment verified → the staff member.
 
 ## 9. Reports (admin), date range filter
 
