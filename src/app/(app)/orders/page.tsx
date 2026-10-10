@@ -112,7 +112,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                       )}
                     </div>
                     {showPrice && valueOf(o) !== null && (
-                      <div className="tabular text-lg font-semibold">{formatINR(valueOf(o) ?? 0)}</div>
+                      <div className="tabular text-lg font-semibold">{formatINR(valueOf(o) ?? 0, { hidePaise: true })}</div>
                     )}
                   </>
                 }

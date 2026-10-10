@@ -7,7 +7,7 @@ import { retailers, user as users } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
-import { withRunningBalance } from "@/lib/ledger-rules";
+import { newestFirstWithBalance } from "@/lib/ledger-rules";
 import { balanceLine, ledgerRowsForViewer } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
@@ -35,8 +35,9 @@ export default async function RetailerLedgerPage({
   const actors = new Map(
     (await db.select({ id: users.id, name: users.name }).from(users)).map((u) => [u.id, u.name]),
   );
-  const withBalance = withRunningBalance(rows);
-  const balance = withBalance.at(-1)?.balancePaise ?? 0;
+  // Newest first (same as the supplier account); each row keeps its balance-after.
+  const withBalance = newestFirstWithBalance(rows);
+  const balance = withBalance[0]?.balancePaise ?? 0;
   // A shop's own login sees no dispatch amounts and no running balance (owner's rule, ledger-view-rules).
   const entries = ledgerRowsForViewer(user.role, withBalance);
   const hasOpening = rows.some((r) => r.kind === "opening");

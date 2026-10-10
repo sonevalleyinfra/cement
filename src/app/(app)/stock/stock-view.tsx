@@ -18,6 +18,7 @@ import {
   type StockProduct,
   type StockRow,
 } from "@/lib/stock-view-rules";
+import { formatCount } from "@/lib/words";
 
 type View = "product" | "place";
 
@@ -27,7 +28,7 @@ function Line({ label, bags }: { label: string; bags: number }) {
   return (
     <div className="flex justify-between gap-3 text-sm">
       <span>{label}</span>
-      <span className="tabular font-semibold">{bags}</span>
+      <span className="tabular font-semibold">{formatCount(bags)}</span>
     </div>
   );
 }
@@ -85,7 +86,7 @@ export function StockView({ products, rows }: { products: StockProduct[]; rows: 
         />
       </div>
       <div className={`${cardClass} grid grid-cols-2`}>
-        <Stat label="Bags" value={String(total.bags)} />
+        <Stat label="Bags" value={formatCount(total.bags)} />
         <Stat label="Weight" value={formatTonnes(total.kg)} />
       </div>
 
@@ -98,7 +99,7 @@ export function StockView({ products, rows }: { products: StockProduct[]; rows: 
             {s.items.map((i) => (
               <li key={i.product.id} className={cardClass}>
                 <div className="flex items-end justify-between gap-3">
-                  <Stat label={i.product.name} value={`${i.bags} bags`} />
+                  <Stat label={i.product.name} value={`${formatCount(i.bags)} bags`} />
                   <span className="tabular text-sm text-muted-foreground">{formatTonnes(i.kg)}</span>
                 </div>
                 {i.places.map((p) => (
@@ -115,7 +116,7 @@ export function StockView({ products, rows }: { products: StockProduct[]; rows: 
           {byPlace.map((c) => (
             <li key={c.key} className={cardClass}>
               <div className="flex items-end justify-between gap-3">
-                <Stat label={placeLabel(c.kind, c.name)} value={`${c.bags} bags`} />
+                <Stat label={placeLabel(c.kind, c.name)} value={`${formatCount(c.bags)} bags`} />
                 <span className="tabular text-sm text-muted-foreground">{formatTonnes(c.kg)}</span>
               </div>
               {c.lines.map((l) => (

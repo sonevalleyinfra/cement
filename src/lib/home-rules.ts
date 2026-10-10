@@ -108,10 +108,18 @@ export function truckLoads(
     .sort((a, b) => a.truck.localeCompare(b.truck));
 }
 
-/** Admin home: switched-on shops that have no sales person (their orders would otherwise wait on nobody). */
-export function shopsWithoutSalesRep(shops: readonly { active: boolean; salesRepId: string | null }[]): number {
-  return shops.filter((s) => s.active && !s.salesRepId).length;
+/** A switched-on shop with no sales person (its orders would otherwise wait on nobody). */
+export function needsSalesRep(shop: { active: boolean; salesRepId: string | null }): boolean {
+  return shop.active && !shop.salesRepId;
 }
+
+/** Admin home: how many shops need a sales person. Tapping it opens `/retailers?filter=no-rep` (only those shops). */
+export function shopsWithoutSalesRep(shops: readonly { active: boolean; salesRepId: string | null }[]): number {
+  return shops.filter(needsSalesRep).length;
+}
+
+/** The Retailers page filter in the address that shows only the shops counted above. */
+export const NO_REP_FILTER = "no-rep";
 
 /** Payments that still stand: a rejected or reversed one is not a payment the shop made. */
 export const LAST_PAYMENT_SKIPS = ["rejected", "reversed"] as const;

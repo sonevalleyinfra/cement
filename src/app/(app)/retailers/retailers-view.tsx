@@ -7,6 +7,7 @@ import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
+import { TextLink } from "@/components/app/text-link";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ export function RetailersView({
   canEdit,
   logins,
   salesReps,
+  onlyNoRep = false,
 }: {
   rows: Row[];
   /** Admin: add, edit and turn off shops. */
@@ -42,6 +44,8 @@ export function RetailersView({
   logins: Login[] | null;
   /** Sales people admin may pick; null = this viewer cannot change it. */
   salesReps: Login[] | null;
+  /** Only the shops that need a sales person are listed (`?filter=no-rep`, from Home). */
+  onlyNoRep?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -51,7 +55,10 @@ export function RetailersView({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Retailers</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-xl font-bold">Retailers</h1>
+        {onlyNoRep && <TextLink href="/retailers">All retailers</TextLink>}
+      </div>
       {rows.length > 0 && (
         <Input
           type="search"
@@ -63,7 +70,7 @@ export function RetailersView({
         />
       )}
       {rows.length === 0 ? (
-        <EmptyState title="No retailers" />
+        <EmptyState title={onlyNoRep ? "None left" : "No retailers"} />
       ) : shown.length === 0 ? (
         <EmptyState title="No match" />
       ) : (

@@ -29,6 +29,7 @@ import {
   getSalesHome,
 } from "@/lib/home-stats";
 import { formatDate, toISTDateKey } from "@/lib/datetime";
+import { NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR } from "@/lib/money";
 import { supplierHomeLines } from "@/lib/supplier-rules";
 import { cn } from "@/lib/utils";
@@ -179,7 +180,7 @@ export async function AdminHome() {
       {s.shopsWithoutSalesRep > 0 && (
         <Card
           index={8}
-          href="/retailers"
+          href={`/retailers?filter=${NO_REP_FILTER}`}
           title="Shops"
           icon={Store}
           tone="rose"

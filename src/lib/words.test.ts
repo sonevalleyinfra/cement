@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bagsText, emptyListTitle, isAre, roleLabel, roleLabels } from "./words";
+import { bagsText, emptyListTitle, formatCount, isAre, roleLabel, roleLabels } from "./words";
 
 describe("bagsText / isAre", () => {
   it("uses the singular for exactly one bag", () => {
@@ -28,5 +28,14 @@ describe("emptyListTitle", () => {
     expect(emptyListTitle({ dates: true, other: false })).toBe("Nothing in these dates");
     expect(emptyListTitle({ dates: false, other: true })).toBe("Nothing for these filters");
     expect(emptyListTitle({ dates: true, other: true })).toBe("Nothing for these filters");
+  });
+});
+
+describe("formatCount", () => {
+  it("groups the Indian way", () => {
+    expect(formatCount(8350)).toBe("8,350");
+    expect(formatCount(125000)).toBe("1,25,000");
+    expect(formatCount(950)).toBe("950");
+    expect(formatCount(-1200)).toBe("-1,200");
   });
 });

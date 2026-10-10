@@ -1,15 +1,22 @@
 import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { retailers, user as users } from "@/db/schema";
+import { NO_REP_FILTER, needsSalesRep } from "@/lib/home-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { pickableRetailerLogins } from "@/lib/retailer-rules";
 import { pickableSalesReps } from "@/lib/sales-rep-rules";
 import { requireRole } from "@/lib/session";
 import { RetailersView } from "./retailers-view";
 
-export default async function RetailersPage() {
+export default async function RetailersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Retailer phones are internal: staff only (a retailer would see every other shop).
   const { user } = await requireRole(...rolesFor("viewRetailers"));
+  // `?filter=no-rep` (from Home): only the switched-on shops that still need a sales person.
+  const onlyNoRep = (await searchParams).filter === NO_REP_FILTER;
   const [rows, people] = await Promise.all([
     db
       .select({
@@ -39,7 +46,7 @@ export default async function RetailersPage() {
   // Only admin adds, edits and turns off shops, picks their sales person and links a login.
   const canEdit = can(user.role, "editRetailers");
   const names = new Map(people.map((u) => [u.id, u.name]));
-  const shown = rows.map((r) => ({
+  const shown = rows.filter((r) => !onlyNoRep || needsSalesRep(r)).map((r) => ({
     ...r,
     salesRepName: r.salesRepId ? (names.get(r.salesRepId) ?? "") : "",
     loginName: r.userId ? (names.get(r.userId) ?? "") : "",
@@ -54,5 +61,7 @@ export default async function RetailersPage() {
   const salesReps = can(user.role, "assignSalesRep")
     ? pickableSalesReps(people).map((u) => ({ id: u.id, label: u.name }))
     : null;
-  return <RetailersView rows={shown} canEdit={canEdit} logins={logins} salesReps={salesReps} />;
+  return (
+    <RetailersView rows={shown} canEdit={canEdit} logins={logins} salesReps={salesReps} onlyNoRep={onlyNoRep} />
+  );
 }

@@ -121,7 +121,9 @@ export function StockForm({
       (res) => {
         if (res.ok) {
           setDone(copy[mode].done);
+          // A fresh form: amount empty and (adjust) back to "Add bags", so it never shows "-0 bags".
           setDigits("");
+          setMinus(false);
           setNote("");
           setReason(null);
           setCostText("");

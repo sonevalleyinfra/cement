@@ -6,6 +6,7 @@ import {
   dispatchEntry,
   duesFrom,
   MAX_OPENING_PAISE,
+  newestFirstWithBalance,
   openingEntry,
   orderDebitPaise,
   sumPaise,
@@ -144,5 +145,24 @@ describe("adjustmentEntry", () => {
     for (const n of [0, 1.5, Number.NaN, MAX_OPENING_PAISE + 1, -MAX_OPENING_PAISE - 1]) {
       expect(adjustmentEntry("R", n, "x").ok).toBe(false);
     }
+  });
+});
+
+describe("newestFirstWithBalance", () => {
+  it("shows the newest row first, each with its own balance after it", () => {
+    const rows = [
+      { id: "a", amountPaise: 100 },
+      { id: "b", amountPaise: -30 },
+      { id: "c", amountPaise: 50 },
+    ];
+    expect(newestFirstWithBalance(rows)).toEqual([
+      { id: "c", amountPaise: 50, balancePaise: 120 },
+      { id: "b", amountPaise: -30, balancePaise: 70 },
+      { id: "a", amountPaise: 100, balancePaise: 100 },
+    ]);
+  });
+  it("the top row's balance is the balance now; empty stays empty", () => {
+    expect(newestFirstWithBalance([{ amountPaise: 5 }, { amountPaise: 7 }])[0].balancePaise).toBe(12);
+    expect(newestFirstWithBalance([])).toEqual([]);
   });
 });

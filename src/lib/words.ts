@@ -1,7 +1,15 @@
 /**
  * Small wording helpers, as plain functions so the grammar is tested.
  */
+import { LOCALE } from "./locale";
 import { parseRoles } from "./roles";
+
+const countFormatter = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
+
+/** A count with Indian grouping: 8350 → "8,350", 125000 → "1,25,000". */
+export function formatCount(n: number): string {
+  return countFormatter.format(n);
+}
 
 /** "1 bag" / "50 bags". */
 export function bagsText(n: number): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   LAST_PAYMENT_SKIPS,
+  needsSalesRep,
   shopsWithoutSalesRep,
   truckLoads,
   cashInHandPaise,
@@ -129,6 +130,15 @@ describe("shopsWithoutSalesRep", () => {
         { active: true, salesRepId: "" },
       ]),
     ).toBe(2);
+  });
+  it("the Retailers filter from Home lists exactly the shops counted", () => {
+    const shops = [
+      { id: "a", active: true, salesRepId: null },
+      { id: "b", active: true, salesRepId: "s1" },
+      { id: "c", active: false, salesRepId: null },
+    ];
+    expect(shops.filter(needsSalesRep).map((s) => s.id)).toEqual(["a"]);
+    expect(shops.filter(needsSalesRep)).toHaveLength(shopsWithoutSalesRep(shops));
   });
 });
 

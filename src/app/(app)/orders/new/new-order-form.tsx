@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { RateField } from "@/components/app/rate-field";
@@ -10,6 +11,7 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { productGroups } from "@/lib/catalogue-rules";
+import { firstMissing } from "@/lib/form-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
@@ -45,6 +47,8 @@ export function NewOrderForm({
   const shown = q
     ? retailers.filter((r) => `${r.name} ${r.place}`.toLowerCase().includes(q))
     : retailers;
+
+  const hint = firstMissing([[Number(bags || 0) <= 0, "Enter the bags"]]);
 
   function submit() {
     clearError();
@@ -94,7 +98,8 @@ export function NewOrderForm({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       <PinnedAction>
-        <Button onClick={submit} disabled={pending}>
+        <FormHint>{hint}</FormHint>
+        <Button onClick={submit} disabled={pending || hint !== null}>
           Place order
         </Button>
       </PinnedAction>

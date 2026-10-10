@@ -42,6 +42,17 @@ export function withRunningBalance<T extends { amountPaise: number }>(
   });
 }
 
+/**
+ * For the ledger screens: the balance after each entry is worked out oldest first (given in that
+ * order), then the list is shown newest first, like the supplier account. Each row keeps its own
+ * balance-after, so the top row's balance is the balance now.
+ */
+export function newestFirstWithBalance<T extends { amountPaise: number }>(
+  oldestFirst: readonly T[],
+): (T & { balancePaise: number })[] {
+  return withRunningBalance(oldestFirst).reverse();
+}
+
 export function sumPaise(entries: readonly { amountPaise: number }[]): number {
   return entries.reduce((n, e) => n + e.amountPaise, 0);
 }

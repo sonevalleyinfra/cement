@@ -42,6 +42,8 @@ export function WalletView({
   const [reason, setReason] = useState("");
   // Handing cash over asks "are you sure?" first (confirming = that question is on screen).
   const [confirming, setConfirming] = useState(false);
+  // Rejecting a handover asks "are you sure?" first too.
+  const [rejecting, setRejecting] = useState(false);
   const { error, setError, clearError } = useFormError([handOpen, amount, answering?.id, received, reason]);
   const [pending, start] = useTransition();
   const handover = useSubmit();
@@ -81,6 +83,7 @@ export function WalletView({
         answering.id,
         action === "confirm" ? { action, amountPaise: receivedPaise ?? 0 } : { action, reason },
       );
+      setRejecting(false);
       if (res.ok) {
         clearError();
         setAnswering(null);
@@ -143,6 +146,7 @@ export function WalletView({
                               clearError();
                               setReceived(rupees(r.amountPaise));
                               setReason("");
+                              setRejecting(false);
                               setAnswering(r);
                             }}
                           >
@@ -224,12 +228,31 @@ export function WalletView({
             <Label htmlFor="reject-reason">Reason</Label>
             <Input id="reject-reason" maxLength={MAX_REASON} value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
-          <div>
-            <FormHint>{rejectHint}</FormHint>
-            <Button className="w-full" variant="outline" disabled={pending || rejectHint !== null} onClick={() => answer("reject")}>
-              Reject
-            </Button>
-          </div>
+          {rejecting && answering && rejectHint === null ? (
+            <ConfirmStep
+              question={`Reject ${formatINR(answering.amountPaise)} from ${answering.collector}?`}
+              confirmLabel="Reject"
+              destructive
+              pending={pending}
+              onBack={() => setRejecting(false)}
+              onConfirm={() => answer("reject")}
+            />
+          ) : (
+            <div>
+              <FormHint>{rejectHint}</FormHint>
+              <Button
+                className="w-full"
+                variant="outline"
+                disabled={pending || rejectHint !== null}
+                onClick={() => {
+                  clearError();
+                  setRejecting(true);
+                }}
+              >
+                Reject
+              </Button>
+            </div>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
       </Sheet>
