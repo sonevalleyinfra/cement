@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { AppShell } from "@/components/app/app-shell";
-import { FirmSwitcher } from "@/components/app/firm-switcher";
+import { AppShell, AppTitle } from "@/components/app/app-shell";
 import type { NavItem } from "@/components/app/bottom-nav";
 import { NotificationBell } from "@/components/app/notification-bell";
 import { can } from "@/lib/permissions";
@@ -23,7 +22,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const { user } = await requireUser();
   const nav = navFor(user.role);
   return (
-    <AppShell headerLeft={<FirmSwitcher />} headerRight={<NotificationBell />} nav={nav}>
+    <AppShell headerLeft={<AppTitle />} headerRight={<NotificationBell />} nav={nav}>
       {children}
     </AppShell>
   );

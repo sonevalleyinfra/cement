@@ -256,7 +256,7 @@ export function approvalStepAssignee(step: "approved" | "assigned", assigneeId: 
 }
 
 /**
- * Round robin's "last" for one firm: who approval's round robin picked most recently.
+ * Round robin's "last": who approval's round robin picked most recently.
  * Only rows with an assignee count (approval writes it); a dispatch take-over or an order
  * someone took at dispatch has none, so it does not move the turn. Null when there is none.
  */

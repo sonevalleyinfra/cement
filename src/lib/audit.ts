@@ -4,7 +4,7 @@ import type { DbOrTx } from "@/lib/ledger";
 /** One audit log row to write. */
 export type AuditEntry = {
   actorId: string;
-  /** Kind of record: "retailer", "vehicle", "firm", "user", "stock_location"... */
+  /** Kind of record: "retailer", "vehicle", "godown", "user", "product"... */
   entity: string;
   entityId: string;
   /** What happened: "create", "update", "activate", "deactivate", "link"... */

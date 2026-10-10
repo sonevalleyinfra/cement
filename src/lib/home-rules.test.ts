@@ -34,13 +34,14 @@ describe("istDayStart", () => {
 
 describe("dues totals", () => {
   const rows = [
-    { retailerId: "r1", firmId: "a", amountPaise: 500_00 },
-    { retailerId: "r1", firmId: "a", amountPaise: -200_00 },
-    { retailerId: "r1", firmId: "b", amountPaise: -900_00 },
-    { retailerId: "r2", firmId: "a", amountPaise: 100_00 },
-    { retailerId: "r3", firmId: "a", amountPaise: -50_00 },
+    { retailerId: "r1", amountPaise: 500_00 },
+    { retailerId: "r1", amountPaise: -200_00 },
+    { retailerId: "r2", amountPaise: 100_00 },
+    { retailerId: "r3", amountPaise: -50_00 },
+    { retailerId: "r4", amountPaise: 900_00 },
+    { retailerId: "r4", amountPaise: -1000_00 },
   ];
-  it("adds positive balances per retailer and firm only", () => {
+  it("adds positive balances per retailer only (an advance is not negative dues)", () => {
     expect(totalDuesPaise(rows)).toBe(300_00 + 100_00);
   });
   it("counts retailers that owe something", () => {

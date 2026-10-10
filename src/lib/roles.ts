@@ -44,15 +44,3 @@ export function hasAnyRole(
   if (isAdmin(role)) return true;
   return allowed.some((r) => hasRole(role, r));
 }
-
-/**
- * Whether a user may work on a firm. Admin may use any firm; everyone else only
- * the firms they were given access to (`user_firms`).
- */
-export function canAccessFirm(
-  role: string | null | undefined,
-  allowedFirmIds: readonly string[],
-  firmId: string,
-): boolean {
-  return isAdmin(role) || allowedFirmIds.includes(firmId);
-}

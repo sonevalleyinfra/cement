@@ -3,11 +3,11 @@ import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-o
 import { ORDER_STATUSES } from "../../lib/order-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
-import { firms, products } from "./firms";
+import { products } from "./catalogue";
 import { retailers } from "./retailers";
 
 /**
- * One order = one product for one retailer with one firm.
+ * One order = one product for one retailer.
  * `ratePaise` is the price per bag in paise; empty until sales fills the rate.
  * `salesRepId` is the retailer's sales person when the order was placed (see sales-rep-rules.ts).
  * `logisticsId` is the logistics person picked by round robin when the order was approved.
@@ -16,9 +16,6 @@ export const orders = pgTable(
   "orders",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
     retailerId: uuid("retailer_id")
       .notNull()
       .references(() => retailers.id),
@@ -38,7 +35,7 @@ export const orders = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    index("orders_firm_created_idx").on(t.firmId, t.createdAt),
+    index("orders_created_idx").on(t.createdAt),
     index("orders_retailer_idx").on(t.retailerId),
     // Safety rules the database itself enforces.
     check("orders_bags_positive", sql`${t.bags} > 0`),

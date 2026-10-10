@@ -1,6 +1,6 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { firms, notifications, orders, retailers, user, userFirms } from "@/db/schema";
+import { notifications, orders, retailers, user } from "@/db/schema";
 import type { DbOrTx } from "@/lib/ledger";
 import {
   buildMoneyNotifications,
@@ -14,25 +14,27 @@ import { hasRole, isAdmin } from "@/lib/roles";
 // Server-only helpers (do not import from a "use client" file). Pass the open
 // transaction `tx` so notifications are saved or lost together with the change.
 
-/** Ids of every admin who is not banned. */
-export async function activeAdminIds(conn: DbOrTx): Promise<string[]> {
-  const rows = await conn
+/** Everyone who is not banned, with their roles. */
+async function activePeople(conn: DbOrTx) {
+  return conn
     .select({ id: user.id, role: user.role })
     .from(user)
     .where(or(isNull(user.banned), eq(user.banned, false)));
-  return rows.filter((r) => isAdmin(r.role)).map((r) => r.id);
 }
 
-/** Saves ready-made drafts, one row each. `firmId` empty = the money spans several firms. */
+/** Ids of every admin who is not banned. */
+export async function activeAdminIds(conn: DbOrTx): Promise<string[]> {
+  return (await activePeople(conn)).filter((r) => isAdmin(r.role)).map((r) => r.id);
+}
+
+/** Saves ready-made drafts, one row each. */
 export async function insertNotifications(
   conn: DbOrTx,
   drafts: readonly NotificationDraft[],
-  where: { firmId: string | null; orderId?: string | null },
+  orderId: string | null = null,
 ): Promise<void> {
   if (drafts.length === 0) return;
-  await conn.insert(notifications).values(
-    drafts.map((d) => ({ ...d, firmId: where.firmId, orderId: where.orderId ?? null })),
-  );
+  await conn.insert(notifications).values(drafts.map((d) => ({ ...d, orderId })));
 }
 
 /**
@@ -41,12 +43,12 @@ export async function insertNotifications(
  */
 export async function notifyMoney(
   tx: DbOrTx,
-  input: Omit<MoneyNotificationInput, "people"> & { firmId: string | null; collectorId?: string | null },
+  input: Omit<MoneyNotificationInput, "people"> & { collectorId?: string | null },
 ): Promise<void> {
-  const { firmId, collectorId = null, ...rest } = input;
+  const { collectorId = null, ...rest } = input;
   const adminIds = input.event === "payment_recorded" ? await activeAdminIds(tx) : [];
   const drafts = buildMoneyNotifications({ ...rest, people: { adminIds, collectorId } });
-  await insertNotifications(tx, drafts, { firmId });
+  await insertNotifications(tx, drafts);
 }
 
 /** Saves notifications for an order event. */
@@ -60,8 +62,6 @@ export async function notify(
 ): Promise<void> {
   const [row] = await tx
     .select({
-      firmId: orders.firmId,
-      firmName: firms.name,
       retailerName: retailers.name,
       retailerUserId: retailers.userId,
       bags: orders.bags,
@@ -70,24 +70,16 @@ export async function notify(
       logisticsId: orders.logisticsId,
     })
     .from(orders)
-    .innerJoin(firms, eq(orders.firmId, firms.id))
     .innerJoin(retailers, eq(orders.retailerId, retailers.id))
     .where(eq(orders.id, orderId))
     .limit(1);
   if (!row) return;
 
-  const firmPeople = await tx
-    .select({ id: user.id, role: user.role, banned: user.banned })
-    .from(userFirms)
-    .innerJoin(user, eq(userFirms.userId, user.id))
-    .where(eq(userFirms.firmId, row.firmId));
-  const accountsIds = firmPeople
-    .filter((p) => !p.banned && hasRole(p.role, "accounts"))
-    .map((p) => p.id);
+  const people = await activePeople(tx);
+  const accountsIds = people.filter((p) => hasRole(p.role, "accounts")).map((p) => p.id);
 
   const drafts = buildNotifications({
     event,
-    firmName: row.firmName,
     retailerName: row.retailerName,
     bags: bagsOverride ?? row.bags,
     actorId,
@@ -97,10 +89,10 @@ export async function notify(
       retailerUserId: row.retailerUserId,
       logisticsId: row.logisticsId,
       accountsIds,
-      adminIds: await activeAdminIds(tx),
+      adminIds: people.filter((p) => isAdmin(p.role)).map((p) => p.id),
     },
   });
-  await insertNotifications(tx, drafts, { firmId: row.firmId, orderId });
+  await insertNotifications(tx, drafts, orderId);
 }
 
 export async function countUnread(userId: string): Promise<number> {

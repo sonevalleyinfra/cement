@@ -15,8 +15,7 @@
  * - Cancelled: placer, sales rep, admin
  * - Handover rejected and receipt reversed: collector (same as handover confirmed)
  * Rules: the person who did the action is never told about their own action; nobody
- * gets the same notification twice; every title starts with the firm name; ORDER
- * messages never contain a price (retailers also read these). Money messages go to
+ * gets the same notification twice; ORDER messages never contain a price (retailers also read these). Money messages go to
  * staff only, so they may show the amount.
  */
 import { formatINR } from "@/lib/money";
@@ -42,7 +41,7 @@ export type OrderPeople = {
   retailerUserId: string | null;
   /** Logistics person assigned to the order (empty until approval). */
   logisticsId: string | null;
-  /** Accounts people who work on the order's firm. */
+  /** Accounts people (not banned). */
   accountsIds: readonly string[];
   adminIds: readonly string[];
 };
@@ -121,18 +120,17 @@ const MESSAGES: Record<NotificationEvent, (what: string) => { title: string; bod
 
 export function buildNotifications(input: {
   event: NotificationEvent;
-  firmName: string;
   retailerName: string;
   bags: number;
   people: OrderPeople;
   actorId: string | null;
 }): NotificationDraft[] {
-  const { event, firmName, retailerName, bags, people, actorId } = input;
+  const { event, retailerName, bags, people, actorId } = input;
   const msg = MESSAGES[event](`${retailerName}, ${bags} ${bags === 1 ? "bag" : "bags"}`);
   return recipientIds(event, people, actorId).map((userId) => ({
     userId,
     type: event,
-    title: `${firmName}: ${msg.title}`,
+    title: msg.title,
     body: msg.body,
     link: null,
   }));
@@ -153,16 +151,6 @@ export function defaultMoneyLink(event: MoneyEvent): string {
   return event === "handover_confirmed" || event === "handover_rejected" ? "/wallet" : "/receipts";
 }
 
-/** "Firm A + Firm B" (blank and repeated names dropped). */
-export function joinFirmNames(firmNames: readonly string[]): string {
-  const names: string[] = [];
-  for (const n of firmNames) {
-    const clean = n.trim();
-    if (clean && !names.includes(clean)) names.push(clean);
-  }
-  return names.join(" + ");
-}
-
 const MONEY_MESSAGES: Record<MoneyEvent, (amount: string, from: string) => { title: string; body: string }> = {
   payment_recorded: (a, f) => ({ title: "Payment recorded", body: `${a}${f}.` }),
   online_verified: (a, f) => ({ title: "Online payment verified", body: `${a}${f} verified.` }),
@@ -173,8 +161,6 @@ const MONEY_MESSAGES: Record<MoneyEvent, (amount: string, from: string) => { tit
 
 export type MoneyNotificationInput = {
   event: MoneyEvent;
-  /** Every firm the money belongs to (a receipt can be split across firms). */
-  firmNames: readonly string[];
   /** The shop that paid, when there is one (not for handovers). */
   retailerName?: string | null;
   /** Integer paise. */
@@ -187,9 +173,8 @@ export type MoneyNotificationInput = {
   reason?: string | null;
 };
 
-/** Drafts for a money event, e.g. title "Firm A + Firm B: Payment recorded", body "₹5,000.00 from Raju Stores." */
+/** Drafts for a money event, e.g. title "Payment recorded", body "₹5,000.00 from Raju Stores." */
 export function buildMoneyNotifications(input: MoneyNotificationInput): NotificationDraft[] {
-  const firms = joinFirmNames(input.firmNames);
   const from = input.retailerName?.trim() ? ` from ${input.retailerName.trim()}` : "";
   const msg = MONEY_MESSAGES[input.event](formatINR(input.amountPaise), from);
   const reason = input.reason?.trim();
@@ -198,7 +183,7 @@ export function buildMoneyNotifications(input: MoneyNotificationInput): Notifica
   return moneyRecipientIds(input.event, input.people, input.actorId).map((userId) => ({
     userId,
     type: input.event,
-    title: firms ? `${firms}: ${msg.title}` : msg.title,
+    title: msg.title,
     body,
     link,
   }));

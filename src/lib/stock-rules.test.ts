@@ -7,19 +7,20 @@ import {
   canDispatch,
   canSwitchOffPlace,
   dispatchMovement,
-  firmProductTotal,
   inMovement,
   parsePlaceKey,
+  placeColumns,
   placeGroups,
   placeKey,
+  productTotal,
   MAX_STOCK_ENTRY_BAGS,
   transferMovements,
   type Movement,
   type StockKey,
 } from "./stock-rules";
 
-const A: StockKey = { firmId: "A", productId: "p1", locationId: "g1" };
-const B: StockKey = { firmId: "B", productId: "p1", locationId: "g1" };
+const A: StockKey = { productId: "p1", placeKey: "g1" };
+const B: StockKey = { productId: "p1", placeKey: "g2" };
 const mv = (k: StockKey, bags: number, extra: Partial<Movement> = {}): Movement => ({
   ...k,
   type: bags >= 0 ? "purchase" : "dispatch",
@@ -32,11 +33,12 @@ describe("balance", () => {
   it("sums signed movements", () => {
     expect(balance([mv(A, 100), mv(A, -30), mv(A, 5)], A)).toBe(75);
   });
-  it("keeps firms, products and locations separate", () => {
-    const list = [mv(A, 100), mv(B, 50), mv({ ...A, productId: "p2" }, 7), mv({ ...A, locationId: "v1" }, 9)];
+  it("keeps products and places separate", () => {
+    const list = [mv(A, 100), mv(B, 50), mv({ ...A, productId: "p2" }, 7), mv({ ...A, placeKey: "v1" }, 9)];
     expect(balance(list, A)).toBe(100);
     expect(balance(list, B)).toBe(50);
-    expect(firmProductTotal(list, "A", "p1")).toBe(109);
+    expect(productTotal(list, "p1")).toBe(159);
+    expect(productTotal(list, "p2")).toBe(7);
   });
 });
 
@@ -54,14 +56,14 @@ describe("canDispatch", () => {
   });
 });
 
-describe("dispatchMovement and firm isolation", () => {
-  it("cannot use another firm's bags", () => {
+describe("dispatchMovement", () => {
+  it("cannot use bags from another place", () => {
     const list = [mv(B, 500)];
     expect(() => dispatchMovement(list, A, 1, "o1")).toThrow();
   });
-  it("creates a negative movement for the same firm", () => {
+  it("creates a negative movement at the same place", () => {
     const m = dispatchMovement([mv(A, 50)], A, 20, "o1");
-    expect(m).toMatchObject({ firmId: "A", type: "dispatch", bags: -20, orderId: "o1" });
+    expect(m).toMatchObject({ placeKey: "g1", type: "dispatch", bags: -20, orderId: "o1" });
   });
   it("never goes negative over a random run of attempts (property)", () => {
     let seed = 12345;
@@ -109,16 +111,16 @@ describe("adjustmentMovement", () => {
 });
 
 describe("transferMovements", () => {
-  it("moves bags within one firm", () => {
+  it("moves bags from one place to another", () => {
     const r = transferMovements([mv(A, 30)], A, "v1", 10);
     expect(r.ok).toBe(true);
     if (r.ok) {
       const all = [mv(A, 30), ...r.movements];
       expect(balance(all, A)).toBe(20);
-      expect(balance(all, { ...A, locationId: "v1" })).toBe(10);
+      expect(balance(all, { ...A, placeKey: "v1" })).toBe(10);
     }
   });
-  it("refuses more than available, same place, or other firm's stock", () => {
+  it("refuses more than available, the same place, or bags that are elsewhere", () => {
     expect(transferMovements([mv(A, 5)], A, "v1", 6).ok).toBe(false);
     expect(transferMovements([mv(A, 5)], A, "g1", 1).ok).toBe(false);
     expect(transferMovements([mv(B, 50)], A, "v1", 1).ok).toBe(false);
@@ -147,7 +149,7 @@ describe("inMovement", () => {
 
 describe("canSetOpening", () => {
   it("allows the first opening", () => expect(canSetOpening([], A).ok).toBe(true));
-  it("blocks a second opening for the same firm, product and place", () => {
+  it("blocks a second opening for the same product and place", () => {
     const first = mv(A, 10, { type: "opening" });
     expect(canSetOpening([first], A).ok).toBe(false);
     expect(canSetOpening([first], B).ok).toBe(true);
@@ -176,8 +178,19 @@ describe("place keys", () => {
   });
 });
 
+describe("placeColumns", () => {
+  const id = "0b9c7f2e-1d4a-4c3b-9a8e-123456789abc";
+  it("fills exactly one column", () => {
+    expect(placeColumns(placeKey({ kind: "godown", id }))).toEqual({ godownId: id, vehicleId: null });
+    expect(placeColumns(placeKey({ kind: "vehicle", id }))).toEqual({ godownId: null, vehicleId: id });
+  });
+  it("throws on a key that is not a place", () => {
+    expect(() => placeColumns("shop:1")).toThrow();
+  });
+});
+
 describe("canSwitchOffPlace", () => {
-  it("refuses while any firm has bags there", () => {
+  it("refuses while there are bags there", () => {
     expect(canSwitchOffPlace(1)).toEqual({ ok: false, error: "Move the bags out first." });
     expect(canSwitchOffPlace(0)).toEqual({ ok: true });
   });

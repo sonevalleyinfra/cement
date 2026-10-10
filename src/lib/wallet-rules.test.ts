@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   canAnswerRequest,
   canConfirmHandover,
-  collectedMovements,
   pendingRequestIds,
   validateHandoverRequest,
   WALLET_KINDS,
@@ -82,14 +81,5 @@ describe("canConfirmHandover", () => {
   it("answers a request only once", () => {
     expect(canAnswerRequest(false).ok).toBe(true);
     expect(canAnswerRequest(true).ok).toBe(false);
-  });
-});
-
-describe("collectedMovements", () => {
-  it("adds one row per firm line for cash only", () => {
-    expect(collectedMovements("cash", [{ firmId: "A", amountPaise: 500 }, { firmId: "B", amountPaise: 0 }])).toEqual([
-      { firmId: "A", kind: "collected", amountPaise: 500 },
-    ]);
-    expect(collectedMovements("online", [{ firmId: "A", amountPaise: 500 }])).toEqual([]);
   });
 });

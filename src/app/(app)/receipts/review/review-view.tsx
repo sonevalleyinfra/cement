@@ -19,7 +19,6 @@ type Row = {
   chequeNumber: string | null;
   chequeDate: string | null;
   bankName: string | null;
-  firmName: string;
   date: string;
 };
 
@@ -31,7 +30,7 @@ function OnlineCard({ r, index, canReverse }: { r: Row; index: number; canRevers
     <ListCard
       index={index}
       title={r.retailer}
-      top={<span className="text-xs text-muted-foreground">Into {r.firmName} · #{r.no} · {r.date}</span>}
+      top={<span className="text-xs text-muted-foreground">#{r.no} · {r.date}</span>}
       bottom={
         <div className="flex w-full flex-col gap-2">
           <div className="flex items-end justify-between">
@@ -74,7 +73,7 @@ function ChequeCard({ r, index }: { r: Row; index: number }) {
     <ListCard
       index={index}
       title={r.retailer}
-      top={<span className="text-xs text-muted-foreground">Into {r.firmName} · #{r.no} · {r.date}</span>}
+      top={<span className="text-xs text-muted-foreground">#{r.no} · {r.date}</span>}
       bottom={
         <div className="flex w-full flex-col gap-2">
           <div className="flex items-end justify-between">

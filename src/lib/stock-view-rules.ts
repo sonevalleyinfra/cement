@@ -1,6 +1,6 @@
 /**
  * How the stock screen groups and filters bags. Plain functions: no database, no request.
- * Rows are bags per product per place (one firm, or all firms added together).
+ * Rows are bags per product per place.
  */
 import { bagsToKg, CHANNEL_LABELS, PRODUCT_CHANNELS, type ProductChannel } from "./catalogue-rules";
 

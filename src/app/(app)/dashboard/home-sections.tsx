@@ -74,9 +74,8 @@ function Card({
   );
 }
 
-export async function SalesHome({ userId, firmIds }: { userId: string; firmIds: string[] }) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getSalesHome(userId, firmIds);
+export async function SalesHome({ userId }: { userId: string }) {
+  const s = await getSalesHome(userId);
   return (
     <Cards>
       <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate pending", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
@@ -85,9 +84,8 @@ export async function SalesHome({ userId, firmIds }: { userId: string; firmIds: 
   );
 }
 
-export async function AccountsHome({ firmIds }: { firmIds: string[] }) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getAccountsHome(firmIds);
+export async function AccountsHome() {
+  const s = await getAccountsHome();
   return (
     <Cards>
       <Card index={0} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
@@ -105,15 +103,8 @@ export async function AccountsHome({ firmIds }: { firmIds: string[] }) {
   );
 }
 
-export async function LogisticsHome({
-  user,
-  firmIds,
-}: {
-  user: { id: string; role: string | null | undefined };
-  firmIds: string[];
-}) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getLogisticsHome(user, firmIds);
+export async function LogisticsHome({ user }: { user: { id: string; role: string | null | undefined } }) {
+  const s = await getLogisticsHome(user);
   return (
     <Cards>
       <Card index={0} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} />
@@ -131,9 +122,8 @@ export async function LogisticsHome({
   );
 }
 
-export async function AdminHome({ firmIds }: { firmIds: string[] }) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getAdminHome(firmIds);
+export async function AdminHome() {
+  const s = await getAdminHome();
   return (
     <Cards>
       <Card index={0} href="/orders" title="Today" icon={CalendarDays} tone="orange" stats={[{ label: "Orders", value: num(s.todayOrders) }, { label: "Bags sent", value: num(s.bagsDispatched) }]} />

@@ -36,7 +36,6 @@ const copy = {
 
 export function StockForm({
   mode,
-  firmId,
   places,
   products,
   balances,
@@ -44,7 +43,6 @@ export function StockForm({
   canManageCatalogue,
 }: {
   mode: keyof typeof copy;
-  firmId: string;
   places: PlaceOption[];
   products: ProductOption[];
   balances: Balance[];
@@ -86,7 +84,6 @@ export function StockForm({
   function submit() {
     setMessage(null);
     const input = {
-      firmId,
       brandId,
       channel,
       typeId,

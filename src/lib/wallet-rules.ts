@@ -3,9 +3,9 @@
  * Source: docs/idea.md section 6.2 (Cash) and section 7 (collector ledger).
  *
  * Choices where the spec is silent:
- * - One wallet per collector per firm. Money is integer paise.
+ * - One wallet per collector (staff member). Money is integer paise.
  * - Wallet rows are append-only (`wallet_movements`). Kinds:
- *     collected          +amount  a cash receipt line was taken
+ *     collected          +amount  a cash receipt was taken
  *     handover_request   -amount  collector says "I am handing this over" (not counted until confirmed)
  *     handover_confirmed -amount  accounts/admin confirmed the request (refId = the request row)
  *     handover_rejected   0       accounts/admin refused the request (refId = the request row)
@@ -105,13 +105,4 @@ export function canConfirmHandover(
 /** A request can be answered once. */
 export function canAnswerRequest(alreadyAnswered: boolean): HandoverCheck {
   return alreadyAnswered ? { ok: false, error: "This handover was already answered." } : { ok: true };
-}
-
-/** Wallet rows for a saved cash receipt: one per firm line, for the collector. */
-export function collectedMovements(
-  mode: string,
-  lines: readonly { firmId: string; amountPaise: number }[],
-): { firmId: string; kind: "collected"; amountPaise: number }[] {
-  if (mode !== "cash") return [];
-  return lines.filter((l) => l.amountPaise > 0).map((l) => ({ firmId: l.firmId, kind: "collected" as const, amountPaise: l.amountPaise }));
 }

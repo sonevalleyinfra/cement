@@ -1,13 +1,12 @@
-import { and, desc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
+import { desc, eq, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
-import { receiptAllocations, receipts, retailers } from "@/db/schema";
+import { receipts, retailers } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
-import { getAccessibleFirms } from "@/lib/firm-access";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
@@ -15,23 +14,16 @@ import { MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { requireUser } from "@/lib/session";
 
 /**
- * Which receipts to list, as a filter for the query: a pure retailer sees their own shop's;
- * staff see those with a line for one of their firms. Null = not allowed; "none" = nothing to show.
+ * Which receipts to list: a pure retailer sees their own shop's; staff see all of them.
+ * Null = not allowed; "none" = nothing to show; `where` empty = every receipt.
  */
-async function receiptFilter(user: { id: string; role?: string | null }): Promise<SQL | "none" | null> {
+async function receiptFilter(user: { id: string; role?: string | null }): Promise<{ where?: SQL } | "none" | null> {
   if (isRetailerOnly(user.role)) {
     const [own] = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.userId, user.id)).limit(1);
-    return own ? eq(receipts.retailerId, own.id) : "none";
+    return own ? { where: eq(receipts.retailerId, own.id) } : "none";
   }
   if (!can(user.role, "viewReceipts")) return null;
-  const firmIds = (await getAccessibleFirms(user.id, user.role)).map((f) => f.id);
-  if (firmIds.length === 0) return "none";
-  return exists(
-    db
-      .select({ one: sql`1` })
-      .from(receiptAllocations)
-      .where(and(eq(receiptAllocations.receiptId, receipts.id), inArray(receiptAllocations.firmId, firmIds))),
-  );
+  return {};
 }
 
 export default async function ReceiptsPage() {
@@ -56,7 +48,7 @@ export default async function ReceiptsPage() {
           })
           .from(receipts)
           .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
-          .where(filter)
+          .where(filter.where)
           .orderBy(desc(receipts.createdAt))
           .limit(100);
 

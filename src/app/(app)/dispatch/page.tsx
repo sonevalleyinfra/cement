@@ -1,27 +1,21 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { EmptyState } from "@/components/app/empty-state";
-import { getFirmSelection } from "@/components/app/firm-switcher";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { dispatches, orders, products, retailers, user as users } from "@/db/schema";
 import { ordersUserMayDispatch } from "@/lib/dispatch-rules";
-import { firmPeople } from "@/lib/logistics";
+import { logisticsPeople } from "@/lib/logistics";
 import { getBalances } from "@/lib/stock";
 import { rolesFor } from "@/lib/permissions";
+import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
 import { DispatchView } from "./dispatch-view";
 
 export default async function DispatchPage() {
   const { user } = await requireRole(...rolesFor("dispatch"));
-  const { selection, admin } = await getFirmSelection();
-  if (selection.mode === "none") return <EmptyState title="No firm available" />;
-  if (selection.mode === "all") return <EmptyState title="Pick one firm to dispatch" />;
-  const firmId = selection.firmId;
 
   const [rows, balances, people] = await Promise.all([
     db
       .select({
         id: orders.id,
-        firmId: orders.firmId,
         logisticsId: orders.logisticsId,
         assignee: users.name,
         productId: orders.productId,
@@ -36,31 +30,26 @@ export default async function DispatchPage() {
       .innerJoin(retailers, eq(orders.retailerId, retailers.id))
       .innerJoin(products, eq(orders.productId, products.id))
       .leftJoin(users, eq(orders.logisticsId, users.id))
-      .where(
-        and(
-          eq(orders.firmId, firmId),
-          inArray(orders.status, ["approved", "assigned", "partly_dispatched", "dispatched"]),
-        ),
-      )
+      .where(inArray(orders.status, ["approved", "assigned", "partly_dispatched", "dispatched"]))
       .orderBy(asc(orders.createdAt))
       .limit(100),
-    getBalances(firmId),
-    firmPeople(db, [firmId]),
+    getBalances(),
+    logisticsPeople(db),
   ]);
-  // Places this firm has stock history at (godown still switched on), godowns first.
-  // Trucks are hired, so only the ones holding this firm's bags right now are listed.
-  const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.locationId));
-  const locations = [
+  // Places with stock history (godown still switched on), godowns first.
+  // Trucks are hired, so only the ones holding bags right now are listed.
+  const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.placeKey));
+  const places = [
     ...new Map(
       balances
-        .filter((b) => b.placeActive && (b.kind !== "vehicle" || loadedTrucks.has(b.locationId)))
-        .sort((a, b) => a.kind.localeCompare(b.kind) || a.locationName.localeCompare(b.locationName))
+        .filter((b) => b.placeActive && (b.kind !== "vehicle" || loadedTrucks.has(b.placeKey)))
+        .sort((a, b) => a.kind.localeCompare(b.kind) || a.placeName.localeCompare(b.placeName))
         .map((b) => [
-          b.locationId,
+          b.placeKey,
           {
-            id: b.locationId,
-            name: b.kind === "vehicle" ? `Truck ${b.locationName}` : b.locationName,
-            truck: b.kind === "vehicle" ? b.locationName : null,
+            key: b.placeKey,
+            name: b.kind === "vehicle" ? `Truck ${b.placeName}` : b.placeName,
+            truck: b.kind === "vehicle" ? b.placeName : null,
           },
         ]),
     ).values(),
@@ -70,8 +59,7 @@ export default async function DispatchPage() {
 
   return (
     <DispatchView
-      firmId={firmId}
-      isAdmin={admin}
+      isAdmin={isAdmin(user.role)}
       orders={mine.map((r) => ({
         id: r.id,
         productId: r.productId,
@@ -83,9 +71,8 @@ export default async function DispatchPage() {
         status: r.status,
         assignee: r.assignee,
       }))}
-      locations={locations}
-      balances={balances.map((b) => ({ productId: b.productId, locationId: b.locationId, bags: b.bags }))}
-      userId={user.id}
+      places={places}
+      balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
     />
   );
 }

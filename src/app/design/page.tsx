@@ -1,9 +1,8 @@
 import { BadgeCheck, Banknote, CalendarDays, Package, Receipt, Wallet } from "lucide-react";
 import { notFound } from "next/navigation";
 import type { NavItem } from "@/components/app/bottom-nav";
-import { AppShell } from "@/components/app/app-shell";
+import { AppShell, AppTitle } from "@/components/app/app-shell";
 import { EmptyState } from "@/components/app/empty-state";
-import { FirmChip } from "@/components/app/firm-chip";
 import { IconTile } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -26,7 +25,7 @@ export default function DesignPage() {
   if (process.env.NODE_ENV === "production") notFound();
 
   return (
-    <AppShell nav={nav} headerLeft={<FirmChip name="Firm A" slot="a" />}>
+    <AppShell nav={nav} headerLeft={<AppTitle />}>
       <div className="grid grid-cols-2 gap-4 py-2">
         <Stat label="Today" value="240 bags" />
         <Stat label="Sales" value={formatINRCompact(18_450_000_00)} />
@@ -65,7 +64,6 @@ export default function DesignPage() {
           href="/design"
           top={
             <>
-              <FirmChip name="Firm A" slot="a" />
               <StatusChip status="pending" />
             </>
           }
@@ -81,7 +79,6 @@ export default function DesignPage() {
           index={3}
           top={
             <>
-              <FirmChip name="Firm B" slot="b" />
               <StatusChip status="approved" />
             </>
           }
@@ -97,7 +94,6 @@ export default function DesignPage() {
           index={4}
           top={
             <>
-              <FirmChip name="Firm C" slot="c" />
               <StatusChip status="dispatched" />
             </>
           }

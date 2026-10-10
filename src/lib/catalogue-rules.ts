@@ -133,7 +133,7 @@ export function productGroups(
   })).filter((g) => g.options.length > 0);
 }
 
-/** A product can be switched off only when no firm holds any of its bags (else they could not be moved or sold). */
+/** A product can be switched off only when none of its bags are in stock (else they could not be moved or sold). */
 export function canSwitchOffProduct(bagsInStock: number): { ok: true } | { ok: false; error: string } {
   return bagsInStock > 0 ? { ok: false, error: "Bags still in stock." } : { ok: true };
 }

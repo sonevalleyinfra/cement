@@ -1,27 +1,23 @@
 /**
- * Fills a LOCAL database with demo data: one user per role, retailers, vehicles,
- * godowns with opening stock, orders in different statuses and a receipt.
+ * Fills a LOCAL database with demo data: one user per role, retailers, trucks,
+ * a godown with opening stock, orders in different statuses and a receipt.
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
- * Safe to run twice: it skips whatever already exists.
+ * Safe to run twice: it skips whatever already exists (orders are added only once).
  * Refuses to run on production or a non-local database (rules in scripts/lib/demo-seed-rules.ts).
  */
-import { eq } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
-  firms,
   ledgerEntries,
   orderEvents,
   orders,
   products,
-  receiptAllocations,
   receipts,
   retailers,
   godowns,
-  stockLocations,
   stockMovements,
   user,
-  userFirms,
   vehicles,
   walletMovements,
 } from "@/db/schema";
@@ -54,30 +50,14 @@ async function main() {
   const [admin] = await db.select({ id: user.id }).from(user).where(eq(user.email, env.SEED_ADMIN_EMAIL.toLowerCase()));
   if (!admin) throw new Error("Admin not found. Run `pnpm db:seed` (or `pnpm dev`) first.");
 
-  const firmRows = await db.select().from(firms).orderBy(firms.slot);
   const productRows = await db.select().from(products).orderBy(products.name);
-  if (firmRows.length < 3 || productRows.length < 1) throw new Error("Firms/products missing. Run migrations first.");
+  if (productRows.length < 1) throw new Error("Products missing. Run migrations first.");
 
-  // Users and firm access (admin sees every firm; the others get all three, the retailer too, so the order screens work).
   const ids: Record<string, string> = {};
-  for (const u of DEMO_USERS) {
-    ids[u.role] = await ensureUser(u.email, u.name, u.role);
-    if (u.role !== "admin") {
-      await db
-        .insert(userFirms)
-        .values(firmRows.map((f) => ({ userId: ids[u.role], firmId: f.id })))
-        .onConflictDoNothing();
-    }
-  }
+  for (const u of DEMO_USERS) ids[u.role] = await ensureUser(u.email, u.name, u.role);
   console.log("[seed-demo] Users ready.");
 
-  // Everything below runs once: skipped if the first demo retailer exists.
-  const [already] = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.phone, "9000000001"));
-  if (already) {
-    console.log("[seed-demo] Demo data already there. Nothing more to do.");
-    return;
-  }
-
+  // Shops, trucks and the godown are found again if they already exist.
   const shops = [
     ["Sharma Traders", "Patna"],
     ["Gupta Building Supplies", "Gaya"],
@@ -86,72 +66,75 @@ async function main() {
     ["Yadav Enterprises", "Bhagalpur"],
     ["Mishra & Sons", "Darbhanga"],
   ];
-  const shopRows = await db
+  const phones = shops.map((_, i) => `900000000${i + 1}`);
+  await db
     .insert(retailers)
     .values(
       shops.map(([name, place], i) => ({
         name,
         place,
-        phone: `900000000${i + 1}`,
+        phone: phones[i],
         userId: i === 0 ? ids.retailer : null,
         salesRepId: ids.sales,
       })),
     )
-    .returning();
+    .onConflictDoNothing();
+  const found = await db.select().from(retailers).where(inArray(retailers.phone, phones));
+  const shopRows = phones.map((phone) => found.find((r) => r.phone === phone)!);
 
-  const vehicleRows = await db
-    .insert(vehicles)
-    .values([
-      { number: "BR01AB1234", driverName: "Ramesh", driverPhone: "9100000001" },
-      { number: "BR02CD5678", driverName: "Suresh", driverPhone: "9100000002" },
-    ])
-    .returning();
-
-  // One shared godown; each firm gets its own stock row there with opening stock (500 bags of each product).
-  const [godown] = await db.insert(godowns).values({ name: "Main Godown" }).returning({ id: godowns.id, name: godowns.name });
-  const godownByFirm: Record<string, string> = {};
-  for (const f of firmRows) {
-    const [loc] = await db
-      .insert(stockLocations)
-      .values({ firmId: f.id, kind: "godown", name: godown.name, godownId: godown.id })
-      .returning({ id: stockLocations.id });
-    godownByFirm[f.id] = loc.id;
-    await db.insert(stockMovements).values(
-      productRows.map((p) => ({
-        firmId: f.id,
-        productId: p.id,
-        locationId: loc.id,
-        type: "opening",
-        bags: 500,
-        reason: "Demo opening stock",
-        actorId: admin.id,
-      })),
-    );
+  // Everything below runs once: skipped if the first demo shop already has an order.
+  const [already] = await db.select({ id: orders.id }).from(orders).where(eq(orders.retailerId, shopRows[0].id)).limit(1);
+  if (already) {
+    console.log("[seed-demo] Demo data already there. Nothing more to do.");
+    return;
   }
 
-  const [fa, fb, fc] = firmRows;
+  const trucks = [
+    { number: "BR01AB1234", driverName: "Ramesh", driverPhone: "9100000001" },
+    { number: "BR02CD5678", driverName: "Suresh", driverPhone: "9100000002" },
+  ];
+  await db.insert(vehicles).values(trucks).onConflictDoNothing();
+  const vehicleRows = await db.select().from(vehicles).where(inArray(vehicles.number, trucks.map((t) => t.number)));
+  const truck = { ...vehicleRows.find((v) => v.number === trucks[0].number)!, ...trucks[0] };
+
+  // One godown with opening stock (500 bags of each product).
+  let [godown] = await db
+    .select({ id: godowns.id })
+    .from(godowns)
+    .where(sql`lower(${godowns.name}) = 'main godown'`);
+  if (!godown) [godown] = await db.insert(godowns).values({ name: "Main Godown" }).returning({ id: godowns.id });
+  await db.insert(stockMovements).values(
+    productRows.map((p) => ({
+      productId: p.id,
+      godownId: godown.id,
+      type: "opening",
+      bags: 500,
+      reason: "Demo opening stock",
+      actorId: admin.id,
+    })),
+  );
+
   const prod = productRows[0];
   const RATE = 35000; // Rs 350 a bag, in paise
 
-  // [shop, firm, bags, final status, bags already dispatched]
+  // [shop, bags, final status, bags already dispatched]
   const plan = [
-    [0, fa, 100, "placed", 0],
-    [1, fa, 80, "rate_filled", 0],
-    [2, fa, 60, "assigned", 0],
-    [3, fb, 100, "partly_dispatched", 40],
-    [4, fb, 50, "dispatched", 50],
-    [5, fc, 30, "cancelled", 0],
+    [0, 100, "placed", 0],
+    [1, 80, "rate_filled", 0],
+    [2, 60, "assigned", 0],
+    [3, 100, "partly_dispatched", 40],
+    [4, 50, "dispatched", 50],
+    [5, 30, "cancelled", 0],
   ] as const;
 
   const orderIds: string[] = [];
-  for (const [shopIdx, firm, bags, status, sentBags] of plan) {
+  for (const [shopIdx, bags, status, sentBags] of plan) {
     await db.transaction(async (tx) => {
       const shop = shopRows[shopIdx];
       const priced = status !== "placed";
       const [o] = await tx
         .insert(orders)
         .values({
-          firmId: firm.id,
           retailerId: shop.id,
           productId: prod.id,
           bags,
@@ -183,35 +166,32 @@ async function main() {
         const amount = orderDebitPaise(bags, RATE) as number;
         await postEntry(
           tx,
-          { firmId: firm.id, retailerId: shop.id, kind: "order_debit", amountPaise: amount, orderId: o.id },
+          { retailerId: shop.id, kind: "order_debit", amountPaise: amount, orderId: o.id },
           ids.accounts,
           "Order approved",
         );
         if (status === "cancelled") {
           await postEntry(
             tx,
-            { firmId: firm.id, retailerId: shop.id, kind: "adjustment", amountPaise: -amount, orderId: o.id },
+            { retailerId: shop.id, kind: "adjustment", amountPaise: -amount, orderId: o.id },
             ids.accounts,
             "Order cancelled",
           );
         }
       }
       if (sentBags > 0) {
-        const v = vehicleRows[0];
         await tx.insert(dispatches).values({
-          firmId: firm.id,
           orderId: o.id,
           bags: sentBags,
-          vehicleId: v.id,
-          driverName: v.driverName,
-          driverPhone: v.driverPhone,
-          locationId: godownByFirm[firm.id],
+          vehicleId: truck.id,
+          driverName: truck.driverName,
+          driverPhone: truck.driverPhone,
+          fromGodownId: godown.id,
           dispatchedBy: ids.logistics,
         });
         await tx.insert(stockMovements).values({
-          firmId: firm.id,
           productId: prod.id,
-          locationId: godownByFirm[firm.id],
+          godownId: godown.id,
           type: "dispatch",
           bags: -sentBags,
           orderId: o.id,
@@ -229,16 +209,14 @@ async function main() {
       .insert(receipts)
       .values({ retailerId: shop.id, mode: "cash", totalPaise: paid, status: "received", receivedBy: ids.accounts })
       .returning({ id: receipts.id, receiptNo: receipts.receiptNo });
-    await tx.insert(receiptAllocations).values({ receiptId: r.id, firmId: fb.id, orderId: orderIds[3], amountPaise: paid });
     await postEntry(
       tx,
-      { firmId: fb.id, retailerId: shop.id, kind: "receipt_credit", amountPaise: -paid },
+      { retailerId: shop.id, kind: "receipt_credit", amountPaise: -paid },
       ids.accounts,
       `Receipt #${r.receiptNo}`,
       r.id,
     );
     await tx.insert(walletMovements).values({
-      firmId: fb.id,
       collectorId: ids.accounts,
       kind: "collected",
       amountPaise: paid,

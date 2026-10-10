@@ -1,11 +1,10 @@
 /**
- * What a retailer still owes each firm, item by item, read from the ledger only.
+ * What a retailer still owes, item by item, read from their ledger only (for aging).
  * Plain functions (no database) so they are easy to test.
- * Source: docs/idea.md section 6 ("within a firm, applies to oldest dues first") and section 7.
+ * Source: docs/idea.md section 5 ("Payments clear oldest dues first (for aging)").
  *
  * The ledger (`ledger_entries`, signed paise, + = the retailer owes) is the source of truth.
- * Per firm:
- * - Debit items, oldest first: a positive opening balance (always first in its firm), then
+ * - Debit items, oldest first: a positive opening balance (always first), then
  *   each order's NET of every entry with that orderId (approval debit + rate changes +
  *   cancel reversal). An order whose net is 0 or less is not an item.
  * - Credits = minus the sum of every entry WITHOUT an orderId (receipt credits, cheque
@@ -21,11 +20,10 @@
  *   that amount becomes one more item ("other"), dated at its first such entry, so the
  *   promise below always holds.
  *
- * Promise (tested): a firm's duePaise === max(0, that firm's ledger balance).
+ * Promise (tested): duePaise === max(0, ledger balance).
  */
 
 export type LedgerRow = {
-  firmId: string;
   kind: string;
   /** Signed paise: + debit, - credit. */
   amountPaise: number;
@@ -43,9 +41,8 @@ export type DueItem = {
   duePaise: number;
 };
 
-export type FirmDues = {
-  firmId: string;
-  /** Sum of every ledger entry for this firm (negative = advance). */
+export type RetailerDues = {
+  /** Sum of every ledger entry (negative = advance). */
   balancePaise: number;
   /** Still owed = max(0, balancePaise). */
   duePaise: number;
@@ -60,19 +57,11 @@ function itemOrder(a: Draft, b: Draft): number {
   return rank(a) - rank(b) || a.at - b.at || a.seq - b.seq;
 }
 
-/** Dues per firm from one retailer's ledger entries, firms in the order they first appear. */
-export function firmDuesFromLedger(entries: readonly LedgerRow[]): FirmDues[] {
-  const byFirm = new Map<string, LedgerRow[]>();
-  for (const e of entries) {
+/** Dues from one retailer's ledger entries (given oldest first). */
+export function duesFromLedger(rows: readonly LedgerRow[]): RetailerDues {
+  for (const e of rows) {
     if (!Number.isSafeInteger(e.amountPaise)) throw new RangeError("Ledger amounts must be whole paise");
-    const list = byFirm.get(e.firmId) ?? [];
-    list.push(e);
-    byFirm.set(e.firmId, list);
   }
-  return [...byFirm].map(([firmId, rows]) => duesForOneFirm(firmId, rows));
-}
-
-function duesForOneFirm(firmId: string, rows: readonly LedgerRow[]): FirmDues {
   const drafts: Draft[] = [];
   const orders = new Map<string, Draft>();
   let balance = 0;
@@ -121,10 +110,10 @@ function duesForOneFirm(firmId: string, rows: readonly LedgerRow[]): FirmDues {
     if (left > 0) items.push({ kind: d.kind, orderId: d.orderId, dueSince: new Date(d.at), duePaise: left });
   }
   const due = items.reduce((n, i) => n + i.duePaise, 0);
-  return { firmId, balancePaise: balance, duePaise: due, items };
+  return { balancePaise: balance, duePaise: due, items };
 }
 
-/** The oldest item still owed for a firm, or null when nothing is due. */
-export function oldestDue(f: FirmDues): Date | null {
+/** The oldest item still owed, or null when nothing is due. */
+export function oldestDue(f: RetailerDues): Date | null {
   return f.items[0]?.dueSince ?? null;
 }

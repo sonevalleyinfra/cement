@@ -6,16 +6,8 @@ import { Keypad } from "@/components/app/keypad";
 import { Button } from "@/components/ui/button";
 import { setOpeningBalance } from "../actions";
 
-/** Admin sets the one opening balance for this retailer with this firm. */
-export function OpeningForm({
-  retailerId,
-  firmId,
-  firmName,
-}: {
-  retailerId: string;
-  firmId: string;
-  firmName: string;
-}) {
+/** Admin sets the one opening balance for this retailer. */
+export function OpeningForm({ retailerId }: { retailerId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [digits, setDigits] = useState("");
@@ -25,7 +17,7 @@ export function OpeningForm({
   function submit() {
     setError("");
     start(async () => {
-      const res = await setOpeningBalance({ retailerId, firmId, rupeeDigits: digits, owes });
+      const res = await setOpeningBalance({ retailerId, rupeeDigits: digits, owes });
       if (res.ok) {
         setDigits("");
         router.refresh();
@@ -35,7 +27,7 @@ export function OpeningForm({
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-      <div className="text-sm font-semibold">Opening balance with {firmName}</div>
+      <div className="text-sm font-semibold">Opening balance</div>
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant={owes ? "default" : "outline"} onClick={() => setOwes(true)}>
           Owes us

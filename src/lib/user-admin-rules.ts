@@ -11,7 +11,6 @@ export type UserInput = {
   email: string;
   phone: string;
   roles: Role[];
-  firmIds: string[];
   password: string | null;
 };
 
@@ -19,15 +18,14 @@ export type UserCheck =
   | { ok: true; value: UserInput }
   | { ok: false; error: string };
 
-/** Checks the roles and firms chosen for a user. Returns an error message or null. */
-export function checkRolesAndFirms(roles: readonly string[], firmIds: readonly string[]): string | null {
+/** Checks the roles chosen for a user. Returns an error message or null. */
+export function checkRoles(roles: readonly string[]): string | null {
   if (roles.length === 0) return "Pick at least one role";
   if (!roles.every(isRole)) return "Unknown role";
   const set = new Set<string>(roles);
   if (set.has("retailer") && STAFF_ROLES.some((r) => set.has(r))) {
     return "A retailer cannot also have a staff role";
   }
-  if (!set.has("admin") && firmIds.length === 0) return "Pick at least one firm";
   return null;
 }
 
@@ -52,7 +50,6 @@ export function validateNewUser(raw: {
   email?: string | null;
   phone?: string | null;
   roles?: readonly string[];
-  firmIds?: readonly string[];
   password?: string | null;
 }): UserCheck {
   const name = (raw.name ?? "").trim().replace(/\s+/g, " ");
@@ -62,12 +59,11 @@ export function validateNewUser(raw: {
   const phone = cleanUserPhone(raw.phone);
   if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const roles = [...new Set(raw.roles ?? [])];
-  const firmIds = [...new Set(raw.firmIds ?? [])];
-  const problem = checkRolesAndFirms(roles, firmIds);
+  const problem = checkRoles(roles);
   if (problem) return { ok: false, error: problem };
   const password = checkTempPassword(raw.password);
   if (!password.ok) return password;
-  return { ok: true, value: { name, email, phone, roles: roles as Role[], firmIds, password: password.value } };
+  return { ok: true, value: { name, email, phone, roles: roles as Role[], password: password.value } };
 }
 
 /** An admin must not remove their own admin role. Returns an error or null. */

@@ -2,9 +2,8 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
-import { dispatches, godowns, orderEvents, orders, stockLocations, stockMovements, vehicles } from "@/db/schema";
+import { dispatches, orderEvents, orders, stockMovements } from "@/db/schema";
 import {
   assigneeAfterDispatch,
   canDispatchOrder,
@@ -23,8 +22,9 @@ import { notify } from "@/lib/notify";
 import { canUserTransition, isOrderStatus } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
 import { checkRateDigits } from "@/lib/rate-rules";
-import { requireFirm, requireRole, writeBlock } from "@/lib/session";
-import { truckByNumber } from "@/lib/stock-places";
+import { requireRole } from "@/lib/session";
+import { atPlace, lockPlace, truckByNumber } from "@/lib/stock-places";
+import { placeColumns, placeKey } from "@/lib/stock-rules";
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
 
@@ -41,7 +41,8 @@ export async function dispatchOrder(input: {
   bags: number;
   /** The truck number as typed; trucks are hired, so none are saved. */
   vehicleNumber: string;
-  locationId: string | null;
+  /** Where the bags come from: a place key ("godown:<id>" / "vehicle:<id>"). */
+  fromPlace: string | null;
   driverName: string;
   driverPhone: string;
   /** Optional new rate per bag in whole rupees (digits). Needs a reason. */
@@ -49,25 +50,11 @@ export async function dispatchOrder(input: {
   rateReason?: string;
 }): Promise<DispatchResult> {
   const session = await requireRole(...rolesFor("dispatch"));
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
   if (!isUuid(input.orderId)) return { ok: false, error: "Order not found." };
-  if (input.locationId && !isUuid(input.locationId)) {
-    return { ok: false, error: "Refresh the page and try again." };
-  }
-  const [found] = await db
-    .select({ firmId: orders.firmId })
-    .from(orders)
-    .where(eq(orders.id, input.orderId))
-    .limit(1);
-  if (!found) return { ok: false, error: "Order not found." };
-  await requireFirm(found.firmId);
-  const { selection } = await getFirmSelection();
 
   const fields = checkDispatchFields({
-    readOnlyMode: selection.readOnly || selection.firmId !== found.firmId,
     vehicleNumber: String(input.vehicleNumber ?? ""),
-    locationId: input.locationId,
+    fromPlace: typeof input.fromPlace === "string" ? input.fromPlace : null,
     driverName: String(input.driverName ?? ""),
     driverPhone: String(input.driverPhone ?? ""),
   });
@@ -87,25 +74,13 @@ export async function dispatchOrder(input: {
     const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("no key update");
     if (!order) return { ok: false, error: "Order not found." };
     // Only the assignee (or anyone, when there is none or they can no longer do it), or admin.
-    const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
-    if (!canDispatchOrder({ id: me.id, role: me.role, hasFirmAccess: true }, order, assigneeValid)) {
+    const assigneeValid = await isAssigneeStillValid(tx, order.logisticsId);
+    if (!canDispatchOrder({ id: me.id, role: me.role }, order, assigneeValid)) {
       return { ok: false, error: "This order is assigned to someone else." };
     }
-    const [loc] = await tx
-      .select({
-        id: stockLocations.id,
-        firmId: stockLocations.firmId,
-        // The godown or vehicle itself must still be switched on.
-        active: sql<boolean>`coalesce(${godowns.active}, ${vehicles.active}, false)`,
-      })
-      .from(stockLocations)
-      .leftJoin(godowns, eq(godowns.id, stockLocations.godownId))
-      .leftJoin(vehicles, eq(vehicles.id, stockLocations.vehicleId))
-      .where(eq(stockLocations.id, input.locationId as string))
-      .for("no key update", { of: stockLocations });
-    if (!loc || loc.firmId !== order.firmId || !loc.active) {
-      return { ok: false, error: "Pick a stock place of this firm." };
-    }
+    // The godown or truck must still be switched on; locked so nobody else takes the same bags.
+    const place = await lockPlace(tx, fields.from);
+    if (!place.ok) return { ok: false, error: "Pick an active stock place." };
     // The truck is found (or made) by its number; the driver goes on this dispatch only.
     const vehicle = { id: await truckByNumber(tx, fields.vehicleNumber, me.id), number: fields.vehicleNumber };
 
@@ -116,13 +91,7 @@ export async function dispatchOrder(input: {
     const [stock] = await tx
       .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
       .from(stockMovements)
-      .where(
-        and(
-          eq(stockMovements.firmId, order.firmId),
-          eq(stockMovements.productId, order.productId),
-          eq(stockMovements.locationId, loc.id),
-        ),
-      );
+      .where(and(eq(stockMovements.productId, order.productId), atPlace(fields.from)));
 
     const plan = planDispatch({
       status: order.status,
@@ -139,21 +108,21 @@ export async function dispatchOrder(input: {
       rate.newRatePaise === null ? null : truckRateChangeEntry(order, input.bags, order.ratePaise, rate.newRatePaise);
     if (rate.newRatePaise !== null && !rateChange) return { ok: false, error: "This order has no rate yet." };
 
+    const source = placeColumns(placeKey(fields.from));
     await tx.insert(dispatches).values({
-      firmId: order.firmId,
       orderId: order.id,
       bags: input.bags,
       vehicleId: vehicle.id,
       driverName: fields.driverName,
       driverPhone: fields.driverPhone,
-      locationId: loc.id,
+      fromGodownId: source.godownId,
+      fromVehicleId: source.vehicleId,
       ratePaise: rate.newRatePaise,
       dispatchedBy: me.id,
     });
     await tx.insert(stockMovements).values({
-      firmId: order.firmId,
       productId: order.productId,
-      locationId: loc.id,
+      ...source,
       type: "dispatch",
       bags: -input.bags,
       orderId: order.id,
@@ -207,25 +176,13 @@ export async function dispatchOrder(input: {
 export async function markDelivered(orderId: string): Promise<DispatchResult> {
   const session = await requireRole(...rolesFor("markDelivered"));
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
-  const [found] = await db
-    .select({ firmId: orders.firmId })
-    .from(orders)
-    .where(eq(orders.id, orderId))
-    .limit(1);
-  if (!found) return { ok: false, error: "Order not found." };
-  await requireFirm(found.firmId);
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
-  // Same as dispatch: the firm on screen must be the order's firm.
-  const { selection } = await getFirmSelection();
-  if (selection.readOnly || selection.firmId !== found.firmId) return { ok: false, error: "Pick this order's firm first." };
 
   const me = session.user;
   const result = await db.transaction(async (tx): Promise<DispatchResult> => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!order) return { ok: false, error: "Order not found." };
-    const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
-    if (!canDispatchOrder({ id: me.id, role: me.role, hasFirmAccess: true }, order, assigneeValid)) {
+    const assigneeValid = await isAssigneeStillValid(tx, order.logisticsId);
+    if (!canDispatchOrder({ id: me.id, role: me.role }, order, assigneeValid)) {
       return { ok: false, error: "This order is assigned to someone else." };
     }
     if (

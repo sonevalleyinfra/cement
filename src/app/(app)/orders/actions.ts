@@ -1,11 +1,10 @@
 "use server";
 
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { desc, eq, isNotNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
   dispatches,
-  firms,
   ledgerEntries,
   orderEvents,
   orders,
@@ -33,37 +32,31 @@ import { canDecide, canFillRate, checkRateDigits, checkRejectReason } from "@/li
 import { orderSalesRep } from "@/lib/sales-rep-rules";
 import { postEntry } from "@/lib/ledger";
 import { cancelEntry, orderDebitEntry, sumPaise } from "@/lib/ledger-rules";
-import { firmPeople } from "@/lib/logistics";
+import { logisticsPeople } from "@/lib/logistics";
 import { notify } from "@/lib/notify";
-import { requireFirm, requireRole, writeBlock } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
 
-/** Places an order for one firm. Sales, retailer and admin only. */
+/** Places an order. Sales, retailer and admin only. */
 export async function placeOrder(input: {
-  firmId: string | null;
   retailerId: string | null;
   productId: string | null;
   bags: number;
   notes?: string;
 }): Promise<PlaceOrderResult> {
   const session = await requireRole(...rolesFor("placeOrder"));
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
   const check = validatePlaceOrder({
-    readOnlyMode: !input.firmId,
     bags: input.bags,
     retailerId: input.retailerId,
     productId: input.productId,
   });
   if (!check.ok) return check;
   if (!isBagsInRange(input.bags)) return { ok: false, error: "That is too many bags." };
-  if (!isUuid(input.firmId) || !isUuid(input.productId) || (input.retailerId !== null && !isUuid(input.retailerId))) {
+  if (!isUuid(input.productId) || (input.retailerId !== null && !isUuid(input.retailerId))) {
     return { ok: false, error: "Refresh the page and try again." };
   }
 
-  // Firm access is checked here, never trusted from the screen.
-  const { firm } = await requireFirm(input.firmId as string);
   const me = session.user;
 
   const [own] = await db
@@ -90,7 +83,6 @@ export async function placeOrder(input: {
     const [order] = await tx
       .insert(orders)
       .values({
-        firmId: firm.id,
         retailerId,
         productId: product.id,
         bags: input.bags,
@@ -139,24 +131,22 @@ async function moveOrder(
       return { ok: true };
     }
 
-    // The money side: approval bills the retailer (bags x rate) in this firm's ledger.
+    // The money side: approval bills the retailer (bags x rate) in their ledger.
     const debit = orderDebitEntry(o);
     if (!debit.ok) return { ok: false, error: debit.error };
 
-    // Round robin (spec 4.5). Lock the firm row so two approvals of one firm take turns.
-    // "No key update" still makes approvals wait for each other, but does not block other
-    // work that only adds rows pointing at this firm (receipts, wallet), so no deadlocks.
-    await tx.select({ id: firms.id }).from(firms).where(eq(firms.id, o.firmId)).for("no key update");
-    const people = await firmPeople(tx, [o.firmId]);
-    // "Last" = whoever this firm's round robin picked most recently (dispatch take-overs do not count).
+    // Round robin (spec 4.5). Approvals take turns: this lock (held until the transaction ends)
+    // makes a second approval wait here, so two approvals never pick the same "next" person.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('order_approval_round_robin'))`);
+    const people = await logisticsPeople(tx);
+    // "Last" = whoever round robin picked most recently (dispatch take-overs do not count).
     const recent = await tx
       .select({ assigneeId: orderEvents.assigneeId, createdAt: orderEvents.createdAt })
       .from(orderEvents)
-      .innerJoin(orders, eq(orderEvents.orderId, orders.id))
-      .where(and(eq(orders.firmId, o.firmId), isNotNull(orderEvents.assigneeId)))
+      .where(isNotNull(orderEvents.assigneeId))
       .orderBy(desc(orderEvents.createdAt))
       .limit(1);
-    const logisticsId = pickNextAssignee(logisticsCandidates(people, o.firmId), lastRoundRobinAssignee(recent));
+    const logisticsId = pickNextAssignee(logisticsCandidates(people), lastRoundRobinAssignee(recent));
     const next = approvalSteps(logisticsId);
 
     // Save the assignee before notify: "assigned" goes to orders.logistics_id.
@@ -165,7 +155,7 @@ async function moveOrder(
       .set({ status: next.status, logisticsId, updatedAt: new Date() })
       .where(eq(orders.id, orderId));
     await postEntry(tx, debit.entry, actorId, "Order approved");
-    // Times taken after the firm lock, so the next approval's rows always come later.
+    // Times taken after the lock, so the next approval's rows always come later.
     const times = stepTimes(new Date(), next.steps.length);
     let fromStatus: string = from;
     for (const [i, step] of next.steps.entries()) {
@@ -201,11 +191,8 @@ async function loadOrder(orderId: string) {
 /** Sales (the assigned rep) or admin enters the rate per bag (whole rupees). Moves to pending approval. */
 export async function fillRate(orderId: string, rupeeDigits: string): Promise<PlaceOrderResult> {
   const session = await requireRole(...rolesFor("fillRate"));
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
   const order = await loadOrder(orderId);
   if (!order) return { ok: false, error: "Order not found." };
-  await requireFirm(order.firmId);
   const me = session.user;
   if (!canFillRate(me.role, me.id, order.salesRepId, order.status)) {
     return { ok: false, error: "You cannot fill the rate on this order." };
@@ -224,11 +211,8 @@ export async function decideOrder(
   const session = await requireRole(...rolesFor("decideOrder"));
   // Only these two outcomes: anything else (e.g. "cancelled") must go through cancelOrder.
   if (decision !== "approved" && decision !== "rejected") return { ok: false, error: "Pick approve or reject." };
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
   const order = await loadOrder(orderId);
   if (!order) return { ok: false, error: "Order not found." };
-  await requireFirm(order.firmId);
   if (!canDecide(session.user.role, order.status, decision)) {
     return { ok: false, error: "This order is not waiting for approval." };
   }
@@ -248,11 +232,8 @@ export async function decideOrder(
  */
 export async function cancelOrder(orderId: string, reason: string): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole("sales", "accounts");
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
   const order = await loadOrder(orderId);
   if (!order) return { ok: false, error: "Order not found." };
-  await requireFirm(order.firmId);
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     const [locked] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");

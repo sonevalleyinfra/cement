@@ -8,22 +8,18 @@ import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { openingEntry } from "@/lib/ledger-rules";
 import { rolesFor } from "@/lib/permissions";
-import { requireFirm, requireRole, writeBlock } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 
 export type LedgerResult = { ok: true } | { ok: false; error: string };
 
-/** Admin sets the opening balance for one retailer with one firm (once). `owes` false = advance. */
+/** Admin sets the opening balance for one retailer (once). `owes` false = advance. */
 export async function setOpeningBalance(input: {
   retailerId: string;
-  firmId: string;
   rupeeDigits: string;
   owes: boolean;
 }): Promise<LedgerResult> {
   const session = await requireRole(...rolesFor("setOpeningBalance"));
-  if (!isUuid(input.firmId) || !isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
-  await requireFirm(input.firmId);
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
+  if (!isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
   if (typeof input.rupeeDigits !== "string" || !/^\d{1,9}$/.test(input.rupeeDigits)) return { ok: false, error: "Enter the amount." };
   const paise = Number(input.rupeeDigits) * 100;
   const signed = input.owes ? paise : -paise;
@@ -35,16 +31,10 @@ export async function setOpeningBalance(input: {
     // Lock the retailer so two clicks cannot both post an opening balance.
     await tx.select({ id: retailers.id }).from(retailers).where(eq(retailers.id, input.retailerId)).for("no key update");
     const existing = await tx
-      .select({ kind: ledgerEntries.kind, firmId: ledgerEntries.firmId, retailerId: ledgerEntries.retailerId })
+      .select({ kind: ledgerEntries.kind, retailerId: ledgerEntries.retailerId })
       .from(ledgerEntries)
-      .where(
-        and(
-          eq(ledgerEntries.retailerId, input.retailerId),
-          eq(ledgerEntries.firmId, input.firmId),
-          eq(ledgerEntries.kind, "opening"),
-        ),
-      );
-    const entry = openingEntry(existing, input.retailerId, input.firmId, signed);
+      .where(and(eq(ledgerEntries.retailerId, input.retailerId), eq(ledgerEntries.kind, "opening")));
+    const entry = openingEntry(existing, input.retailerId, signed);
     if (!entry.ok) return entry;
     await postEntry(tx, entry.entry, session.user.id, "Opening balance");
     return { ok: true };

@@ -96,7 +96,7 @@ describe("roles per transition", () => {
 });
 
 describe("planCancel", () => {
-  const base = { orderedBags: 100, dispatchedBags: 0, ratePaise: 40000, postedNetPaise: 0, reason: "wrong firm" };
+  const base = { orderedBags: 100, dispatchedBags: 0, ratePaise: 40000, postedNetPaise: 0, reason: "wrong product" };
 
   it("before approval: cancelled, nothing billed", () => {
     for (const status of ["placed", "rate_filled"]) {
@@ -104,7 +104,7 @@ describe("planCancel", () => {
         ok: true,
         newStatus: "cancelled",
         ledgerPaise: 0,
-        historyReason: "wrong firm",
+        historyReason: "wrong product",
         closedShortBags: null,
       });
     }
@@ -140,7 +140,7 @@ describe("planCancel", () => {
   });
   it("says bag for one bag", () => {
     const p = planCancel({ ...base, status: "partly_dispatched", dispatchedBags: 99 });
-    expect(p.ok && p.historyReason).toBe("Closed short: 1 bag not sent. wrong firm");
+    expect(p.ok && p.historyReason).toBe("Closed short: 1 bag not sent. wrong product");
   });
   it("refuses to close short without a rate or when everything is sent", () => {
     expect(planCancel({ ...base, status: "partly_dispatched", dispatchedBags: 40, ratePaise: null }).ok).toBe(false);

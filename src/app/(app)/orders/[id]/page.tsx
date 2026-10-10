@@ -1,17 +1,14 @@
 import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { FirmChip } from "@/components/app/firm-chip";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
-import { dispatches, firms, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
-import { findAccessibleFirm } from "@/lib/firm-access";
+import { dispatches, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
 import { canCancelOrder, canSeePrice, chipLabel, chipStatus, historyForViewer, historyStepLabel } from "@/lib/order-access";
 import { isCloseShort, isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { canFillRate } from "@/lib/rate-rules";
-import { getFirmSelection } from "@/components/app/firm-switcher";
 import { requireUser } from "@/lib/session";
 import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
@@ -24,7 +21,6 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const [o] = await db
     .select({
       id: orders.id,
-      firmId: orders.firmId,
       retailerId: orders.retailerId,
       bags: orders.bags,
       ratePaise: orders.ratePaise,
@@ -34,22 +30,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       placedBy: orders.placedBy,
       retailer: retailers.name,
       product: products.name,
-      firmName: firms.name,
-      firmSlot: firms.slot,
     })
     .from(orders)
     .innerJoin(retailers, eq(orders.retailerId, retailers.id))
     .innerJoin(products, eq(orders.productId, products.id))
-    .innerJoin(firms, eq(orders.firmId, firms.id))
     .where(eq(orders.id, id))
     .limit(1);
   if (!o) notFound();
 
-  // Staff need access to the firm; a pure retailer only sees their own shop's orders.
+  // Staff see every order; a pure retailer only sees their own shop's orders.
   const showPrice = canSeePrice(user.role);
-  if (showPrice) {
-    if (!(await findAccessibleFirm(user.id, user.role, o.firmId))) notFound();
-  } else {
+  if (!showPrice) {
     const [own] = await db
       .select({ id: retailers.id })
       .from(retailers)
@@ -92,15 +83,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const sentBags = loads.reduce((n, l) => n + l.bags, 0);
   const valuePaise = orderValuePaise({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads });
 
-  // Admin's "All firms" view is read only: no buttons that change anything.
-  const { selection } = await getFirmSelection();
-  const canCancel = !selection.readOnly && showPrice && canCancelOrder(user.role, user.id, o);
-  const canRate = !selection.readOnly && canFillRate(user.role, user.id, o.salesRepId, o.status);
+  const canCancel = showPrice && canCancelOrder(user.role, user.id, o);
+  const canRate = canFillRate(user.role, user.id, o.salesRepId, o.status);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <FirmChip name={o.firmName} slot={o.firmSlot} />
+      <div className="flex items-center justify-end">
         {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} label={chipLabel(o.status)} />}
       </div>
       <div>

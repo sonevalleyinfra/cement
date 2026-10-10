@@ -1,4 +1,3 @@
-import { getFirmSelection } from "@/components/app/firm-switcher";
 import { getCatalogueLists, getProducts } from "@/lib/catalogue";
 import { listsUsedBy } from "@/lib/catalogue-rules";
 import { can, rolesFor } from "@/lib/permissions";
@@ -7,21 +6,13 @@ import { getBalances } from "@/lib/stock";
 import { getPlaces } from "@/lib/stock-places";
 
 /**
- * Shared by the stock forms: role check, one firm, all active places, products, this firm's balances.
+ * Shared by the stock forms: role check, all active places, products, balances.
  * `role` is the signed-in user's role; `data` goes to the form.
  */
 async function loadData(action: "manageStock" | "transferStock") {
   const session = await requireRole(...rolesFor(action));
-  const { selection } = await getFirmSelection();
-  if (selection.mode !== "firm") return null;
-  const firmId = selection.firmId;
-  const [places, prods, balances] = await Promise.all([
-    getPlaces({ firmId }),
-    getProducts({ activeOnly: true }),
-    getBalances(firmId),
-  ]);
+  const [places, prods, balances] = await Promise.all([getPlaces(), getProducts({ activeOnly: true }), getBalances()]);
   const data = {
-    firmId,
     places: places.map((p) => ({ key: p.key, kind: p.kind, name: p.name })),
     products: prods.map((p) => ({
       id: p.id,
@@ -42,9 +33,7 @@ async function loadData(action: "manageStock" | "transferStock") {
  * opening and adjust offer only what existing products are made from.
  */
 export async function loadFormData(mode: "purchase" | "opening" | "adjust") {
-  const loaded = await loadData("manageStock");
-  if (!loaded) return null;
-  const { role, data } = loaded;
+  const { role, data } = await loadData("manageStock");
   const all = await getCatalogueLists();
   const lists =
     mode === "purchase"
@@ -67,5 +56,5 @@ export async function loadFormData(mode: "purchase" | "opening" | "adjust") {
 
 /** For moving bags between places: logistics may do it too (admin always passes). */
 export async function loadTransferData() {
-  return (await loadData("transferStock"))?.data ?? null;
+  return (await loadData("transferStock")).data;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkDelete,
-  checkRolesAndFirms,
+  checkRoles,
   checkSelfDeactivate,
   checkSelfRoleChange,
   cleanEmail,
@@ -11,17 +11,17 @@ import {
   validateNewUser,
 } from "./user-admin-rules";
 
-describe("checkRolesAndFirms", () => {
-  it("needs a role", () => expect(checkRolesAndFirms([], ["f"])).toBe("Pick at least one role"));
-  it("rejects unknown roles", () => expect(checkRolesAndFirms(["boss"], ["f"])).toBe("Unknown role"));
+describe("checkRoles", () => {
+  it("needs a role", () => expect(checkRoles([])).toBe("Pick at least one role"));
+  it("rejects unknown roles", () => expect(checkRoles(["boss"])).toBe("Unknown role"));
   it("keeps retailer apart from staff roles", () => {
-    expect(checkRolesAndFirms(["retailer", "sales"], ["f"])).toMatch(/retailer/);
-    expect(checkRolesAndFirms(["retailer"], ["f"])).toBeNull();
+    expect(checkRoles(["retailer", "sales"])).toMatch(/retailer/);
+    expect(checkRoles(["retailer"])).toBeNull();
   });
-  it("needs a firm unless admin", () => {
-    expect(checkRolesAndFirms(["sales"], [])).toBe("Pick at least one firm");
-    expect(checkRolesAndFirms(["admin"], [])).toBeNull();
-    expect(checkRolesAndFirms(["sales", "accounts"], ["f"])).toBeNull();
+  it("accepts staff roles alone or together", () => {
+    expect(checkRoles(["sales"])).toBeNull();
+    expect(checkRoles(["admin"])).toBeNull();
+    expect(checkRoles(["sales", "accounts"])).toBeNull();
   });
 });
 
@@ -32,7 +32,6 @@ describe("validateNewUser", () => {
       email: " Ram@X.com ",
       phone: "+91 98765 43210",
       roles: ["sales", "sales"],
-      firmIds: ["a"],
     });
     expect(r).toEqual({
       ok: true,
@@ -41,7 +40,6 @@ describe("validateNewUser", () => {
         email: "ram@x.com",
         phone: "9876543210",
         roles: ["sales"],
-        firmIds: ["a"],
         password: null,
       },
     });

@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { EmptyState } from "@/components/app/empty-state";
-import { getFirmSelection } from "@/components/app/firm-switcher";
 import { Skeleton } from "@/components/app/skeleton";
 import { homeSections, type HomeSection } from "@/lib/home-rules";
 import { requireUser } from "@/lib/session";
@@ -17,23 +16,20 @@ function SectionSkeleton() {
 
 export default async function DashboardPage() {
   const { user } = await requireUser();
-  const { selection, firms } = await getFirmSelection();
   const sections = homeSections(user.role);
-  // One firm, or every firm for admin's read-only "All firms" view.
-  const scope = selection.mode === "firm" ? [selection.firmId] : selection.mode === "all" ? firms.map((f) => f.id) : [];
 
   if (sections.length === 0) return <EmptyState title="Nothing here yet" />;
 
   const render = (s: HomeSection) => {
     switch (s) {
       case "admin":
-        return <AdminHome firmIds={scope} />;
+        return <AdminHome />;
       case "sales":
-        return <SalesHome userId={user.id} firmIds={scope} />;
+        return <SalesHome userId={user.id} />;
       case "accounts":
-        return <AccountsHome firmIds={scope} />;
+        return <AccountsHome />;
       case "logistics":
-        return <LogisticsHome user={{ id: user.id, role: user.role }} firmIds={scope} />;
+        return <LogisticsHome user={{ id: user.id, role: user.role }} />;
       case "retailer":
         return <RetailerHome userId={user.id} />;
     }

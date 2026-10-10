@@ -64,7 +64,7 @@ export async function addProduct(input: NewProductInput): Promise<CatalogueResul
   return res.ok ? done(res) : res;
 }
 
-/** Switches a product on or off. Off is refused while any firm still holds its bags. */
+/** Switches a product on or off. Off is refused while any of its bags are still in stock. */
 export async function setProductActive(id: string, active: boolean): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
   if (!isUuid(id)) return { ok: false, error: "Product not found." };

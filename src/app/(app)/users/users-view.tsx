@@ -12,8 +12,7 @@ import { parseRoles, ROLES } from "@/lib/roles";
 import { type RoleTab, usersInTab } from "@/lib/user-admin-rules";
 import { createUser, deleteUser, setUserActive, type UserResult, updateUserAccess } from "./actions";
 
-type Row = { id: string; name: string; email: string; phone: string; role: string; active: boolean; firmIds: string[] };
-type Firm = { id: string; name: string };
+type Row = { id: string; name: string; email: string; phone: string; role: string; active: boolean };
 
 const chip = "rounded-full bg-muted px-2 py-0.5 text-xs font-medium";
 
@@ -37,16 +36,14 @@ function Checks({ options, value, onChange }: { options: { id: string; label: st
   );
 }
 
-export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; myId: string }) {
+export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
-  const [firmIds, setFirmIds] = useState<string[]>([]);
   const [tempPassword, setTempPassword] = useState("");
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
   const [pending, start] = useTransition();
-  const firmName = (id: string) => firms.find((f) => f.id === id)?.name ?? "";
 
   // Role tabs (a person with several roles shows under each), then Active / Deactivated.
   const tabs: RoleTab[] = [...ROLES, ...(rows.some((r) => parseRoles(r.role).length === 0) ? ["none" as const] : [])];
@@ -71,7 +68,6 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
   function openSheet(row: Row | null) {
     setEditing(row);
     setRoles(row ? parseRoles(row.role) : []);
-    setFirmIds(row ? row.firmIds : []);
     setTempPassword("");
     setError("");
     setOpen(true);
@@ -87,7 +83,6 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
             email: String(formData.get("email") ?? ""),
             phone: String(formData.get("phone") ?? ""),
             roles,
-            firmIds,
             password: tempPassword,
           })
         : await createUser({
@@ -95,7 +90,6 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
             email: String(formData.get("email") ?? ""),
             phone: String(formData.get("phone") ?? ""),
             roles,
-            firmIds,
             password: tempPassword,
           });
       if (res.ok) setOpen(false);
@@ -137,17 +131,10 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
                 }
                 bottom={
                   <>
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex flex-wrap gap-1">
-                        {parseRoles(r.role).map((x) => (
-                          <span key={x} className={chip}>{x}</span>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {r.firmIds.map((id) => (
-                          <span key={id} className={`${chip} bg-secondary`}>{firmName(id)}</span>
-                        ))}
-                      </div>
+                    <div className="flex flex-wrap gap-1">
+                      {parseRoles(r.role).map((x) => (
+                        <span key={x} className={chip}>{x}</span>
+                      ))}
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button variant="outline" onClick={() => openSheet(r)}>Edit</Button>
@@ -212,10 +199,6 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
           <div className="flex flex-col gap-1.5">
             <Label>Roles</Label>
             <Checks options={ROLES.map((x) => ({ id: x, label: x }))} value={roles} onChange={setRoles} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Firms {roles.includes("admin") && "(admin sees all)"}</Label>
-            <Checks options={firms.map((f) => ({ id: f.id, label: f.name }))} value={firmIds} onChange={setFirmIds} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={pending}>

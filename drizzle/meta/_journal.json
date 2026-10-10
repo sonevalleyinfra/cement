@@ -169,6 +169,27 @@
       "when": 1791630062293,
       "tag": "0023_godowns_required",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791652988509,
+      "tag": "0024_wipe_test_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791653050240,
+      "tag": "0025_remove_firms",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791653067293,
+      "tag": "0026_stock_places",
+      "breakpoints": true
     }
   ]
 }

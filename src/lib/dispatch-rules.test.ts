@@ -52,22 +52,22 @@ describe("checkRateEdit", () => {
 });
 
 describe("checkDispatchFields", () => {
-  const base = { readOnlyMode: false, vehicleNumber: "br01 ab 1234", locationId: "l", driverName: " Ram  Singh ", driverPhone: "" };
+  const godown = "godown:0b9c7f2e-1d4a-4c3b-9a8e-123456789abc";
+  const base = { vehicleNumber: "br01 ab 1234", fromPlace: godown, driverName: " Ram  Singh ", driverPhone: "" };
   it("accepts and tidies", () => {
     expect(checkDispatchFields(base)).toEqual({
       ok: true,
+      from: { kind: "godown", id: "0b9c7f2e-1d4a-4c3b-9a8e-123456789abc" },
       vehicleNumber: "BR01AB1234",
       driverName: "Ram Singh",
       driverPhone: "",
     });
   });
-  it("blocks All firms mode", () => {
-    expect(checkDispatchFields({ ...base, readOnlyMode: true }).ok).toBe(false);
-  });
-  it("needs a valid truck number, location and driver name", () => {
+  it("needs a valid truck number, place and driver name", () => {
     expect(checkDispatchFields({ ...base, vehicleNumber: "" })).toEqual({ ok: false, error: "Enter the truck number." });
     expect(checkDispatchFields({ ...base, vehicleNumber: "BR01" }).ok).toBe(false);
-    expect(checkDispatchFields({ ...base, locationId: null }).ok).toBe(false);
+    expect(checkDispatchFields({ ...base, fromPlace: null }).ok).toBe(false);
+    expect(checkDispatchFields({ ...base, fromPlace: "shop:1" }).ok).toBe(false);
     expect(checkDispatchFields({ ...base, driverName: " " }).ok).toBe(false);
   });
   it("checks the phone only when given", () => {
@@ -111,54 +111,51 @@ describe("stepTimes", () => {
 });
 
 describe("isValidAssignee", () => {
-  const ok = { id: "l1", role: "logistics", banned: false, firmIds: ["A"] };
-  it("needs the logistics role, firm access and not banned", () => {
-    expect(isValidAssignee(ok, "A")).toBe(true);
-    expect(isValidAssignee({ ...ok, banned: null }, "A")).toBe(true);
-    expect(isValidAssignee({ ...ok, role: "sales,logistics" }, "A")).toBe(true);
-    expect(isValidAssignee({ ...ok, banned: true }, "A")).toBe(false);
-    expect(isValidAssignee({ ...ok, role: "sales" }, "A")).toBe(false);
-    expect(isValidAssignee({ ...ok, role: "admin" }, "A")).toBe(false);
-    expect(isValidAssignee(ok, "B")).toBe(false);
-    expect(isValidAssignee(null, "A")).toBe(false);
+  const ok = { id: "l1", role: "logistics", banned: false };
+  it("needs the logistics role and not banned", () => {
+    expect(isValidAssignee(ok)).toBe(true);
+    expect(isValidAssignee({ ...ok, banned: null })).toBe(true);
+    expect(isValidAssignee({ ...ok, role: "sales,logistics" })).toBe(true);
+    expect(isValidAssignee({ ...ok, banned: true })).toBe(false);
+    expect(isValidAssignee({ ...ok, role: "sales" })).toBe(false);
+    expect(isValidAssignee({ ...ok, role: "admin" })).toBe(false);
+    expect(isValidAssignee(null)).toBe(false);
   });
-  it("lists the valid ids of a firm", () => {
-    const people = [ok, { ...ok, id: "l2", banned: true }, { ...ok, id: "l3", firmIds: ["B"] }];
-    expect([...validAssigneeIds(people, "A")]).toEqual(["l1"]);
-    expect([...validAssigneeIds(people, "B")]).toEqual(["l3"]);
+  it("lists the valid ids", () => {
+    const people = [ok, { ...ok, id: "l2", banned: true }, { ...ok, id: "l3", role: "sales" }, { ...ok, id: "l4" }];
+    expect([...validAssigneeIds(people)]).toEqual(["l1", "l4"]);
   });
 });
 
 describe("logisticsCandidates + round robin", () => {
   const people = [
-    { id: "c", role: "logistics", banned: false, firmIds: ["A"] },
-    { id: "a", role: "logistics", banned: false, firmIds: ["A", "B"] },
-    { id: "b", role: "logistics", banned: true, firmIds: ["A"] },
-    { id: "s", role: "sales", banned: false, firmIds: ["A"] },
-    { id: "d", role: "logistics", banned: false, firmIds: ["B"] },
+    { id: "c", role: "logistics", banned: false },
+    { id: "a", role: "logistics", banned: false },
+    { id: "b", role: "logistics", banned: true },
+    { id: "s", role: "sales", banned: false },
   ];
-  it("keeps logistics of the firm, by id, banned as inactive", () => {
-    expect(logisticsCandidates(people, "A")).toEqual([
+  it("keeps logistics people, by id, banned as inactive", () => {
+    expect(logisticsCandidates(people)).toEqual([
       { id: "a", active: true },
       { id: "b", active: false },
       { id: "c", active: true },
     ]);
   });
   it("takes turns and skips the banned person", () => {
-    const list = logisticsCandidates(people, "A");
+    const list = logisticsCandidates(people);
     expect(pickNextAssignee(list, null)).toBe("a");
     expect(pickNextAssignee(list, "a")).toBe("c");
     expect(pickNextAssignee(list, "c")).toBe("a");
   });
   it("nobody to pick", () => {
-    expect(pickNextAssignee(logisticsCandidates(people, "C"), null)).toBeNull();
+    expect(pickNextAssignee(logisticsCandidates([people[3]]), null)).toBeNull();
   });
 });
 
 describe("canDispatchOrder", () => {
-  const me = { id: "l1", role: "logistics", hasFirmAccess: true };
+  const me = { id: "l1", role: "logistics" };
   it("admin always", () => {
-    expect(canDispatchOrder({ id: "x", role: "admin", hasFirmAccess: false }, { logisticsId: "l2" }, true)).toBe(true);
+    expect(canDispatchOrder({ id: "x", role: "admin" }, { logisticsId: "l2" }, true)).toBe(true);
   });
   it("logistics: own, unassigned, or assignee no longer valid", () => {
     expect(canDispatchOrder(me, { logisticsId: "l1" }, true)).toBe(true);
@@ -168,8 +165,7 @@ describe("canDispatchOrder", () => {
   it("not someone else's order while they can still do it", () => {
     expect(canDispatchOrder(me, { logisticsId: "l2" }, true)).toBe(false);
   });
-  it("needs the logistics role and firm access", () => {
-    expect(canDispatchOrder({ ...me, hasFirmAccess: false }, { logisticsId: null }, true)).toBe(false);
+  it("needs the logistics role", () => {
     expect(canDispatchOrder({ ...me, role: "sales" }, { logisticsId: null }, true)).toBe(false);
     expect(canDispatchOrder({ ...me, role: null }, { logisticsId: "l1" }, true)).toBe(false);
   });
@@ -193,27 +189,26 @@ describe("rate edit history reason", () => {
 
 describe("ordersUserMayDispatch", () => {
   const people = [
-    { id: "l1", role: "logistics", banned: false, firmIds: ["A"] },
-    { id: "l2", role: "logistics", banned: false, firmIds: ["A"] },
-    { id: "gone", role: "logistics", banned: true, firmIds: ["A"] },
-    { id: "moved", role: "logistics", banned: false, firmIds: ["B"] },
+    { id: "l1", role: "logistics", banned: false },
+    { id: "l2", role: "logistics", banned: false },
+    { id: "gone", role: "logistics", banned: true },
+    { id: "moved", role: "sales", banned: false },
   ];
   const orders = [
-    { id: "mine", firmId: "A", logisticsId: "l1" },
-    { id: "theirs", firmId: "A", logisticsId: "l2" },
-    { id: "nobody", firmId: "A", logisticsId: null },
-    { id: "banned", firmId: "A", logisticsId: "gone" },
-    { id: "lostFirm", firmId: "A", logisticsId: "moved" },
-    { id: "otherFirm", firmId: "B", logisticsId: null },
+    { id: "mine", logisticsId: "l1" },
+    { id: "theirs", logisticsId: "l2" },
+    { id: "nobody", logisticsId: null },
+    { id: "banned", logisticsId: "gone" },
+    { id: "lostRole", logisticsId: "moved" },
   ];
-  it("logistics sees own, unassigned and orphaned orders of their firms", () => {
+  it("logistics sees own, unassigned and orphaned orders", () => {
     const ids = ordersUserMayDispatch({ id: "l1", role: "logistics" }, orders, people).map((o) => o.id);
-    expect(ids).toEqual(["mine", "nobody", "banned", "lostFirm"]);
+    expect(ids).toEqual(["mine", "nobody", "banned", "lostRole"]);
   });
   it("admin sees everything", () => {
     expect(ordersUserMayDispatch({ id: "a", role: "admin" }, orders, people)).toHaveLength(orders.length);
   });
-  it("someone without firm access sees nothing", () => {
-    expect(ordersUserMayDispatch({ id: "x", role: "logistics" }, orders, people)).toEqual([]);
+  it("someone without the logistics role sees nothing", () => {
+    expect(ordersUserMayDispatch({ id: "x", role: "sales" }, orders, people)).toEqual([]);
   });
 });

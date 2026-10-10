@@ -9,25 +9,22 @@ import { Label } from "@/components/ui/label";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
 import { answerHandover, requestHandover } from "./actions";
 
-type Mine = { firmId: string; firmName: string; balancePaise: number; pendingPaise: number; availablePaise: number };
-type Collector = { key: string; collector: string; firmName: string; balancePaise: number };
-type Request = { id: string; collector: string; firmName: string; amountPaise: number; own: boolean };
+type Mine = { balancePaise: number; pendingPaise: number; availablePaise: number };
+type Collector = { key: string; collector: string; balancePaise: number };
+type Request = { id: string; collector: string; amountPaise: number; own: boolean };
 
 export function WalletView({
   mine,
   collectors,
   requests,
   isAccounts,
-  readOnly = false,
 }: {
-  mine: Mine[];
+  mine: Mine;
   collectors: Collector[];
   requests: Request[];
   isAccounts: boolean;
-  /** Admin's "All firms" view: show numbers, no buttons. */
-  readOnly?: boolean;
 }) {
-  const [open, setOpen] = useState<Mine | null>(null);
+  const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
@@ -37,9 +34,9 @@ export function WalletView({
     const paise = parseRupeesToPaise(amount);
     if (paise === null) return setError("Enter a valid amount.");
     start(async () => {
-      const res = await requestHandover({ firmId: open.firmId, amountPaise: paise });
+      const res = await requestHandover({ amountPaise: paise });
       if (res.ok) {
-        setOpen(null);
+        setOpen(false);
         setAmount("");
       } else setError(res.error);
     });
@@ -55,35 +52,27 @@ export function WalletView({
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-bold">My wallet</h1>
-      <ul className="flex flex-col gap-3">
-        {mine.map((m, i) => (
-          <li key={m.firmId}>
-            <ListCard
-              index={i}
-              title={m.firmName}
-              top={m.pendingPaise > 0 ? <span className="text-xs text-muted-foreground">{formatINR(m.pendingPaise)} waiting for confirmation</span> : undefined}
-              bottom={
-                <>
-                  <span className="tabular text-lg font-bold">{formatINR(m.balancePaise)}</span>
-                  {!readOnly && (
-                  <Button
-                    variant="outline"
-                    disabled={m.availablePaise <= 0}
-                    onClick={() => {
-                      setError("");
-                      setAmount((m.availablePaise / 100).toFixed(2));
-                      setOpen(m);
-                    }}
-                  >
-                    Hand over
-                  </Button>
-                  )}
-                </>
-              }
-            />
-          </li>
-        ))}
-      </ul>
+      <ListCard
+        index={0}
+        title="Cash in hand"
+        top={mine.pendingPaise > 0 ? <span className="text-xs text-muted-foreground">{formatINR(mine.pendingPaise)} waiting for confirmation</span> : undefined}
+        bottom={
+          <>
+            <span className="tabular text-lg font-bold">{formatINR(mine.balancePaise)}</span>
+            <Button
+              variant="outline"
+              disabled={mine.availablePaise <= 0}
+              onClick={() => {
+                setError("");
+                setAmount((mine.availablePaise / 100).toFixed(2));
+                setOpen(true);
+              }}
+            >
+              Hand over
+            </Button>
+          </>
+        }
+      />
       {error && !open && <p className="text-sm text-destructive">{error}</p>}
 
       {isAccounts && (
@@ -97,12 +86,12 @@ export function WalletView({
                 <li key={r.id}>
                   <ListCard
                     index={i}
-                    title={`${r.collector} · ${r.firmName}`}
+                    title={r.collector}
                     bottom={
                       <>
                         <span className="tabular text-lg font-bold">{formatINR(r.amountPaise)}</span>
-                        {r.own || readOnly ? (
-                          <span className="text-xs text-muted-foreground">{r.own ? "Another person confirms yours" : "View only"}</span>
+                        {r.own ? (
+                          <span className="text-xs text-muted-foreground">Another person confirms yours</span>
                         ) : (
                           <div className="flex gap-2">
                             <Button disabled={pending} onClick={() => answer(r.id, true)}>
@@ -130,12 +119,7 @@ export function WalletView({
                   <ListCard
                     index={i}
                     title={c.collector}
-                    bottom={
-                      <>
-                        <span className="text-xs text-muted-foreground">{c.firmName}</span>
-                        <span className="tabular text-lg font-bold">{formatINR(c.balancePaise)}</span>
-                      </>
-                    }
+                    bottom={<span className="tabular text-lg font-bold">{formatINR(c.balancePaise)}</span>}
                   />
                 </li>
               ))}
@@ -144,7 +128,7 @@ export function WalletView({
         </>
       )}
 
-      <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)} title={`Hand over cash · ${open?.firmName ?? ""}`}>
+      <Sheet open={open} onOpenChange={setOpen} title="Hand over cash">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="handover">Amount (₹)</Label>

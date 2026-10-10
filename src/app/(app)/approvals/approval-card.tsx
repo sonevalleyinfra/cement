@@ -2,23 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Dues } from "@/lib/dues";
 import { formatINR } from "@/lib/money";
 import { orderTotalPaise } from "@/lib/order-rules";
 import { decideOrder } from "../orders/actions";
 
 export function ApprovalCard({
   order,
-  dues,
-  chip,
+  duesPaise,
   index,
 }: {
   order: { id: string; retailer: string; product: string; bags: number; ratePaise: number };
-  dues: Dues;
-  chip: ReactNode;
+  /** What the retailer owes right now (0 when nothing or an advance). */
+  duesPaise: number;
   index: number;
 }) {
   const router = useRouter();
@@ -40,7 +38,6 @@ export function ApprovalCard({
       className="animate-in-up flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6"
       style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
     >
-      <div className="flex items-center justify-between">{chip}</div>
       <Link href={`/orders/${order.id}`} className="text-base font-semibold">
         {order.retailer}
       </Link>
@@ -53,11 +50,7 @@ export function ApprovalCard({
           {formatINR(orderTotalPaise(order.bags, order.ratePaise))}
         </div>
       </div>
-      <div className="text-xs text-muted-foreground">
-        {dues.known
-          ? `Dues with this firm ${formatINR(dues.withFirmPaise)} · all firms ${formatINR(dues.allFirmsPaise)}`
-          : "Dues: not available yet"}
-      </div>
+      <div className="text-xs text-muted-foreground">Dues {formatINR(duesPaise)}</div>
       {rejecting ? (
         <div className="flex flex-col gap-2">
           <Input

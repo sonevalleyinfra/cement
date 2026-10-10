@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  canAccessFirm,
   hasAnyRole,
   isAdmin,
   isRole,
@@ -57,17 +56,5 @@ describe("hasAnyRole", () => {
   it("always passes for admin", () => {
     expect(hasAnyRole("admin", ["logistics"])).toBe(true);
     expect(hasAnyRole("sales,admin", ["logistics"])).toBe(true);
-  });
-});
-
-describe("canAccessFirm", () => {
-  it("lets a user into only the firms they were given", () => {
-    expect(canAccessFirm("sales", ["a", "b"], "a")).toBe(true);
-    expect(canAccessFirm("sales", ["a", "b"], "c")).toBe(false);
-    expect(canAccessFirm("sales", [], "a")).toBe(false);
-  });
-
-  it("lets admin into every firm", () => {
-    expect(canAccessFirm("admin", [], "c")).toBe(true);
   });
 });

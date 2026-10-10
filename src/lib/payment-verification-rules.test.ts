@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { checkOnlineVerification, normaliseUtr, planChequeAction } from "./payment-verification-rules";
-import { firmLines } from "./receipt-rules";
 
 const online = { mode: "online", status: "unverified", utr: "abc 123" };
 
@@ -26,35 +25,23 @@ describe("checkOnlineVerification", () => {
 });
 
 describe("planChequeAction", () => {
-  const lines = firmLines([
-    { firmId: "A", amountPaise: 6000000 },
-    { firmId: "A", amountPaise: 1000000 },
-    { firmId: "B", amountPaise: 4000000 },
-  ]);
-  const pending = { mode: "cheque", status: "pending" };
+  const pending = { mode: "cheque", status: "pending", totalPaise: 11000000 };
 
   it("clearing posts nothing", () => {
-    expect(planChequeAction("accounts", pending, "cleared", lines)).toEqual({ ok: true, status: "cleared", ledgerLines: [] });
+    expect(planChequeAction("accounts", pending, "cleared")).toEqual({ ok: true, status: "cleared", ledgerPaise: 0 });
   });
-  it("bounce posts a compensating line per firm that nets to zero against the credits", () => {
-    const p = planChequeAction("accounts", pending, "bounced", lines);
-    expect(p.ok).toBe(true);
-    if (!p.ok) return;
-    expect(p.ledgerLines).toEqual([
-      { firmId: "A", amountPaise: 7000000 },
-      { firmId: "B", amountPaise: 4000000 },
-    ]);
-    const credits = lines.map((l) => -l.amountPaise);
-    const total = [...credits, ...p.ledgerLines.map((l) => l.amountPaise)].reduce((a, b) => a + b, 0);
-    expect(total).toBe(0);
+  it("bounce posts one compensating amount that nets to zero against the credit", () => {
+    const p = planChequeAction("accounts", pending, "bounced");
+    expect(p).toEqual({ ok: true, status: "bounced", ledgerPaise: 11000000 });
+    expect(p.ok && -pending.totalPaise + p.ledgerPaise).toBe(0);
   });
   it("a bounced or cleared cheque cannot change again", () => {
-    expect(planChequeAction("accounts", { mode: "cheque", status: "bounced" }, "cleared", lines).ok).toBe(false);
-    expect(planChequeAction("accounts", { mode: "cheque", status: "cleared" }, "bounced", lines).ok).toBe(false);
+    expect(planChequeAction("accounts", { ...pending, status: "bounced" }, "cleared").ok).toBe(false);
+    expect(planChequeAction("accounts", { ...pending, status: "cleared" }, "bounced").ok).toBe(false);
   });
   it("only accounts or admin, only cheques, only cleared/bounced", () => {
-    expect(planChequeAction("sales", pending, "cleared", lines).ok).toBe(false);
-    expect(planChequeAction("accounts", { mode: "cash", status: "received" }, "cleared", lines).ok).toBe(false);
-    expect(planChequeAction("accounts", pending, "pending", lines).ok).toBe(false);
+    expect(planChequeAction("sales", pending, "cleared").ok).toBe(false);
+    expect(planChequeAction("accounts", { mode: "cash", status: "received", totalPaise: 1 }, "cleared").ok).toBe(false);
+    expect(planChequeAction("accounts", pending, "pending").ok).toBe(false);
   });
 });

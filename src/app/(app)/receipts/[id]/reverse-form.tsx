@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { MAX_REVERSAL_REASON } from "@/lib/receipt-reversal";
 import { reverseReceipt } from "../actions";
 
-/** Reason + confirm, then reverses every firm line of the receipt. Also used for online "Not received". */
+/** Reason + confirm, then reverses the whole receipt. Also used for online "Not received". */
 export function ReverseForm({ receiptId, label = "Reverse receipt" }: { receiptId: string; label?: string }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);

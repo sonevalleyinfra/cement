@@ -12,14 +12,13 @@
  *   the order. Partly sent ("close short"): it takes off only the bags not sent, at the
  *   order rate (the amount comes from planCancel in order-rules.ts).
  * - Entries are never edited; only new rows are added.
- * - One opening balance per retailer + firm. It may be negative (retailer has advance).
- * - Retailers can see their own ledger (spec: "view dues per firm").
+ * - One ledger per retailer. One opening balance per retailer. It may be negative (retailer has advance).
+ * - Retailers can see their own ledger (their dues).
  */
 export const LEDGER_KINDS = ["opening", "order_debit", "receipt_credit", "adjustment"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 export type LedgerEntry = {
-  firmId: string;
   retailerId: string;
   kind: LedgerKind;
   /** Signed paise: + debit, - credit. */
@@ -44,65 +43,14 @@ export function sumPaise(entries: readonly { amountPaise: number }[]): number {
   return entries.reduce((n, e) => n + e.amountPaise, 0);
 }
 
-/** Balance of one retailer with one firm. */
-export function balanceForFirm(
-  entries: readonly { firmId: string; retailerId: string; amountPaise: number }[],
-  retailerId: string,
-  firmId: string,
-): number {
-  return sumPaise(entries.filter((e) => e.retailerId === retailerId && e.firmId === firmId));
-}
-
-/** Balance of one retailer across all firms. */
-export function balanceAcrossFirms(
-  entries: readonly { retailerId: string; amountPaise: number }[],
-  retailerId: string,
-): number {
+/** Balance of one retailer (positive = the retailer owes, negative = advance). */
+export function balanceOf(entries: readonly { retailerId: string; amountPaise: number }[], retailerId: string): number {
   return sumPaise(entries.filter((e) => e.retailerId === retailerId));
-}
-
-/** Balance per firm id for one retailer. */
-export function balancesByFirm(
-  entries: readonly { firmId: string; retailerId: string; amountPaise: number }[],
-  retailerId: string,
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const e of entries) {
-    if (e.retailerId !== retailerId) continue;
-    out[e.firmId] = (out[e.firmId] ?? 0) + e.amountPaise;
-  }
-  return out;
 }
 
 /** What the retailer owes: only positive balances count as dues (an advance is not negative dues). */
 export function duesFrom(balancePaise: number): number {
   return Math.max(0, balancePaise);
-}
-
-export type DuesSummary = {
-  withFirmPaise: number;
-  allFirmsPaise: number;
-  /** Net balance across firms (can be negative if the retailer paid in advance). */
-  netAllFirmsPaise: number;
-};
-
-/**
- * Dues summary for one retailer: with the given firm, and the total across firms.
- * Total dues sum each firm's positive balance (an advance with one firm does not
- * cancel what is owed to another firm, because each firm has its own books).
- */
-export function summariseDues(
-  entries: readonly { firmId: string; retailerId: string; amountPaise: number }[],
-  retailerId: string,
-  firmId: string,
-): DuesSummary {
-  const perFirm = balancesByFirm(entries, retailerId);
-  const all = Object.values(perFirm);
-  return {
-    withFirmPaise: duesFrom(perFirm[firmId] ?? 0),
-    allFirmsPaise: all.reduce((n, b) => n + duesFrom(b), 0),
-    netAllFirmsPaise: all.reduce((n, b) => n + b, 0),
-  };
 }
 
 /** Order debit = bags x rate per bag, in paise. Needs whole bags >= 1 and a rate >= 1 paise. */
@@ -120,7 +68,6 @@ export const MAX_OPENING_PAISE = 100 * 1_00_00_000 * 100;
 /** The debit entry to post when an order is approved. */
 export function orderDebitEntry(order: {
   id: string;
-  firmId: string;
   retailerId: string;
   bags: number;
   ratePaise: number | null;
@@ -130,7 +77,6 @@ export function orderDebitEntry(order: {
   return {
     ok: true,
     entry: {
-      firmId: order.firmId,
       retailerId: order.retailerId,
       kind: "order_debit",
       amountPaise: amount,
@@ -144,7 +90,7 @@ export function orderDebitEntry(order: {
  * (truck rate - order rate). Null when nothing changes or a value is missing.
  */
 export function truckRateChangeEntry(
-  order: { id: string; firmId: string; retailerId: string },
+  order: { id: string; retailerId: string },
   truckBags: number,
   orderRatePaise: number | null,
   truckRatePaise: number | null,
@@ -153,7 +99,6 @@ export function truckRateChangeEntry(
   const newTotal = orderDebitPaise(truckBags, truckRatePaise);
   if (oldTotal === null || newTotal === null || oldTotal === newTotal) return null;
   return {
-    firmId: order.firmId,
     retailerId: order.retailerId,
     kind: "adjustment",
     amountPaise: newTotal - oldTotal,
@@ -166,12 +111,11 @@ export function truckRateChangeEntry(
  * planCancel worked out. Null when there is nothing to post (zero or not whole paise).
  */
 export function cancelEntry(
-  order: { id: string; firmId: string; retailerId: string },
+  order: { id: string; retailerId: string },
   amountPaise: number,
 ): LedgerEntry | null {
   if (!Number.isSafeInteger(amountPaise) || amountPaise === 0) return null;
   return {
-    firmId: order.firmId,
     retailerId: order.retailerId,
     kind: "adjustment",
     amountPaise,
@@ -179,21 +123,20 @@ export function cancelEntry(
   };
 }
 
-/** Opening balance: one per retailer + firm. Zero is not allowed (nothing to record). */
+/** Opening balance: one per retailer. Zero is not allowed (nothing to record). */
 export function openingEntry(
-  existing: readonly { kind: string; firmId: string; retailerId: string }[],
+  existing: readonly { kind: string; retailerId: string }[],
   retailerId: string,
-  firmId: string,
   amountPaise: number,
 ): EntryResult {
   if (!Number.isInteger(amountPaise) || amountPaise === 0) {
     return { ok: false, error: "Enter an amount in whole paise that is not zero." };
   }
   if (Math.abs(amountPaise) > MAX_OPENING_PAISE) return { ok: false, error: "That amount is too large." };
-  if (existing.some((e) => e.kind === "opening" && e.retailerId === retailerId && e.firmId === firmId)) {
-    return { ok: false, error: "Opening balance is already set for this retailer and firm." };
+  if (existing.some((e) => e.kind === "opening" && e.retailerId === retailerId)) {
+    return { ok: false, error: "Opening balance is already set for this retailer." };
   }
-  return { ok: true, entry: { firmId, retailerId, kind: "opening", amountPaise } };
+  return { ok: true, entry: { retailerId, kind: "opening", amountPaise } };
 }
 
 /** Which roles may see all retailers' ledgers; a retailer sees only their own. */

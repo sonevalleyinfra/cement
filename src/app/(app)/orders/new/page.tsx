@@ -1,6 +1,5 @@
 import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
-import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getProducts } from "@/lib/catalogue";
@@ -11,11 +10,6 @@ import { NewOrderForm } from "./new-order-form";
 
 export default async function NewOrderPage() {
   const { user } = await requireRole(...rolesFor("placeOrder"));
-  const { firms, selection } = await getFirmSelection();
-  if (selection.mode !== "firm") return <EmptyState title="Pick one firm to place an order" />;
-  const firm = firms.find((f) => f.id === selection.firmId);
-  if (!firm) return <EmptyState title="Pick one firm to place an order" />;
-
   const retailerOnly = isRetailerOnly(user.role);
   const retailerRows = retailerOnly
     ? await db
@@ -36,8 +30,6 @@ export default async function NewOrderPage() {
 
   return (
     <NewOrderForm
-      firmId={selection.firmId}
-      firmName={firm.name}
       retailers={retailerRows}
       products={productRows}
       fixedRetailerId={retailerOnly ? retailerRows[0].id : null}

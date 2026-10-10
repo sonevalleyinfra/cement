@@ -3,7 +3,7 @@ import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-cor
 import { user } from "./auth";
 
 /**
- * Who changed what, for master data (retailers, vehicles, firms, users, stock places).
+ * Who changed what, for master data (retailers, vehicles, godowns, users, products).
  * Append-only: rows are never edited or deleted. Write rows with `writeAudit` (lib/audit.ts).
  * `entity` is the kind of record ("retailer", "vehicle"...), `entityId` its id as text,
  * `action` what happened ("create", "update", "activate", "deactivate", "link"),

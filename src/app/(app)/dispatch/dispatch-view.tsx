@@ -23,30 +23,28 @@ type OrderRow = {
   /** Logistics person on the order (shown to admin). */
   assignee: string | null;
 };
-/** A stock place; `truck` is its number when the bags are on a truck. */
-type Place = { id: string; name: string; truck: string | null };
-type Balance = { productId: string; locationId: string; bags: number };
+/** A stock place (`key` is "godown:<id>" or "vehicle:<id>"); `truck` is its number when the bags are on a truck. */
+type Place = { key: string; name: string; truck: string | null };
+type Balance = { productId: string; placeKey: string; bags: number };
 
 const selectClass = "h-11 w-full rounded-xl border bg-background px-3 text-base";
 
 export function DispatchView({
   isAdmin,
   orders,
-  locations,
+  places,
   balances,
 }: {
-  firmId: string;
   isAdmin: boolean;
   orders: OrderRow[];
-  locations: Place[];
+  places: Place[];
   balances: Balance[];
-  userId: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [bags, setBags] = useState("");
   const [truck, setTruck] = useState("");
-  const [locationId, setLocationId] = useState("");
+  const [fromPlace, setFromPlace] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
   const [rate, setRate] = useState("");
@@ -58,8 +56,8 @@ export function DispatchView({
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
     // Start with the place holding the most bags of this product.
-    const fullest = [...locations].sort((a, b) => stockHere(o, b.id) - stockHere(o, a.id))[0];
-    pickPlace(fullest?.id ?? "");
+    const fullest = [...places].sort((a, b) => stockHere(o, b.key) - stockHere(o, a.key))[0];
+    pickPlace(fullest?.key ?? "");
     setDriverName("");
     setDriverPhone("");
     setRate("");
@@ -68,13 +66,13 @@ export function DispatchView({
   }
 
   /** Bags already on a truck usually leave on that truck, so its number is filled in. */
-  function pickPlace(id: string) {
-    setLocationId(id);
-    setTruck(locations.find((l) => l.id === id)?.truck ?? "");
+  function pickPlace(key: string) {
+    setFromPlace(key);
+    setTruck(places.find((p) => p.key === key)?.truck ?? "");
   }
 
-  function stockHere(o: OrderRow, loc: string) {
-    return balances.find((b) => b.productId === o.productId && b.locationId === loc)?.bags ?? 0;
+  function stockHere(o: OrderRow, key: string) {
+    return balances.find((b) => b.productId === o.productId && b.placeKey === key)?.bags ?? 0;
   }
 
   function submit() {
@@ -84,7 +82,7 @@ export function DispatchView({
         orderId: open.id,
         bags: Number(bags),
         vehicleNumber: truck,
-        locationId: locationId || null,
+        fromPlace: fromPlace || null,
         driverName,
         driverPhone,
         newRateRupees: rate,
@@ -107,7 +105,7 @@ export function DispatchView({
 
   return (
     <div className="flex flex-col gap-3">
-      {locations.length === 0 && (
+      {places.length === 0 && (
         <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <p className="text-sm font-medium">No stock yet</p>
           {isAdmin && (
@@ -145,7 +143,7 @@ export function DispatchView({
                 />
                 <div className="mt-2">
                   {left > 0 ? (
-                    <Button className="w-full" onClick={() => openSheet(o)} disabled={locations.length === 0}>
+                    <Button className="w-full" onClick={() => openSheet(o)} disabled={places.length === 0}>
                       Dispatch
                     </Button>
                   ) : (
@@ -175,10 +173,10 @@ export function DispatchView({
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Take from
-              <select className={selectClass} value={locationId} onChange={(e) => pickPlace(e.target.value)}>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name} ({stockHere(open, l.id)} bags)
+              <select className={selectClass} value={fromPlace} onChange={(e) => pickPlace(e.target.value)}>
+                {places.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.name} ({stockHere(open, p.key)} bags)
                   </option>
                 ))}
               </select>

@@ -37,7 +37,7 @@ export const ACTION_ROLES = {
   // Stock
   viewStock: STAFF,
   manageStock: ["admin"],
-  /** Move bags between two places (godown / vehicle) of the same firm. */
+  /** Move bags between two places (godown / vehicle). */
   transferStock: ["logistics"],
   // Masters
   viewRetailers: STAFF,
@@ -46,7 +46,6 @@ export const ACTION_ROLES = {
   /** Pick (or change) the sales person who looks after a retailer. */
   assignSalesRep: ["admin"],
   manageUsers: ["admin"],
-  manageFirms: ["admin"],
   /** Brands, types, grades and products (the drop-down lists). */
   manageCatalogue: ["admin"],
 } as const satisfies Record<string, readonly Role[]>;

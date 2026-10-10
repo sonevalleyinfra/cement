@@ -12,9 +12,9 @@ export const MOVEMENT_TYPES = [
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 export type Movement = {
-  firmId: string;
   productId: string;
-  locationId: string;
+  /** The godown or truck, as a place key ("godown:<id>" / "vehicle:<id>", see `placeKey`). */
+  placeKey: string;
   type: MovementType;
   /** Signed: + adds bags, - removes bags. */
   bags: number;
@@ -22,27 +22,21 @@ export type Movement = {
   reason?: string;
 };
 
-export type StockKey = { firmId: string; productId: string; locationId: string };
+export type StockKey = { productId: string; placeKey: string };
 
-/** Bags for one firm + product + location. Other firms' movements are ignored. */
+/** Bags of one product at one place. */
 export function balance(movements: readonly Movement[], key: StockKey): number {
   let total = 0;
   for (const m of movements) {
-    if (m.firmId === key.firmId && m.productId === key.productId && m.locationId === key.locationId) {
-      total += m.bags;
-    }
+    if (m.productId === key.productId && m.placeKey === key.placeKey) total += m.bags;
   }
   return total;
 }
 
-/** Bags for one firm + product across all locations. */
-export function firmProductTotal(
-  movements: readonly Movement[],
-  firmId: string,
-  productId: string,
-): number {
+/** Bags of one product across all places. */
+export function productTotal(movements: readonly Movement[], productId: string): number {
   let total = 0;
-  for (const m of movements) if (m.firmId === firmId && m.productId === productId) total += m.bags;
+  for (const m of movements) if (m.productId === productId) total += m.bags;
   return total;
 }
 
@@ -56,7 +50,7 @@ export function isPositiveBags(bags: number): boolean {
  */
 export const MAX_STOCK_ENTRY_BAGS = 100000;
 
-/** Can we take `bags` out? Needs whole bags, > 0, and enough in this firm's stock. */
+/** Can we take `bags` out? Needs whole bags, > 0, and enough in stock. */
 export function canDispatch(
   currentBalance: number,
   bags: number,
@@ -101,15 +95,15 @@ export function adjustmentMovement(
   return { ok: true, movement: { ...key, type: "adjustment", bags: deltaBags, reason: why } };
 }
 
-/** Moves bags between two locations of the SAME firm (e.g. leftover bags back to godown). */
+/** Moves bags between two places (e.g. leftover bags back to the godown, loading a truck). */
 export function transferMovements(
   movements: readonly Movement[],
   from: StockKey,
-  toLocationId: string,
+  toPlaceKey: string,
   bags: number,
   reason = "",
 ): { ok: true; movements: [Movement, Movement] } | { ok: false; error: string } {
-  if (from.locationId === toLocationId) return { ok: false, error: "Pick two different places." };
+  if (from.placeKey === toPlaceKey) return { ok: false, error: "Pick two different places." };
   if (Number.isInteger(bags) && bags > MAX_STOCK_ENTRY_BAGS) return { ok: false, error: "That is too many bags." };
   const check = canDispatch(balance(movements, from), bags);
   if (!check.ok) return check;
@@ -117,7 +111,7 @@ export function transferMovements(
     ok: true,
     movements: [
       { ...from, type: "transfer", bags: -bags, reason },
-      { ...from, locationId: toLocationId, type: "transfer", bags, reason },
+      { ...from, placeKey: toPlaceKey, type: "transfer", bags, reason },
     ],
   };
 }
@@ -137,17 +131,13 @@ export function inMovement(
   return { ok: true, movement: { ...key, type, bags, reason } };
 }
 
-/** Opening stock is set once per firm + product + location. A second one must be an adjustment. */
+/** Opening stock is set once per product + place. A second one must be an adjustment. */
 export function canSetOpening(
   movements: readonly Movement[],
   key: StockKey,
 ): { ok: true } | { ok: false; error: string } {
   const done = movements.some(
-    (m) =>
-      m.type === "opening" &&
-      m.firmId === key.firmId &&
-      m.productId === key.productId &&
-      m.locationId === key.locationId,
+    (m) => m.type === "opening" && m.productId === key.productId && m.placeKey === key.placeKey,
   );
   return done
     ? { ok: false, error: "Opening stock is already set here. Use an adjustment to change it." }
@@ -180,7 +170,17 @@ export function parsePlaceKey(text: unknown): PlaceRef | null {
   return { kind: kind as PlaceKind, id: id.toLowerCase() };
 }
 
-/** A godown or vehicle can be switched off only when no firm has any bags there. */
+/**
+ * The database columns for a place key: a godown fills `godownId`, a truck fills `vehicleId`
+ * (the other one stays empty). Throws on a key that is not a place.
+ */
+export function placeColumns(key: string): { godownId: string | null; vehicleId: string | null } {
+  const place = parsePlaceKey(key);
+  if (!place) throw new Error("Unknown place");
+  return place.kind === "godown" ? { godownId: place.id, vehicleId: null } : { godownId: null, vehicleId: place.id };
+}
+
+/** A godown or vehicle can be switched off only when it holds no bags. */
 export function canSwitchOffPlace(bagsThere: number): { ok: true } | { ok: false; error: string } {
   return bagsThere > 0 ? { ok: false, error: "Move the bags out first." } : { ok: true };
 }

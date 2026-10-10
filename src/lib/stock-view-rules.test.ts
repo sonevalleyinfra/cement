@@ -70,7 +70,7 @@ describe("stockByPlace", () => {
       ["n-ppc53", 40],
     ]);
   });
-  it("adds up rows of the same place and product (all firms view)", () => {
+  it("adds up repeated rows of the same place and product", () => {
     const cards = stockByPlace([...rows, { productId: "t-opc53", bags: 50, ...G }], products, NO_FILTERS);
     expect(cards.find((c) => c.key === "godown:1")?.lines[0]).toMatchObject({ bags: 250 });
   });

@@ -38,10 +38,8 @@ describe("price and placing", () => {
 });
 
 describe("validatePlaceOrder", () => {
-  const good = { readOnlyMode: false, bags: 10, retailerId: "r", productId: "p" };
+  const good = { bags: 10, retailerId: "r", productId: "p" };
   it("accepts a good order", () => expect(validatePlaceOrder(good)).toEqual({ ok: true }));
-  it("rejects read-only mode", () =>
-    expect(validatePlaceOrder({ ...good, readOnlyMode: true }).ok).toBe(false));
   it("needs retailer, product, bags", () => {
     expect(validatePlaceOrder({ ...good, retailerId: null }).ok).toBe(false);
     expect(validatePlaceOrder({ ...good, productId: null }).ok).toBe(false);
@@ -146,7 +144,7 @@ describe("historyForViewer", () => {
     for (const t of ["new RATE", "price", "₹400", "Rs 400", "rs.400", "400/-", "rupees", "discount", "cost"]) {
       expect(mentionsMoney(t)).toBe(true);
     }
-    for (const t of ["", "Dues too high", "40 bags in KA01", "wrong firm", "hrs late", "separate truck"]) {
+    for (const t of ["", "Dues too high", "40 bags in KA01", "wrong product", "hrs late", "separate truck"]) {
       expect(mentionsMoney(t)).toBe(false);
     }
   });

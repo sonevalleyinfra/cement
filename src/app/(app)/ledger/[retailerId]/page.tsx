@@ -1,12 +1,10 @@
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
-import { FirmChip, type FirmSlot } from "@/components/app/firm-chip";
 import { db } from "@/db";
-import { firms as firmsTable, retailers, user as users } from "@/db/schema";
+import { retailers, user as users } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
-import { getAccessibleFirms } from "@/lib/firm-access";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
 import { withRunningBalance } from "@/lib/ledger-rules";
@@ -20,14 +18,11 @@ import { OpeningForm } from "./opening-form";
 
 export default async function RetailerLedgerPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ retailerId: string }>;
-  searchParams: Promise<{ firm?: string }>;
 }) {
   const { user } = await requireUser();
   const { retailerId } = await params;
-  const { firm: firmParam } = await searchParams;
   if (!isUuid(retailerId)) notFound();
   if (!(await mayViewLedger(user, retailerId))) notFound();
 
@@ -36,13 +31,7 @@ export default async function RetailerLedgerPage({
 
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
   const showNotes = showLedgerNotes(user.role);
-  const firms = staff
-    ? await getAccessibleFirms(user.id, user.role)
-    : await db.select().from(firmsTable).where(eq(firmsTable.active, true)).orderBy(asc(firmsTable.createdAt), asc(firmsTable.slot));
-  const firm = firms.find((f) => f.id === firmParam) ?? firms[0];
-  if (!firm) return <EmptyState title="No firm available" />;
-
-  const rows = await getEntries(retailerId, firm.id);
+  const rows = await getEntries(retailerId);
   const actors = new Map(
     (await db.select({ id: users.id, name: users.name }).from(users)).map((u) => [u.id, u.name]),
   );
@@ -65,28 +54,11 @@ export default async function RetailerLedgerPage({
           </Link>
         )}
       </div>
-      {firms.length > 1 && (
-        <div className="flex flex-wrap gap-2">
-          {firms.map((f) => (
-            <Link
-              key={f.id}
-              href={`/ledger/${retailerId}?firm=${f.id}`}
-              className={f.id === firm.id ? "opacity-100" : "opacity-60"}
-            >
-              <FirmChip name={f.name} slot={f.slot as FirmSlot} />
-            </Link>
-          ))}
-        </div>
-      )}
       <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-        <div className="text-xs text-muted-foreground">
-          {balance < 0 ? "Advance with" : "Dues with"} {firm.name}
-        </div>
+        <div className="text-xs text-muted-foreground">{balance < 0 ? "Advance" : "Dues"}</div>
         <div className="tabular text-3xl font-bold">{formatINR(Math.abs(balance))}</div>
       </div>
-      {isAdmin(user.role) && !hasOpening && (
-        <OpeningForm retailerId={retailerId} firmId={firm.id} firmName={firm.name} />
-      )}
+      {isAdmin(user.role) && !hasOpening && <OpeningForm retailerId={retailerId} />}
       {entries.length === 0 ? (
         <EmptyState title="No entries yet" />
       ) : (

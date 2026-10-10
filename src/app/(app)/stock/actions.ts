@@ -2,7 +2,6 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
 import { brands, cementTypes, grades, products, stockMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -13,21 +12,22 @@ import {
   inMovement,
   NEW_TRUCK_PLACE,
   parsePlaceKey,
+  placeColumns,
   placeKey,
   transferMovements,
   type Movement,
   type PlaceRef,
+  type StockKey,
 } from "@/lib/stock-rules";
 import { isUuid } from "@/lib/ids";
 import { can, rolesFor } from "@/lib/permissions";
-import { requireFirm, requireRole, writeBlock } from "@/lib/session";
-import { getLocation, truckByNumber, type Tx } from "@/lib/stock-places";
+import { requireRole } from "@/lib/session";
+import { atPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
 import { checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
 
 export type StockResult = { ok: true } | { ok: false; error: string };
 
 export type StockInput = {
-  firmId: string;
   /** The product, picked as its parts: brand, trade-type (channel), cement type and grade. */
   brandId: string;
   channel: string;
@@ -45,7 +45,7 @@ export type StockInput = {
   note: string;
 };
 
-/** Thrown inside a transaction to undo everything in it (e.g. a stock row made a moment ago). */
+/** Thrown inside a transaction to undo everything in it (e.g. a product or truck made a moment ago). */
 class Refused extends Error {
   constructor(readonly result: { ok: false; error: string }) {
     super(result.error);
@@ -66,19 +66,14 @@ async function inTransaction(fn: (tx: Tx) => Promise<StockResult>): Promise<Stoc
   }
 }
 
-/** Admin only, and one firm picked (not "All firms"). Only a purchase may use a typed-in truck. */
+/** Admin only. Only a purchase may use a typed-in truck. */
 async function prepare(input: StockInput, allowNewTruck = false) {
   const session = await requireRole(...rolesFor("manageStock"));
   const place = allowNewTruck && input.place === NEW_TRUCK_PLACE ? NEW_TRUCK_PLACE : parsePlaceKey(input.place);
   const partsOk =
     isUuid(input.brandId) && isProductChannel(input.channel) && isUuid(input.typeId) && isUuid(input.gradeId);
-  if (!isUuid(input.firmId) || !partsOk || !place) {
+  if (!partsOk || !place) {
     return { error: "Pick a product and a place.", session: null, place: null } as const;
-  }
-  await requireFirm(input.firmId);
-  const { selection } = await getFirmSelection();
-  if (selection.mode !== "firm" || selection.firmId !== input.firmId) {
-    return { error: "Pick one firm first.", session: null, place: null } as const;
   }
   return { error: null, session, place } as const;
 }
@@ -124,29 +119,38 @@ async function pickProduct(
   return { ok: true, productId: row.id };
 }
 
-/** This firm's stock row at the place (made if needed, locked), and the product must be active. */
-async function locate(tx: Tx, firmId: string, productId: string, place: PlaceRef) {
-  const loc = await getLocation(tx, firmId, place);
-  if (!loc.ok) return loc;
+/** Locks the place (it must be active), and the product must be active. Returns the stock key. */
+async function locate(tx: Tx, productId: string, place: PlaceRef) {
+  const locked = await lockPlace(tx, place);
+  if (!locked.ok) return locked;
   // Share-locked so the product cannot be switched off while its bags arrive.
   const [product] = await tx.select().from(products).where(eq(products.id, productId)).for("share");
   if (!product || !product.active) return { ok: false, error: "Pick an active product." } as const;
-  return loc;
+  return { ok: true, key: { productId, placeKey: placeKey(place) } } as const;
 }
 
-async function currentMovements(tx: Tx, key: { firmId: string; productId: string; locationId: string }): Promise<Movement[]> {
-  // Only the rows for this exact firm + product + place, as plain movements for the rules.
+async function currentMovements(tx: Tx, key: StockKey): Promise<Movement[]> {
+  // Only the rows for this exact product + place, as plain movements for the rules.
+  const place = parsePlaceKey(key.placeKey);
+  if (!place) return [];
   const rows = await tx
     .select({ type: stockMovements.type, bags: stockMovements.bags })
     .from(stockMovements)
-    .where(
-      and(
-        eq(stockMovements.firmId, key.firmId),
-        eq(stockMovements.productId, key.productId),
-        eq(stockMovements.locationId, key.locationId),
-      ),
-    );
+    .where(and(eq(stockMovements.productId, key.productId), atPlace(place)));
   return rows.map((r) => ({ ...key, type: r.type as Movement["type"], bags: r.bags }));
+}
+
+/** A movement from the rules as a database row. */
+function toRow(m: Movement, actorId: string) {
+  return {
+    productId: m.productId,
+    ...placeColumns(m.placeKey),
+    type: m.type,
+    bags: m.bags,
+    orderId: m.orderId ?? null,
+    reason: m.reason ?? "",
+    actorId,
+  };
 }
 
 function done(): StockResult {
@@ -174,17 +178,16 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const res = await inTransaction(async (tx) => {
     const picked = await pickProduct(tx, input, p.session.user.id, allowCreate);
     if (!picked.ok) return picked;
-    // A typed-in truck is found (or made) by its number, so the same truck always lands on the same stock row.
+    // A typed-in truck is found (or made) by its number, so the same truck always has the same stock.
     const place: PlaceRef =
       chosen === NEW_TRUCK_PLACE
         ? { kind: "vehicle", id: await truckByNumber(tx, truck?.number ?? "", p.session.user.id) }
         : chosen;
-    const loc = await locate(tx, input.firmId, picked.productId, place);
+    const loc = await locate(tx, picked.productId, place);
     if (!loc.ok) return loc;
-    const key = { firmId: input.firmId, productId: picked.productId, locationId: loc.locationId };
-    const m = inMovement("purchase", key, input.bags, note);
+    const m = inMovement("purchase", loc.key, input.bags, note);
     if (!m.ok) return m;
-    await tx.insert(stockMovements).values({ ...m.movement, reason: m.movement.reason ?? "", actorId: p.session.user.id });
+    await tx.insert(stockMovements).values(toRow(m.movement, p.session.user.id));
     return { ok: true };
   });
   return res.ok ? done() : res;
@@ -198,14 +201,13 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
   const res = await inTransaction(async (tx) => {
     const picked = await pickProduct(tx, input, p.session.user.id, false);
     if (!picked.ok) return picked;
-    const loc = await locate(tx, input.firmId, picked.productId, place);
+    const loc = await locate(tx, picked.productId, place);
     if (!loc.ok) return loc;
-    const key = { firmId: input.firmId, productId: picked.productId, locationId: loc.locationId };
-    const m = inMovement("opening", key, input.bags, "Opening stock");
+    const m = inMovement("opening", loc.key, input.bags, "Opening stock");
     if (!m.ok) return m;
-    const once = canSetOpening(await currentMovements(tx, key), key);
+    const once = canSetOpening(await currentMovements(tx, loc.key), loc.key);
     if (!once.ok) return once;
-    await tx.insert(stockMovements).values({ ...m.movement, reason: m.movement.reason ?? "", actorId: p.session.user.id });
+    await tx.insert(stockMovements).values(toRow(m.movement, p.session.user.id));
     return { ok: true };
   });
   return res.ok ? done() : res;
@@ -220,25 +222,23 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
   const res = await inTransaction(async (tx) => {
     const picked = await pickProduct(tx, input, p.session.user.id, false);
     if (!picked.ok) return picked;
-    const loc = await locate(tx, input.firmId, picked.productId, place);
+    const loc = await locate(tx, picked.productId, place);
     if (!loc.ok) return loc;
-    const key = { firmId: input.firmId, productId: picked.productId, locationId: loc.locationId };
     const m = adjustmentMovement(
-      await currentMovements(tx, key),
-      key,
+      await currentMovements(tx, loc.key),
+      loc.key,
       input.bags,
       String(input.note ?? ""),
       p.session.user.role,
     );
     if (!m.ok) return m;
-    await tx.insert(stockMovements).values({ ...m.movement, reason: m.movement.reason ?? "", actorId: p.session.user.id });
+    await tx.insert(stockMovements).values(toRow(m.movement, p.session.user.id));
     return { ok: true };
   });
   return res.ok ? done() : res;
 }
 
 export type TransferInput = {
-  firmId: string;
   productId: string;
   /** Place keys, as in StockInput. */
   from: string;
@@ -247,41 +247,28 @@ export type TransferInput = {
   note: string;
 };
 
-/** Moves bags between two places of ONE firm (leftovers to the godown, loading a truck). */
+/** Moves bags between two places (leftovers to the godown, loading a truck). */
 export async function transferStock(input: TransferInput): Promise<StockResult> {
   const session = await requireRole(...rolesFor("transferStock"));
   const from = parsePlaceKey(input.from);
   const to = parsePlaceKey(input.to);
-  if (!isUuid(input.firmId) || !isUuid(input.productId) || !from || !to) {
+  if (!isUuid(input.productId) || !from || !to) {
     return { ok: false, error: "Pick a product and two places." };
   }
   if (placeKey(from) === placeKey(to)) return { ok: false, error: "Pick two different places." };
-  await requireFirm(input.firmId);
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
-  const { selection } = await getFirmSelection();
-  if (selection.mode !== "firm" || selection.firmId !== input.firmId) {
-    return { ok: false, error: "Pick one firm first." };
-  }
   const note = String(input.note ?? "").trim().slice(0, 200);
   const res = await inTransaction(async (tx) => {
     // Lock both places in a fixed order (sorted keys) so two moves cannot wait on each other.
-    const ids = new Map<string, string>();
     for (const place of [from, to].sort((a, b) => placeKey(a).localeCompare(placeKey(b)))) {
-      const loc = await getLocation(tx, input.firmId, place);
-      if (loc.ok) ids.set(placeKey(place), loc.locationId);
+      const locked = await lockPlace(tx, place);
+      if (!locked.ok) return { ok: false, error: "Pick two active places." };
     }
-    const fromId = ids.get(placeKey(from));
-    const toId = ids.get(placeKey(to));
-    if (!fromId || !toId) return { ok: false, error: "Pick two active places." };
     const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).for("share");
     if (!product || !product.active) return { ok: false, error: "Pick an active product." };
-    const fromKey = { firmId: input.firmId, productId: input.productId, locationId: fromId };
-    const plan = transferMovements(await currentMovements(tx, fromKey), fromKey, toId, input.bags, note);
+    const fromKey: StockKey = { productId: input.productId, placeKey: placeKey(from) };
+    const plan = transferMovements(await currentMovements(tx, fromKey), fromKey, placeKey(to), input.bags, note);
     if (!plan.ok) return plan;
-    await tx
-      .insert(stockMovements)
-      .values(plan.movements.map((m) => ({ ...m, reason: m.reason ?? "", actorId: session.user.id })));
+    await tx.insert(stockMovements).values(plan.movements.map((m) => toRow(m, session.user.id)));
     return { ok: true };
   });
   return res.ok ? done() : res;

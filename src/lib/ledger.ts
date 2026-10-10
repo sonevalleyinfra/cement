@@ -1,6 +1,6 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { firms, ledgerEntries } from "@/db/schema";
+import { ledgerEntries } from "@/db/schema";
 import type { LedgerEntry } from "@/lib/ledger-rules";
 
 /** A database or a transaction. */
@@ -15,7 +15,6 @@ export async function postEntry(
   receiptId: string | null = null,
 ): Promise<void> {
   await tx.insert(ledgerEntries).values({
-    firmId: entry.firmId,
     retailerId: entry.retailerId,
     kind: entry.kind,
     amountPaise: entry.amountPaise,
@@ -26,41 +25,31 @@ export async function postEntry(
   });
 }
 
-/** Net balance per firm for one retailer (positive = retailer owes). Server-only. */
-export async function getRetailerBalances(retailerId: string) {
-  return db
-    .select({
-      firmId: ledgerEntries.firmId,
-      firmName: firms.name,
-      firmSlot: firms.slot,
-      balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
-    })
-    .from(ledgerEntries)
-    .innerJoin(firms, eq(firms.id, ledgerEntries.firmId))
-    .where(eq(ledgerEntries.retailerId, retailerId))
-    .groupBy(ledgerEntries.firmId, firms.name, firms.slot, firms.createdAt)
-    .orderBy(asc(firms.createdAt), asc(firms.slot));
-}
-
-/** Net balance per retailer and firm (for the list cards). Server-only. */
-export async function getAllBalances(firmIds: string[]) {
-  if (firmIds.length === 0) return [];
-  return db
+/** Net balance per retailer (for the list cards; positive = retailer owes). Server-only. */
+export async function getAllBalances(conn: Pick<typeof db, "select"> = db) {
+  return conn
     .select({
       retailerId: ledgerEntries.retailerId,
-      firmId: ledgerEntries.firmId,
       balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
-    .where(sql`${ledgerEntries.firmId} in ${firmIds}`)
-    .groupBy(ledgerEntries.retailerId, ledgerEntries.firmId);
+    .groupBy(ledgerEntries.retailerId);
 }
 
-/** All entries for one retailer with one firm, oldest first. */
-export async function getEntries(retailerId: string, firmId: string) {
+/** Net balance of one retailer (positive = owes, negative = advance). Server-only. */
+export async function getBalance(retailerId: string, conn: Pick<typeof db, "select"> = db): Promise<number> {
+  const [row] = await conn
+    .select({ balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
+    .from(ledgerEntries)
+    .where(eq(ledgerEntries.retailerId, retailerId));
+  return row?.balancePaise ?? 0;
+}
+
+/** All entries for one retailer, oldest first. */
+export async function getEntries(retailerId: string) {
   return db
     .select()
     .from(ledgerEntries)
-    .where(and(eq(ledgerEntries.retailerId, retailerId), eq(ledgerEntries.firmId, firmId)))
+    .where(eq(ledgerEntries.retailerId, retailerId))
     .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id));
 }

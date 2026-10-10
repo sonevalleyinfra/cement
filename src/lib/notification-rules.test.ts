@@ -4,7 +4,6 @@ import {
   buildNotifications,
   defaultMoneyLink,
   isSafeInternalPath,
-  joinFirmNames,
   MONEY_EVENTS,
   moneyRecipientIds,
   NOTIFICATION_EVENTS,
@@ -63,11 +62,11 @@ describe("recipientIds", () => {
 });
 
 describe("buildNotifications", () => {
-  const base = { firmName: "Firm A", retailerName: "Raju Stores", bags: 1, people, actorId: "placer" };
-  it("puts the firm name first and has no price", () => {
+  const base = { retailerName: "Raju Stores", bags: 1, people, actorId: "placer" };
+  it("names the event and has no price", () => {
     const list = buildNotifications({ ...base, event: "placed" });
     expect(list).toHaveLength(3);
-    expect(list[0].title).toBe("Firm A: New order");
+    expect(list[0].title).toBe("New order");
     expect(list[0].body).toBe("Raju Stores, 1 bag placed.");
     for (const n of buildNotifications({ ...base, event: "rate_filled", bags: 5 })) {
       expect(n.body).not.toMatch(/₹|rs\.?\s?\d/i);
@@ -78,17 +77,16 @@ describe("buildNotifications", () => {
       const list = buildNotifications({ ...base, event, bags: 10 });
       expect(list.length).toBeGreaterThan(0);
       expect(list[0].type).toBe(event);
-      expect(list[0].title.startsWith("Firm A: ")).toBe(true);
     }
   });
   it("assigned and rate edited messages, without a price", () => {
     const a = buildNotifications({ ...base, event: "assigned", bags: 10 });
     expect(a).toEqual([
-      { userId: "log", type: "assigned", title: "Firm A: Order assigned", body: "Raju Stores, 10 bags to dispatch.", link: null },
+      { userId: "log", type: "assigned", title: "Order assigned", body: "Raju Stores, 10 bags to dispatch.", link: null },
     ]);
     const r = buildNotifications({ ...base, event: "rate_edited", bags: 10, actorId: "log" });
     expect(r.map((n) => n.userId)).toEqual(["acc1", "acc2", "adm", "rep"]);
-    expect(r[0].title).toBe("Firm A: Rate edited");
+    expect(r[0].title).toBe("Rate edited");
     expect(r[0].body).toBe("Raju Stores, 10 bags.");
   });
   it("no order message ever contains a price or money sign", () => {
@@ -108,7 +106,6 @@ describe("buildNotifications", () => {
 describe("money notifications", () => {
   const people = { adminIds: ["adm1", "adm2"], collectorId: "col" };
   const base = {
-    firmNames: ["Firm A", "Firm B"],
     retailerName: "Raju Stores",
     amountPaise: 500000,
     people,
@@ -135,34 +132,34 @@ describe("money notifications", () => {
     ]);
   });
 
-  it("payment recorded: firm names first, amount in rupees, opens the receipts", () => {
+  it("payment recorded: amount in rupees, opens the receipts", () => {
     expect(buildMoneyNotifications({ ...base, event: "payment_recorded" })).toEqual([
-      { userId: "adm1", type: "payment_recorded", title: "Firm A + Firm B: Payment recorded", body: "₹5,000.00 from Raju Stores.", link: "/receipts" },
-      { userId: "adm2", type: "payment_recorded", title: "Firm A + Firm B: Payment recorded", body: "₹5,000.00 from Raju Stores.", link: "/receipts" },
+      { userId: "adm1", type: "payment_recorded", title: "Payment recorded", body: "₹5,000.00 from Raju Stores.", link: "/receipts" },
+      { userId: "adm2", type: "payment_recorded", title: "Payment recorded", body: "₹5,000.00 from Raju Stores.", link: "/receipts" },
     ]);
   });
   it("online verified", () => {
-    const [n] = buildMoneyNotifications({ ...base, event: "online_verified", firmNames: ["Firm A"], actorId: "acc" });
+    const [n] = buildMoneyNotifications({ ...base, event: "online_verified", actorId: "acc" });
     expect(n).toEqual({
       userId: "col",
       type: "online_verified",
-      title: "Firm A: Online payment verified",
+      title: "Online payment verified",
       body: "₹5,000.00 from Raju Stores verified.",
       link: "/receipts",
     });
   });
   it("handover confirmed and rejected open the wallet; a reason is added", () => {
-    const [ok] = buildMoneyNotifications({ ...base, event: "handover_confirmed", retailerName: null, firmNames: ["Firm A"], actorId: "acc" });
-    expect(ok).toMatchObject({ title: "Firm A: Handover confirmed", body: "₹5,000.00 cash handover confirmed.", link: "/wallet" });
-    const [no] = buildMoneyNotifications({ ...base, event: "handover_rejected", firmNames: ["Firm A"], actorId: "acc", reason: " Count is short " });
-    expect(no).toMatchObject({ title: "Firm A: Handover rejected", body: "₹5,000.00 cash handover rejected. Reason: Count is short", link: "/wallet" });
+    const [ok] = buildMoneyNotifications({ ...base, event: "handover_confirmed", retailerName: null, actorId: "acc" });
+    expect(ok).toMatchObject({ title: "Handover confirmed", body: "₹5,000.00 cash handover confirmed.", link: "/wallet" });
+    const [no] = buildMoneyNotifications({ ...base, event: "handover_rejected", actorId: "acc", reason: " Count is short " });
+    expect(no).toMatchObject({ title: "Handover rejected", body: "₹5,000.00 cash handover rejected. Reason: Count is short", link: "/wallet" });
   });
   it("receipt reversed, with the caller's link and reason", () => {
     const [n] = buildMoneyNotifications({ ...base, event: "receipt_reversed", actorId: "acc", link: "/receipts/r1", reason: "Wrong shop" });
     expect(n).toEqual({
       userId: "col",
       type: "receipt_reversed",
-      title: "Firm A + Firm B: Receipt reversed",
+      title: "Receipt reversed",
       body: "₹5,000.00 from Raju Stores reversed. Reason: Wrong shop",
       link: "/receipts/r1",
     });
@@ -171,18 +168,9 @@ describe("money notifications", () => {
     for (const event of MONEY_EVENTS) {
       const list = buildMoneyNotifications({ ...base, event, actorId: "someone-else" });
       expect(list.length).toBeGreaterThan(0);
-      expect(list[0].title.startsWith("Firm A + Firm B: ")).toBe(true);
       expect(isSafeInternalPath(list[0].link)).toBe(true);
       expect(list[0].link).toBe(defaultMoneyLink(event));
     }
-  });
-  it("joins firm names without blanks or repeats", () => {
-    expect(joinFirmNames(["Firm A", " Firm A ", "", "Firm C"])).toBe("Firm A + Firm C");
-    expect(joinFirmNames([])).toBe("");
-  });
-  it("no firm name: the title is just the event", () => {
-    const [n] = buildMoneyNotifications({ ...base, event: "payment_recorded", firmNames: [] });
-    expect(n.title).toBe("Payment recorded");
   });
 });
 

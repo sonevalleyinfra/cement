@@ -33,7 +33,6 @@ export function canPlaceOrder(role: string | null | undefined): boolean {
 }
 
 export type PlaceOrderInput = {
-  readOnlyMode: boolean;
   bags: number;
   retailerId: string | null;
   productId: string | null;
@@ -43,7 +42,6 @@ export type PlaceOrderInput = {
 export function validatePlaceOrder(
   input: PlaceOrderInput,
 ): { ok: true } | { ok: false; error: string } {
-  if (input.readOnlyMode) return { ok: false, error: "Pick one firm to place an order." };
   if (!input.retailerId) return { ok: false, error: "Pick a retailer." };
   if (!input.productId) return { ok: false, error: "Pick a product." };
   if (!isValidBags(input.bags)) return { ok: false, error: "Enter the number of bags." };
@@ -66,7 +64,7 @@ export function resolveOrderRetailer(
   return isRetailerOnly(role) ? ownRetailerId : chosenRetailerId;
 }
 
-/** Which order filter applies: a pure retailer sees only their shop, others see the firm. */
+/** Which order filter applies: a pure retailer sees only their shop, others see every order. */
 export function orderListScope(
   role: string | null | undefined,
   ownRetailerId: string | null,

@@ -16,12 +16,10 @@ type PlaceOption = { key: string; kind: string; name: string };
 type Balance = { productId: string; placeKey: string; bags: number };
 
 export function TransferForm({
-  firmId,
   places,
   products,
   balances,
 }: {
-  firmId: string;
   places: PlaceOption[];
   products: ProductOption[];
   balances: Balance[];
@@ -41,7 +39,7 @@ export function TransferForm({
   function submit() {
     setMessage(null);
     start(async () => {
-      const res = await transferStock({ firmId, productId, from, to, bags, note });
+      const res = await transferStock({ productId, from, to, bags, note });
       if (res.ok) {
         setMessage({ ok: true, text: "Bags moved." });
         setDigits("");

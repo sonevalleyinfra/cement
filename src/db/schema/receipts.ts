@@ -1,16 +1,14 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { PAYMENT_MODES, RECEIPT_STATUSES } from "../../lib/receipt-rules";
 import { WALLET_KINDS } from "../../lib/wallet-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
-import { firms } from "./firms";
-import { orders } from "./orders";
 import { retailers } from "./retailers";
 
 /**
- * One receipt = one money event from one retailer (it has no firm of its own;
- * the split lives in `receipt_allocations`). `totalPaise` is integer paise.
+ * One receipt = one money event from one retailer. It pays that retailer's one ledger
+ * (one `receipt_credit` row of minus the total). `totalPaise` is integer paise.
  * `mode`: cash | online | cheque. `status`: for cheques pending | cleared | bounced,
  * cash is "received", online is "unverified" then "verified". Any receipt can become
  * "reversed" (accounts took it back); `reversedAt`, `reversedBy` and `reversalReason` say when, who and why.
@@ -23,8 +21,6 @@ export const receipts = pgTable(
     retailerId: uuid("retailer_id")
       .notNull()
       .references(() => retailers.id),
-    /** Firm whose bank account received online / cheque money. Empty for cash. */
-    receivedFirmId: uuid("received_firm_id").references(() => firms.id),
     mode: text("mode").notNull(),
     totalPaise: bigint("total_paise", { mode: "number" }).notNull(),
     utr: text("utr"),
@@ -52,30 +48,8 @@ export const receipts = pgTable(
   ],
 );
 
-/** One row per order paid (or one advance row per firm with no order). Amounts sum to the receipt total. */
-export const receiptAllocations = pgTable(
-  "receipt_allocations",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    receiptId: uuid("receipt_id")
-      .notNull()
-      .references(() => receipts.id),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
-    orderId: uuid("order_id").references(() => orders.id),
-    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
-    advance: boolean("advance").default(false).notNull(),
-  },
-  (t) => [
-    index("receipt_allocations_receipt_idx").on(t.receiptId),
-    index("receipt_allocations_order_idx").on(t.orderId),
-    check("receipt_allocations_amount_positive", sql`${t.amountPaise} > 0`),
-  ],
-);
-
 /**
- * Cash wallet, one per collector per firm. Append-only: rows are never edited or deleted.
+ * Cash wallet, one per collector (staff member). Append-only: rows are never edited or deleted.
  * `amountPaise` is a positive size; `kind` decides the direction (see lib/wallet-rules.ts).
  * `refId` points a confirmed / rejected row at the handover request it answers.
  */
@@ -83,9 +57,6 @@ export const walletMovements = pgTable(
   "wallet_movements",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
     collectorId: text("collector_id")
       .notNull()
       .references(() => user.id),
@@ -100,7 +71,7 @@ export const walletMovements = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    index("wallet_movements_collector_idx").on(t.collectorId, t.firmId, t.createdAt),
+    index("wallet_movements_collector_idx").on(t.collectorId, t.createdAt),
     check("wallet_movements_amount_not_negative", sql`${t.amountPaise} >= 0`),
     check("wallet_movements_kind_valid", oneOf(t.kind, WALLET_KINDS)),
   ],

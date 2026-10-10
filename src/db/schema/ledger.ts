@@ -3,12 +3,11 @@ import { sql } from "drizzle-orm";
 import { LEDGER_KINDS } from "../../lib/ledger-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
-import { firms } from "./firms";
 import { orders } from "./orders";
 import { retailers } from "./retailers";
 
 /**
- * Retailer ledger, one per retailer per firm. Append-only: rows are never edited
+ * Retailer ledger, one per retailer. Append-only: rows are never edited
  * or deleted, a mistake is fixed by adding a new compensating row.
  *
  * `amountPaise` is SIGNED: positive = the retailer owes more (debit),
@@ -19,9 +18,6 @@ export const ledgerEntries = pgTable(
   "ledger_entries",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
     retailerId: uuid("retailer_id")
       .notNull()
       .references(() => retailers.id),
@@ -37,10 +33,10 @@ export const ledgerEntries = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    index("ledger_entries_retailer_firm_idx").on(t.retailerId, t.firmId, t.createdAt),
+    index("ledger_entries_retailer_idx").on(t.retailerId, t.createdAt),
     index("ledger_entries_order_idx").on(t.orderId),
     uniqueIndex("ledger_entries_one_opening_idx")
-      .on(t.retailerId, t.firmId)
+      .on(t.retailerId)
       .where(sql`${t.kind} = 'opening'`),
     check("ledger_entries_kind_valid", oneOf(t.kind, LEDGER_KINDS)),
     check("ledger_entries_amount_not_zero", sql`${t.amountPaise} <> 0`),

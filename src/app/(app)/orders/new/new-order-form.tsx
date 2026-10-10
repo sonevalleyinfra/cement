@@ -15,14 +15,10 @@ type Retailer = { id: string; name: string; place: string };
 type Product = { id: string; name: string; channel: string };
 
 export function NewOrderForm({
-  firmId,
-  firmName,
   retailers,
   products,
   fixedRetailerId,
 }: {
-  firmId: string;
-  firmName: string;
   retailers: Retailer[];
   products: Product[];
   fixedRetailerId: string | null;
@@ -46,7 +42,6 @@ export function NewOrderForm({
     setError("");
     start(async () => {
       const res = await placeOrder({
-        firmId,
         retailerId,
         productId,
         bags: Number(bags || 0),
@@ -58,7 +53,7 @@ export function NewOrderForm({
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm font-medium text-muted-foreground">{firmName}</p>
+      <h1 className="text-xl font-bold">New order</h1>
 
       {fixedRetailerId ? (
         <div className="rounded-2xl bg-card p-4 text-base font-semibold shadow-card ring-1 ring-foreground/6">
