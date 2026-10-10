@@ -652,26 +652,36 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 - **Retailer**: places own orders and sees own orders and dues. Never sees prices on orders.
 
 ### Products and places (admin)
-- **More → Catalogue**: products are made from drop-downs: Trade / Non-trade → Type (OPC / PPC) → Grade
-  (33 / 43 / 53). Every product is Prism, so there is no brand to pick. All 12 Prism products are ready; turn off the ones you don't sell. Add a new grade or type under
-  the Types tab.
+- **More → Catalogue**: products are made from drop-downs: Brand → Trade / Non-trade → Type (OPC / PPC) → Grade
+  (33 / 43 / 53). The name is built from them ("Prism Trade OPC 43"). All 12 Prism products are ready; turn off the ones
+  you don't sell. Add a new grade or type under the Types tab.
+- **Brands** tab (Catalogue): **Add brand** (e.g. UltraTech), rename it (pencil; its products get the new name), or
+  **Turn off**. A brand can be turned off only when none of its products are on and none of its bags are in stock.
+  While only one brand is on, no screen asks for the brand; once there are two, the brand is the first pick in the
+  purchase, opening, adjust and move forms and in **Add product**, and lists group products by brand.
 - **More → Godowns**: the list of godowns. A godown with bags in it cannot be turned off.
 - **Trucks are hired, so none are saved.** In a purchase pick "New truck…" and type the truck number, driver
   and phone; in a dispatch type the truck number each time. A truck shows in the place lists only while it holds bags.
-- **Stock**: switch between *By product* and *By place*, and filter by Trade / Non-trade and type.
-- **Purchase** (Stock → Purchase, admin): pick the product and the place, type the bags and the **cost per bag**
-  (required, in rupees), and an invoice number if you have one. One save adds the bags to stock and adds
-  bags x cost to what you owe Prism. The cost per bag is kept so the reports can show the average purchase cost.
-  A purchase typed wrongly is fixed with a stock correction and a Prism adjustment, not by editing it.
+- **Stock**: switch between *By product* and *By place*, and filter by brand (when more than one has bags),
+  Trade / Non-trade and type.
+- **Purchase** (Stock → Purchase, admin): pick the brand (if there are several), the product and the place, type the
+  bags and the **cost per bag** (required, in rupees), and an invoice number if you have one. One save adds the bags to
+  stock and adds bags x cost to what you owe **that brand's supplier** ("Owed to UltraTech" shows before you save).
+  The cost per bag is kept so the reports can show the average purchase cost. A purchase typed wrongly is fixed with a
+  stock correction and an adjustment on the supplier account, not by editing it.
 
-### The Prism account (admin)
-- **More → Prism account** (also on the admin home): the big number is what you owe Prism ("Prism owes you" if it
-  is below zero). Below it, every entry, newest first, with its date, amount, note and who added it.
-- **Opening** sets the starting balance, once. **Record payment** (bank needs the UTR, cash and other don't).
-  **Credit** is a scheme or discount from Prism (reason required). **Adjust** adds or removes an amount, with a reason.
-  Each has a date: today unless you pick an earlier day.
+### Supplier accounts (admin)
+- Each brand is bought from its own company, so each brand has its own account: what you owe Prism, what you owe
+  UltraTech, and so on. A purchase always goes to the account of the product's brand.
+- **More → Suppliers** (also on the admin home, one line per brand): every brand with what you owe it ("You owe Prism
+  ₹X", "Prism owes you" if below zero). Tap one to open its account. While there is only one brand, Suppliers opens
+  that account straight away. A turned-off brand stays in the list while it has entries.
+- On a brand's account: the big number, then every entry, newest first, with its date, amount, note and who added it.
+  **Opening** sets the starting balance, once per brand. **Record payment** (bank needs the UTR, cash and other don't).
+  **Credit** is a scheme or discount from that supplier (reason required). **Adjust** adds or removes an amount, with
+  a reason. Each has a date: today unless you pick an earlier day.
 - Entries are never edited or deleted. If one is wrong, add an adjustment with the reason. Every entry also
-  appears in the activity log.
+  appears in the activity log, with the brand's name. Old links to the Prism account open Suppliers.
 
 ### The daily flow
 1. Sales places an order and types the rate per bag. Or the retailer places it (no rate); then the shop's sales
@@ -685,8 +695,8 @@ Commands that change things (ship, release, launch...) only run when **you** typ
    Paying more than the dues leaves an advance.
 
 ### Payments
-- **Cash** lowers the retailer's dues at once. The cash is now held by whoever recorded it (More → Cash shows
-  "My cash held"). They tap **Hand over** (up to what they hold); accounts tap **Received** and can type a smaller
+- **Cash** lowers the retailer's dues at once, and every admin gets a notification ("Cash payment", shop and amount).
+  The cash is now held by whoever recorded it (More → Cash shows "My cash held"). They tap **Hand over** (up to what they hold); accounts tap **Received** and can type a smaller
   amount if less arrived (the rest stays with that person), or **Reject** with a reason.
 - **Online** needs the UTR / reference. It waits as *Not verified* and does not change the dues. Accounts check the
   bank statement and tap **Verified** (the dues go down then) or **Reject** with a reason. The same UTR cannot be
@@ -699,24 +709,25 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 - **More → Reports** (also on the admin home). Pick the dates (From / To, India days; this month by default) and open:
   **Sales** (bags and value of dispatches by product, retailer, sales person and day), **Profit** (sales minus
   bags x average purchase cost; products with no purchase cost show "Cost unknown" and are left out of the total;
-  Prism scheme credits shown on their own), **Dues and aging** (as of the To day: 0–30, 31–60, 61–90, 90+ days,
+  supplier scheme credits shown on their own), **Dues and aging** (as of the To day: 0–30, 31–60, 61–90, 90+ days,
   oldest dues cleared first by payments; advances listed apart), **Retailer statement** (opening, every entry,
   closing), **Stock** (now by product and place; opening + bought − sent ± moved ± fixed = closing for the dates),
-  **Cash and online** (cash held per person, online to verify, payments recorded by mode), **Prism statement** and
+  **Cash and online** (cash held per person, online to verify, payments recorded by mode), **Supplier statement** (pick the brand when there are several) and
   **Staff activity** (orders placed, approvals, dispatches, payments per person).
 - A red "Does not add up" box means a statement or the stock did not reconcile. It should never show; if it does,
   tell Claude.
 - **More → Activity**: who did what and when, newest first, as short sentences ("Ramesh dispatched 50 bags of ... to
-  Sharma Traders"). Filter by person, type (orders, stock, payments, Prism, masters) and dates; "Older" shows the next 50.
-  Every change (orders, rates, approvals, dispatches, stock, payments, handovers, ledger, Prism, users, retailers,
-  catalogue, godowns) adds one line. Nothing in it can be edited.
+  Sharma Traders"). Filter by person, type (orders, stock, payments, suppliers, masters) and dates; "Older" shows the next 50.
+  Every change (orders, rates, approvals, dispatches, stock, payments, handovers, ledger, supplier accounts, users,
+  retailers, brands and the rest of the catalogue, godowns) adds one line. Nothing in it can be edited.
 
 ### Try it with demo data (your computer only)
 1. `pnpm dev` (creates the tables and the admin), then in another terminal `pnpm seed:demo`.
 2. Sign in with password `Demo@12345` and one of: `admin@demo.test`, `sales@demo.test`, `accounts@demo.test`,
    `logistics@demo.test`, `retailer@demo.test`.
 3. It adds 6 retailers, 2 truck numbers, one godown with 500 bags of every product (plus 200 bags bought at a cost,
-   with a Prism account: opening balance, the purchases, one bank payment and one scheme credit), 6 orders in different
+   with a Prism account: opening balance, the purchases, one bank payment and one scheme credit; and a second brand,
+   UltraTech, with one product, 100 bags bought and one payment, so the brand pickers show), 6 orders in different
    statuses (waiting for a rate, waiting for approval, approved, partly dispatched, dispatched, cancelled; dues come
    from their dispatches) and payments: cash taken by sales and logistics, one handover confirmed and one waiting,
    online payments waiting / verified / rejected, and one reversed cash payment. Running it twice is safe.

@@ -2,11 +2,13 @@
  * How the stock screen groups and filters bags. Plain functions: no database, no request.
  * Rows are bags per product per place.
  */
-import { bagsToKg, CHANNEL_LABELS, PRODUCT_CHANNELS, type ProductChannel } from "./catalogue-rules";
+import { bagsToKg, CHANNEL_LABELS, hasManyBrands, PRODUCT_CHANNELS, type ProductChannel } from "./catalogue-rules";
 
 export type StockProduct = {
   id: string;
   name: string;
+  /** The brand's name ("Prism"). */
+  brand: string;
   channel: string;
   typeCode: string;
   grade: string;
@@ -21,14 +23,18 @@ export type StockRow = {
   bags: number;
 };
 
-/** "all" or one value from the drop-down. */
-export type StockFilters = { channel: "all" | ProductChannel; typeCode: string };
-export const NO_FILTERS: StockFilters = { channel: "all", typeCode: "all" };
+/** "all" or one value from the drop-down. The brand filter shows only when there is more than one brand. */
+export type StockFilters = { brand: string; channel: "all" | ProductChannel; typeCode: string };
+export const NO_FILTERS: StockFilters = { brand: "all", channel: "all", typeCode: "all" };
 
 export type Amount = { bags: number; kg: number };
 
 function matches(p: StockProduct, f: StockFilters): boolean {
-  return (f.channel === "all" || p.channel === f.channel) && (f.typeCode === "all" || p.typeCode === f.typeCode);
+  return (
+    (f.brand === "all" || p.brand === f.brand) &&
+    (f.channel === "all" || p.channel === f.channel) &&
+    (f.typeCode === "all" || p.typeCode === f.typeCode)
+  );
 }
 
 /** Rows whose product passes the filters, with each product's details. Unknown products are skipped. */
@@ -61,6 +67,7 @@ export type ProductSection = {
 /**
  * By product: Trade / Non-trade sections, products in catalogue order (the order of `products`),
  * each with its total and the places holding it. Products with no bags are left out.
+ * With more than one brand in the catalogue, each brand gets its own sections ("Prism · Trade").
  */
 export function stockByProduct(
   rows: readonly StockRow[],
@@ -68,20 +75,24 @@ export function stockByProduct(
   f: StockFilters,
 ): ProductSection[] {
   const visible = visibleRows(rows, products, f);
-  return PRODUCT_CHANNELS.map((channel) => ({
-    label: CHANNEL_LABELS[channel],
-    items: products
-      .filter((p) => p.channel === channel)
-      .map((product) => {
-        const mine = visible.filter((r) => r.productId === product.id);
-        const bags = mine.reduce((s, r) => s + r.bags, 0);
-        const places = mine
-          .map((r) => ({ key: r.placeKey, name: r.placeName, kind: r.placeKind, bags: r.bags }))
-          .sort(placeOrder);
-        return { product, bags, kg: bagsToKg(bags, product.bagKg), places };
-      })
-      .filter((i) => i.bags !== 0),
-  })).filter((s) => s.items.length > 0);
+  const brands = brandNames(rows, products);
+  const sections = brands.flatMap((brand) =>
+    PRODUCT_CHANNELS.map((channel) => ({
+      label: hasManyBrands(brands) ? `${brand} · ${CHANNEL_LABELS[channel]}` : CHANNEL_LABELS[channel],
+      items: products
+        .filter((p) => p.channel === channel && p.brand === brand)
+        .map((product) => {
+          const mine = visible.filter((r) => r.productId === product.id);
+          const bags = mine.reduce((s, r) => s + r.bags, 0);
+          const places = mine
+            .map((r) => ({ key: r.placeKey, name: r.placeName, kind: r.placeKind, bags: r.bags }))
+            .sort(placeOrder);
+          return { product, bags, kg: bagsToKg(bags, product.bagKg), places };
+        })
+        .filter((i) => i.bags !== 0),
+    })),
+  );
+  return sections.filter((s) => s.items.length > 0);
 }
 
 export type PlaceCard = Amount & {
@@ -117,6 +128,15 @@ export function stockByPlace(rows: readonly StockRow[], products: readonly Stock
 function placeOrder(a: { kind: string; name: string }, b: { kind: string; name: string }): number {
   if (a.kind !== b.kind) return a.kind === "godown" ? -1 : 1;
   return a.name.localeCompare(b.name);
+}
+
+/**
+ * Brand names that have bags in stock (for the Brand filter and brand sections), in the order they
+ * first appear in the catalogue. A brand with no bags (e.g. switched off) is left out.
+ */
+export function brandNames(rows: readonly StockRow[], products: readonly StockProduct[]): string[] {
+  const held = new Set(rows.filter((r) => r.bags !== 0).map((r) => r.productId));
+  return [...new Set(products.filter((p) => held.has(p.id)).map((p) => p.brand))];
 }
 
 /** Type codes for the Type filter, in the order they first appear in the catalogue. */

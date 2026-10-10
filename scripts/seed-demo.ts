@@ -1,7 +1,8 @@
 /**
  * Fills a LOCAL database with demo data: one user per role, retailers, trucks,
  * a godown with opening stock, orders in different statuses (dues come from their dispatches)
- * the Prism account (an opening balance, purchases with a cost per bag, a payment and a scheme credit),
+ * supplier accounts: Prism (an opening balance, purchases with a cost per bag, a payment and a scheme
+ * credit) and a second brand, UltraTech (one product, one purchase and one payment, no opening),
  * and payments: cash by sales and logistics, one handover confirmed and one waiting, online
  * payments waiting / verified / rejected, and one reversed cash payment.
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
@@ -9,19 +10,22 @@
  * Some orders, dispatches and one payment are back-dated (up to 120 days) so the reports show history and aging.
  * Refuses to run on production or a non-local database (rules in scripts/lib/demo-seed-rules.ts).
  */
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  brands,
+  cementTypes,
   dispatches,
+  grades,
   ledgerEntries,
   orderEvents,
   orders,
-  prismLedgerEntries,
   products,
   receipts,
   retailers,
   godowns,
   stockMovements,
+  supplierLedgerEntries,
   user,
   vehicles,
   walletMovements,
@@ -31,8 +35,9 @@ import { auth } from "@/lib/auth";
 import { toISTDateKey } from "@/lib/datetime";
 import { postEntry } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
-import { postPrismEntry } from "@/lib/prism";
-import { creditEntry, openingEntry as prismOpening, paymentEntry, purchaseEntry } from "@/lib/prism-rules";
+import { productName } from "@/lib/catalogue-rules";
+import { postSupplierEntry } from "@/lib/suppliers";
+import { creditEntry, openingEntry as supplierOpening, paymentEntry, purchaseEntry } from "@/lib/supplier-rules";
 import { planReversal } from "@/lib/receipt-reversal";
 import { planReceipt, planVerify } from "@/lib/receipt-rules";
 import { statusAfterDispatch, type OrderStatus } from "@/lib/order-rules";
@@ -52,25 +57,40 @@ const daysAgo = (n: number) => toISTDateKey(Date.now() - n * 86_400_000);
 /** The moment `n` days ago (for back-dated demo rows, so reports have history). */
 const at = (n: number) => new Date(Date.now() - n * 86_400_000);
 
-/**
- * The Prism account: we owed Rs 2,00,000 at the start; 200 bags of every product bought at a cost
- * (the product at index i costs Rs 280 + Rs 5 x i a bag, plus a second, dearer buy of the first one);
- * Rs 5,00,000 paid by bank; a Rs 15,000 scheme credit. Skipped if the account already has entries.
- */
-async function seedPrism(adminId: string, productRows: { id: string; name: string }[]) {
-  const [any] = await db.select({ id: prismLedgerEntries.id }).from(prismLedgerEntries).limit(1);
-  if (any) return;
+type Built = { ok: true; entry: Parameters<typeof postSupplierEntry>[1] } | { ok: false; error: string };
+const entry = (r: Built) => {
+  if (!r.ok) throw new Error(r.error);
+  return r.entry;
+};
+
+async function mainGodownId(): Promise<string> {
   const [godown] = await db
     .select({ id: godowns.id })
     .from(godowns)
     .where(sql`lower(${godowns.name}) = 'main godown'`);
   if (!godown) throw new Error("Main Godown missing.");
-  const entry = (r: { ok: true; entry: Parameters<typeof postPrismEntry>[1] } | { ok: false; error: string }) => {
-    if (!r.ok) throw new Error(r.error);
-    return r.entry;
-  };
+  return godown.id;
+}
+
+async function hasSupplierEntries(brandId: string): Promise<boolean> {
+  const [any] = await db
+    .select({ id: supplierLedgerEntries.id })
+    .from(supplierLedgerEntries)
+    .where(eq(supplierLedgerEntries.brandId, brandId))
+    .limit(1);
+  return Boolean(any);
+}
+
+/**
+ * The Prism account: we owed Rs 2,00,000 at the start; 200 bags of every Prism product bought at a cost
+ * (the product at index i costs Rs 280 + Rs 5 x i a bag, plus a second, dearer buy of the first one);
+ * Rs 5,00,000 paid by bank; a Rs 15,000 scheme credit. Skipped if the Prism account already has entries.
+ */
+async function seedPrism(adminId: string, prismId: string, productRows: { id: string; name: string; brandId: string }[]) {
+  if (await hasSupplierEntries(prismId)) return;
+  const godownId = await mainGodownId();
   await db.transaction(async (tx) => {
-    await postPrismEntry(tx, entry(prismOpening([], 20_000_000, daysAgo(30))), adminId);
+    await postSupplierEntry(tx, entry(supplierOpening([], prismId, 20_000_000, daysAgo(30))), adminId);
     const buys = [
       ...productRows.map((p, i) => ({ p, bags: 200, costPaise: 28_000 + 500 * i, ago: 20, invoice: `DEMO-INV-${i + 1}` })),
       { p: productRows[0], bags: 100, costPaise: 29_500, ago: 5, invoice: "DEMO-INV-13" },
@@ -80,7 +100,7 @@ async function seedPrism(adminId: string, productRows: { id: string; name: strin
         .insert(stockMovements)
         .values({
           productId: b.p.id,
-          godownId: godown.id,
+          godownId,
           type: "purchase",
           bags: b.bags,
           unitCostPaise: b.costPaise,
@@ -89,16 +109,65 @@ async function seedPrism(adminId: string, productRows: { id: string; name: strin
           createdAt: at(b.ago),
         })
         .returning({ id: stockMovements.id });
-      const owed = purchaseEntry(b.bags, b.costPaise, daysAgo(b.ago), {
+      const owed = purchaseEntry(b.p, b.bags, b.costPaise, daysAgo(b.ago), {
         reference: b.invoice,
         description: `${b.bags} bags ${b.p.name} at Rs ${b.costPaise / 100}`,
       });
-      await postPrismEntry(tx, entry(owed), adminId, moved.id);
+      await postSupplierEntry(tx, entry(owed), adminId, moved.id);
     }
-    await postPrismEntry(tx, entry(paymentEntry(50_000_000, "bank", "DEMOUTRPRISM1", daysAgo(10))), adminId);
-    await postPrismEntry(tx, entry(creditEntry(1_500_000, "Demo festival scheme", daysAgo(3))), adminId);
+    await postSupplierEntry(tx, entry(paymentEntry(prismId, 50_000_000, "bank", "DEMOUTRPRISM1", daysAgo(10))), adminId);
+    await postSupplierEntry(tx, entry(creditEntry(prismId, 1_500_000, "Demo festival scheme", daysAgo(3))), adminId);
   });
   console.log("[seed-demo] Prism account ready.");
+}
+
+/**
+ * A second brand so the multi-brand screens show: UltraTech, one product (UltraTech Trade OPC 53),
+ * 100 bags bought at Rs 390 into Main Godown 6 days ago, and Rs 20,000 paid by bank 2 days ago.
+ * No opening balance (so one can be set by hand). Skipped if the UltraTech account already has entries.
+ */
+async function seedUltraTech(adminId: string) {
+  await db.insert(brands).values({ name: "UltraTech" }).onConflictDoNothing();
+  const [brand] = await db.select().from(brands).where(eq(brands.name, "UltraTech"));
+  if (await hasSupplierEntries(brand.id)) return;
+  const [grade] = await db
+    .select({ id: grades.id, name: grades.name, code: cementTypes.code })
+    .from(grades)
+    .innerJoin(cementTypes, eq(cementTypes.id, grades.typeId))
+    .where(and(eq(cementTypes.code, "OPC"), eq(grades.name, "53")));
+  if (!grade) throw new Error("Grade OPC 53 missing.");
+  const name = productName({ brand: brand.name, channel: "trade", typeCode: grade.code, grade: grade.name, bagKg: 50 });
+  await db.insert(products).values({ name, brandId: brand.id, channel: "trade", gradeId: grade.id, bagKg: 50 }).onConflictDoNothing();
+  const [product] = await db.select().from(products).where(eq(products.name, name));
+  const godownId = await mainGodownId();
+  await db.transaction(async (tx) => {
+    const [moved] = await tx
+      .insert(stockMovements)
+      .values({
+        productId: product.id,
+        godownId,
+        type: "purchase",
+        bags: 100,
+        unitCostPaise: 39_000,
+        reason: "Demo purchase",
+        actorId: adminId,
+        createdAt: at(6),
+      })
+      .returning({ id: stockMovements.id });
+    const owed = purchaseEntry(product, 100, 39_000, daysAgo(6), {
+      reference: "DEMO-UT-1",
+      description: `100 bags ${product.name} at Rs 390`,
+    });
+    await postSupplierEntry(tx, entry(owed), adminId, moved.id);
+    await postSupplierEntry(tx, entry(paymentEntry(brand.id, 2_000_000, "bank", "DEMOUTRULTRA1", daysAgo(2))), adminId);
+  });
+  console.log("[seed-demo] UltraTech account ready.");
+}
+
+/** Both supplier accounts (each skipped if it already has entries). */
+async function seedSuppliers(adminId: string, prismId: string, productRows: { id: string; name: string; brandId: string }[]) {
+  await seedPrism(adminId, prismId, productRows);
+  await seedUltraTech(adminId);
 }
 
 async function main() {
@@ -115,7 +184,13 @@ async function main() {
   const [admin] = await db.select({ id: user.id }).from(user).where(eq(user.email, env.SEED_ADMIN_EMAIL.toLowerCase()));
   if (!admin) throw new Error("Admin not found. Run `pnpm db:seed` (or `pnpm dev`) first.");
 
-  const productRows = await db.select().from(products).orderBy(products.name);
+  // Prism is the main brand: orders, opening stock and most purchases use its products.
+  const [prism] = await db
+    .select({ id: brands.id })
+    .from(brands)
+    .where(sql`lower(trim(${brands.name})) = 'prism'`);
+  if (!prism) throw new Error("Prism brand missing. Run migrations first.");
+  const productRows = await db.select().from(products).where(eq(products.brandId, prism.id)).orderBy(products.name);
   if (productRows.length < 1) throw new Error("Products missing. Run migrations first.");
 
   const ids: Record<string, string> = {};
@@ -150,7 +225,7 @@ async function main() {
   // Everything below runs once: skipped if the first demo shop already has an order.
   const [already] = await db.select({ id: orders.id }).from(orders).where(eq(orders.retailerId, shopRows[0].id)).limit(1);
   if (already) {
-    await seedPrism(admin.id, productRows);
+    await seedSuppliers(admin.id, prism.id, productRows);
     console.log("[seed-demo] Demo data already there. Nothing more to do.");
     return;
   }
@@ -473,7 +548,7 @@ async function main() {
   await online(3, 400_000, ids.sales, "DEMOUTR0002", "verified");
   await online(2, 300_000, ids.sales, "DEMOUTR0003", "rejected");
 
-  await seedPrism(admin.id, productRows);
+  await seedSuppliers(admin.id, prism.id, productRows);
 
   const n = await db.select({ id: ledgerEntries.id }).from(ledgerEntries);
   console.log(`[seed-demo] Done: ${shopRows.length} retailers, ${orderIds.length} orders, ${n.length} ledger rows.`);

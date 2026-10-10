@@ -5,9 +5,8 @@ import { oneOf } from "../check-helpers";
 
 /**
  * The product catalogue lists, managed by admin with drop-downs:
- * Channel (trade / non-trade, a fixed list) → Type (OPC / PPC) → Grade (33 / 43 / 53).
- * The business sells Prism only: `brands` keeps that one row and every new product gets it
- * (there is no brand drop-down in the app).
+ * Brand (Prism; admin adds more) → Channel (trade / non-trade, a fixed list) → Type (OPC / PPC) → Grade (33 / 43 / 53).
+ * Each brand also has its own supplier account (see suppliers.ts).
  * A product (see `products` below) is one combination of these. Items are switched off, never deleted.
  */
 export const brands = pgTable("brands", {

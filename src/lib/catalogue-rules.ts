@@ -2,9 +2,9 @@
  * Rules for the product catalogue. Plain functions: no database, no request.
  *
  * A product is one sellable kind of bag, built from drop-downs in this order:
- *   Channel (Trade / Non-trade) → Type (OPC / PPC) → Grade (33 / 43 / 53) → Bag size.
- * The business sells Prism only (docs/idea.md section 2), so there is no brand step: a new product
- * always gets the Prism brand (`businessBrand`). The brands table stays, with that one row.
+ *   Brand (Prism; admin adds more) → Channel (Trade / Non-trade) → Type (OPC / PPC) → Grade (33 / 43 / 53) → Bag size.
+ * (docs/idea.md section 2.) With only one switched-on brand, screens pick it without asking
+ * (`hasManyBrands`); the brand still shows in every product name ("Prism Trade OPC 43").
  * The grade belongs to one type, so a product only stores the grade (the type comes with it).
  * The product name is built from the parts, never typed.
  */
@@ -42,7 +42,7 @@ export function productName(parts: {
   return `${parts.brand} ${CHANNEL_LABELS[parts.channel]} ${parts.typeCode} ${parts.grade}${size}`;
 }
 
-/** Trims and joins spaces in a list name (type, grade). Null when empty. */
+/** Trims and joins spaces in a list name (brand, type, grade). Null when empty. */
 export function cleanListName(text: string, max = 40): string | null {
   const clean = String(text ?? "").trim().replace(/\s+/g, " ").slice(0, max);
   return clean || null;
@@ -66,23 +66,25 @@ export type CatalogueLookups = {
   brands: readonly Brand[];
   types: readonly (Item & { code: string })[];
   grades: readonly (Item & { typeId: string; name: string })[];
-  products: readonly { channel: string; gradeId: string; bagKg: number }[];
+  products: readonly { brandId: string; channel: string; gradeId: string; bagKg: number }[];
 };
 
-/** The name of the one brand the business sells. */
-export const BUSINESS_BRAND = "Prism";
-
 /**
- * The brand every new product gets: the switched-on brand called Prism, else the first switched-on
- * brand (if it was renamed). Null when there is none.
+ * True when there is more than one brand to pick from. With one, screens skip the Brand drop-down
+ * (that brand is picked) and do not group products by brand.
  */
-export function businessBrand<B extends Brand>(brands: readonly B[]): B | null {
-  const active = brands.filter((b) => b.active);
-  return active.find((b) => b.name.trim().toLowerCase() === BUSINESS_BRAND.toLowerCase()) ?? active[0] ?? null;
+export function hasManyBrands(brands: readonly unknown[]): boolean {
+  return brands.length > 1;
 }
 
-/** The product picked with the drop-downs (the brand is always the business brand). */
+/** The brand a form starts on: the one picked before if it is still in the list, else the first. */
+export function startBrand(brands: readonly { id: string }[], picked?: string | null): string {
+  return brands.some((b) => b.id === picked) ? (picked as string) : (brands[0]?.id ?? "");
+}
+
+/** The product picked with the drop-downs. */
 export type NewProductInput = {
+  brandId: string;
   channel: string;
   typeId: string;
   gradeId: string;
@@ -102,8 +104,8 @@ export function validateNewProduct(
   input: NewProductInput,
   lookups: CatalogueLookups,
 ): { ok: true; value: NewProduct } | { ok: false; error: string } {
-  const brand = businessBrand(lookups.brands);
-  if (!brand) return { ok: false, error: `Add the ${BUSINESS_BRAND} brand first.` };
+  const brand = lookups.brands.find((b) => b.id === input.brandId);
+  if (!brand || !brand.active) return { ok: false, error: "Pick a brand." };
   if (!isProductChannel(input.channel)) return { ok: false, error: "Pick trade or non-trade." };
   const type = lookups.types.find((t) => t.id === input.typeId);
   if (!type || !type.active) return { ok: false, error: "Pick a type." };
@@ -134,14 +136,26 @@ export function formatTonnes(kg: number): string {
   return `${tonnes} MT`;
 }
 
-/** Products for a drop-down, in Trade / Non-trade sections (empty sections left out). Keeps the given order. */
+/**
+ * Products for a drop-down, in Trade / Non-trade sections (empty sections left out). Keeps the given order.
+ * When the products come from more than one brand, each section is one brand's Trade or Non-trade
+ * ("Prism · Trade"), brands in the order they first appear.
+ */
 export function productGroups(
-  products: readonly { id: string; name: string; channel: string }[],
+  products: readonly { id: string; name: string; channel: string; brand?: string }[],
 ): { label: string; options: { value: string; label: string }[] }[] {
-  return PRODUCT_CHANNELS.map((channel) => ({
-    label: CHANNEL_LABELS[channel],
-    options: products.filter((p) => p.channel === channel).map((p) => ({ value: p.id, label: p.name })),
-  })).filter((g) => g.options.length > 0);
+  const brandNames = [...new Set(products.map((p) => p.brand ?? ""))];
+  const many = hasManyBrands(brandNames);
+  return brandNames
+    .flatMap((brand) =>
+      PRODUCT_CHANNELS.map((channel) => ({
+        label: many ? `${brand} · ${CHANNEL_LABELS[channel]}` : CHANNEL_LABELS[channel],
+        options: products
+          .filter((p) => p.channel === channel && (p.brand ?? "") === brand)
+          .map((p) => ({ value: p.id, label: p.name })),
+      })),
+    )
+    .filter((g) => g.options.length > 0);
 }
 
 /** A product can be switched off only when none of its bags are in stock (else they could not be moved or sold). */
@@ -149,11 +163,32 @@ export function canSwitchOffProduct(bagsInStock: number): { ok: true } | { ok: f
   return bagsInStock > 0 ? { ok: false, error: "Bags still in stock." } : { ok: true };
 }
 
-type PartsKey = { channel: string; gradeId: string; bagKg: number };
+/** A product can be switched back on only while its brand is on. */
+export function canSwitchOnProduct(brandActive: boolean): { ok: true } | { ok: false; error: string } {
+  return brandActive ? { ok: true } : { ok: false, error: "Switch its brand on first." };
+}
+
+/**
+ * A brand can be switched off only when it has no switched-on products and no bags in stock
+ * (else they could not be sold, moved or bought). Its supplier account stays as it is.
+ */
+export function canSwitchOffBrand(brand: {
+  activeProducts: number;
+  bagsInStock: number;
+}): { ok: true } | { ok: false; error: string } {
+  if (brand.bagsInStock > 0) return { ok: false, error: "Bags still in stock." };
+  if (brand.activeProducts > 0) return { ok: false, error: "Switch its products off first." };
+  return { ok: true };
+}
+
+type PartsKey = { brandId: string; channel: string; gradeId: string; bagKg: number };
 
 /** The product made from these drop-down choices, if there is one. */
 export function findProductByParts<P extends PartsKey>(products: readonly P[], parts: PartsKey): P | undefined {
-  return products.find((p) => p.channel === parts.channel && p.gradeId === parts.gradeId && p.bagKg === parts.bagKg);
+  return products.find(
+    (p) =>
+      p.brandId === parts.brandId && p.channel === parts.channel && p.gradeId === parts.gradeId && p.bagKg === parts.bagKg,
+  );
 }
 
 export type ProductLookups = Omit<CatalogueLookups, "products"> & {
@@ -167,10 +202,10 @@ export type ResolvedProduct =
   | { ok: false; error: string };
 
 /**
- * Which product the three stock drop-downs (trade-type, type, grade) point to.
+ * Which product the stock drop-downs (brand, trade-type, type, grade) point to.
  * An active product is used as it is. A missing or switched-off one is made / switched back on,
  * but only when `allowCreate` (a purchase by someone who may manage the catalogue);
- * then its type and grade must be switched on (and the Prism brand must exist).
+ * then its brand, type and grade must all be switched on.
  */
 export function resolveProduct(input: NewProductInput, lookups: ProductLookups, allowCreate: boolean): ResolvedProduct {
   const grade = lookups.grades.find((g) => g.id === input.gradeId);
@@ -183,20 +218,25 @@ export function resolveProduct(input: NewProductInput, lookups: ProductLookups, 
   return found ? { ok: true, kind: "reactivate", id: found.id } : { ok: true, kind: "create", value: check.value };
 }
 
-type ListItems<T, G> = { types: readonly T[]; grades: readonly G[] };
+type ListItems<B, T, G> = { brands: readonly B[]; types: readonly T[]; grades: readonly G[] };
 
-/** Only the types and grades some of these products are made from (for forms that never add products). */
-export function listsUsedBy<T extends { id: string }, G extends { id: string; typeId: string }>(
-  lists: ListItems<T, G>,
-  products: readonly { gradeId: string }[],
-): { types: T[]; grades: G[] } {
+/** Only the brands, types and grades some of these products are made from (for forms that never add products). */
+export function listsUsedBy<B extends { id: string }, T extends { id: string }, G extends { id: string; typeId: string }>(
+  lists: ListItems<B, T, G>,
+  products: readonly { brandId: string; gradeId: string }[],
+): { brands: B[]; types: T[]; grades: G[] } {
+  const brandIds = new Set(products.map((p) => p.brandId));
   const grades = lists.grades.filter((g) => products.some((p) => p.gradeId === g.id));
   const typeIds = new Set(grades.map((g) => g.typeId));
-  return { types: lists.types.filter((t) => typeIds.has(t.id)), grades };
+  return {
+    brands: lists.brands.filter((b) => brandIds.has(b.id)),
+    types: lists.types.filter((t) => typeIds.has(t.id)),
+    grades,
+  };
 }
 
 /**
- * The names to change after a type or grade was renamed. Each row is a product with its
+ * The names to change after a brand, type or grade was renamed. Each row is a product with its
  * current parts; only products whose built name differs are returned.
  */
 export function renamedProducts(

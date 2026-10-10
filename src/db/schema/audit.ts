@@ -4,7 +4,7 @@ import { user } from "./auth";
 
 /**
  * The activity log: who did what, when. One row for every state-changing action (orders,
- * dispatches, stock, payments, cash handovers, ledger, Prism, masters); see lib/audit-rules.ts.
+ * dispatches, stock, payments, cash handovers, ledger, supplier accounts, masters); see lib/audit-rules.ts.
  * Append-only: rows are never edited or deleted. Write rows with `writeAudit` (lib/audit.ts).
  * `entity` is the kind of record ("order", "dispatch", "payment"...), `entityId` its id as text,
  * `action` what happened (allowed pairs: AUDIT_ACTIONS in lib/audit-rules.ts),

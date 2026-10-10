@@ -6,8 +6,8 @@ import { db } from "@/db";
 import { brands, cementTypes, grades, products, stockMovements } from "@/db/schema";
 import { toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
-import { postPrismEntry } from "@/lib/prism";
-import { checkCostPerBag, purchaseEntry } from "@/lib/prism-rules";
+import { postSupplierEntry } from "@/lib/suppliers";
+import { checkCostPerBag, purchaseEntry } from "@/lib/supplier-rules";
 import { writeAudit } from "@/lib/audit";
 import { DEFAULT_BAG_KG, isProductChannel, resolveProduct } from "@/lib/catalogue-rules";
 import {
@@ -32,7 +32,8 @@ import { checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
 export type StockResult = { ok: true } | { ok: false; error: string };
 
 export type StockInput = {
-  /** The product, picked as its parts: trade-type (channel), cement type and grade. The brand is always Prism. */
+  /** The product, picked as its parts: brand, trade-type (channel), cement type and grade. */
+  brandId: string;
   channel: string;
   typeId: string;
   gradeId: string;
@@ -48,7 +49,7 @@ export type StockInput = {
   note: string;
   /** Purchase only (required): what one bag cost, in paise. */
   costPerBagPaise?: number;
-  /** Purchase only (optional): the Prism invoice number. */
+  /** Purchase only (optional): the supplier's invoice number. */
   invoiceNo?: string;
 };
 
@@ -78,7 +79,7 @@ async function prepare(input: StockInput, allowNewTruck = false) {
   const session = await requireRole(...rolesFor("manageStock"));
   const place = allowNewTruck && input.place === NEW_TRUCK_PLACE ? NEW_TRUCK_PLACE : parsePlaceKey(input.place);
   const partsOk =
-    isProductChannel(input.channel) && isUuid(input.typeId) && isUuid(input.gradeId);
+    isUuid(input.brandId) && isProductChannel(input.channel) && isUuid(input.typeId) && isUuid(input.gradeId);
   if (!partsOk || !place) {
     return { error: "Pick a product and a place.", session: null, place: null } as const;
   }
@@ -86,7 +87,7 @@ async function prepare(input: StockInput, allowNewTruck = false) {
 }
 
 /**
- * The product the three drop-downs point to. With `allowCreate` (a purchase by someone who may manage
+ * The product the drop-downs (brand, trade-type, type, grade) point to. With `allowCreate` (a purchase by someone who may manage
  * the catalogue) a missing product is added, or a switched-off one switched back on, in the same transaction.
  */
 async function pickProduct(
@@ -104,6 +105,7 @@ async function pickProduct(
     tx
       .select({
         id: products.id,
+        brandId: products.brandId,
         channel: products.channel,
         gradeId: products.gradeId,
         bagKg: products.bagKg,
@@ -111,7 +113,13 @@ async function pickProduct(
       })
       .from(products),
   ]);
-  const parts = { channel: input.channel, typeId: input.typeId, gradeId: input.gradeId, bagKg: DEFAULT_BAG_KG };
+  const parts = {
+    brandId: input.brandId,
+    channel: input.channel,
+    typeId: input.typeId,
+    gradeId: input.gradeId,
+    bagKg: DEFAULT_BAG_KG,
+  };
   const r = resolveProduct(parts, { brands: b, types: t, grades: g, products: p }, allowCreate);
   if (!r.ok) return r;
   if (r.kind === "existing") return { ok: true, productId: r.id };
@@ -174,8 +182,8 @@ function done(): StockResult {
 }
 
 /**
- * A purchase adds the bags AND what we now owe Prism (bags x cost per bag), in one transaction:
- * either both are saved or neither. The cost per bag is also kept on the stock movement.
+ * A purchase adds the bags AND what we now owe the supplier of the product's brand (bags x cost per bag),
+ * in one transaction: either both are saved or neither. The cost per bag is also kept on the stock movement.
  */
 export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const p = await prepare(input, true);
@@ -204,17 +212,22 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     if (!loc.ok) return loc;
     const m = inMovement("purchase", loc.key, input.bags, note);
     if (!m.ok) return m;
-    const [product] = await tx.select({ name: products.name }).from(products).where(eq(products.id, picked.productId));
-    const owed = purchaseEntry(m.movement.bags, cost.costPaise, toISTDateKey(new Date()), {
+    const [product] = await tx
+      .select({ name: products.name, brandId: products.brandId })
+      .from(products)
+      .where(eq(products.id, picked.productId));
+    if (!product) return { ok: false, error: "Pick an active product." };
+    // The amount is owed to the supplier of this product's brand.
+    const owed = purchaseEntry(product, m.movement.bags, cost.costPaise, toISTDateKey(new Date()), {
       reference: input.invoiceNo,
-      description: `${m.movement.bags} bags ${product?.name ?? ""} at ${formatINR(cost.costPaise)}`.replace(/\s+/g, " "),
+      description: `${m.movement.bags} bags ${product.name} at ${formatINR(cost.costPaise)}`.replace(/\s+/g, " "),
     });
     if (!owed.ok) return owed;
     const [moved] = await tx
       .insert(stockMovements)
       .values({ ...toRow(m.movement, p.session.user.id), unitCostPaise: cost.costPaise })
       .returning({ id: stockMovements.id });
-    await postPrismEntry(tx, owed.entry, p.session.user.id, moved.id, { audit: false });
+    await postSupplierEntry(tx, owed.entry, p.session.user.id, moved.id, { audit: false });
     await writeAudit(tx, {
       actorId: p.session.user.id,
       entity: "stock",
@@ -224,13 +237,14 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
         ...movementFacts(m.movement),
         unitCostPaise: cost.costPaise,
         amountPaise: owed.entry.amountPaise,
+        brandId: owed.entry.brandId,
         ...(owed.entry.reference ? { invoiceNo: owed.entry.reference } : {}),
       },
     });
     return { ok: true };
   });
   if (res.ok) {
-    revalidatePath("/prism");
+    revalidatePath("/suppliers", "layout");
     revalidatePath("/dashboard");
   }
   return res.ok ? done() : res;

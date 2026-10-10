@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { brands, cementTypes, grades, products } from "@/db/schema";
 
 /**
- * Products with their parts, in catalogue order: Trade first, then by type and grade. Server-only.
+ * Products with their parts, in catalogue order: by brand, then Trade first, then by type and grade. Server-only.
  * `activeOnly` for drop-downs (switched-off products are hidden there).
  */
 export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
@@ -12,6 +12,7 @@ export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
       id: products.id,
       name: products.name,
       channel: products.channel,
+      brandId: products.brandId,
       gradeId: products.gradeId,
       typeId: grades.typeId,
       brand: brands.name,
@@ -26,9 +27,9 @@ export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
     .innerJoin(cementTypes, eq(cementTypes.id, grades.typeId))
     .where(activeOnly ? eq(products.active, true) : undefined)
     .orderBy(
+      asc(brands.name),
       // "trade" sorts after "non_trade", so descending puts Trade first.
       desc(products.channel),
-      asc(brands.name),
       asc(cementTypes.sortOrder),
       asc(cementTypes.code),
       asc(grades.sortOrder),
@@ -37,9 +38,10 @@ export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
     );
 }
 
-/** Every type and grade (switched-off ones too), in drop-down order. Server-only. */
+/** Every brand, type and grade (switched-off ones too), in drop-down order. Server-only. */
 export async function getCatalogueLists() {
-  const [typeRows, gradeRows] = await Promise.all([
+  const [brandRows, typeRows, gradeRows] = await Promise.all([
+    db.select({ id: brands.id, name: brands.name, active: brands.active }).from(brands).orderBy(asc(brands.name)),
     db
       .select({ id: cementTypes.id, code: cementTypes.code, name: cementTypes.name, active: cementTypes.active })
       .from(cementTypes)
@@ -49,5 +51,5 @@ export async function getCatalogueLists() {
       .from(grades)
       .orderBy(asc(grades.sortOrder), asc(grades.name)),
   ]);
-  return { types: typeRows, grades: gradeRows };
+  return { brands: brandRows, types: typeRows, grades: gradeRows };
 }

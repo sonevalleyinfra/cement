@@ -25,7 +25,13 @@ export default async function NewOrderPage() {
     return <EmptyState title="Your login is not linked to a retailer" />;
   }
   if (retailerRows.length === 0) return <EmptyState title="Add a retailer first" />;
-  const productRows = (await getProducts({ activeOnly: true })).map((p) => ({ id: p.id, name: p.name, channel: p.channel }));
+  // With more than one brand, the product list is grouped by brand (see productGroups).
+  const productRows = (await getProducts({ activeOnly: true })).map((p) => ({
+    id: p.id,
+    name: p.name,
+    channel: p.channel,
+    brand: p.brand,
+  }));
   if (productRows.length === 0) return <EmptyState title="No products yet. Ask admin." />;
 
   return (

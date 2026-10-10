@@ -46,7 +46,10 @@ describe("allowed entities and actions", () => {
     expect(isAllowedAudit("order", "place")).toBe(true);
     expect(isAllowedAudit("dispatch", "create")).toBe(true);
     expect(isAllowedAudit("payment", "reverse")).toBe(true);
-    expect(isAllowedAudit("prism_entry", "credit")).toBe(true);
+    expect(isAllowedAudit("supplier_entry", "credit")).toBe(true);
+    expect(isAllowedAudit("brand", "deactivate")).toBe(true);
+    // The old name is read, never written again.
+    expect(isAllowedAudit("prism_entry", "credit")).toBe(false);
     expect(isAllowedAudit("stock", "transfer")).toBe(true);
   });
 
@@ -65,8 +68,15 @@ describe("allowed entities and actions", () => {
     expect(groupOf("ledger")).toBe("payments");
     expect(groupOf("vehicle")).toBe("masters");
     expect(groupOf("unknown")).toBeNull();
-    expect(isActivityGroup("prism")).toBe(true);
-    expect(groupFilter("prism")).toEqual({ entities: ["prism_entry"], extra: [{ entity: "stock", action: "purchase" }] });
+    expect(groupOf("brand")).toBe("masters");
+    expect(groupOf("supplier_entry")).toBe("suppliers");
+    expect(groupOf("prism_entry")).toBe("suppliers");
+    expect(isActivityGroup("suppliers")).toBe(true);
+    expect(isActivityGroup("prism")).toBe(false);
+    expect(groupFilter("suppliers")).toEqual({
+      entities: ["supplier_entry", "prism_entry"],
+      extra: [{ entity: "stock", action: "purchase" }],
+    });
     expect(groupFilter("orders").extra).toEqual([]);
     expect(isActivityGroup("constructor")).toBe(false);
   });
@@ -81,6 +91,9 @@ describe("activitySentence", () => {
     ["p1", "Prism Trade OPC 43"],
     ["g1", "Main Godown"],
     ["v1", "BR01AB1234"],
+    ["b1", "Prism"],
+    ["b2", "UltraTech"],
+    ["p2", "UltraTech Trade OPC 53"],
   ]);
   const row = (entity: string, action: string, details: Record<string, unknown>, entityId = "x"): ActivityRow => ({
     actorId: "u1",
@@ -118,8 +131,15 @@ describe("activitySentence", () => {
 
   it("stock", () => {
     expect(
-      say(row("stock", "purchase", { bags: 200, productId: "p1", place: "godown:g1", unitCostPaise: 28_000, amountPaise: 5_600_000 })),
+      say(row("stock", "purchase", { bags: 200, productId: "p1", place: "godown:g1", unitCostPaise: 28_000, amountPaise: 5_600_000, brandId: "b1" })),
     ).toBe("Ramesh bought 200 bags of Prism Trade OPC 43 into Main Godown at ₹280 a bag (₹56,000 to Prism)");
+    expect(
+      say(row("stock", "purchase", { bags: 10, productId: "p2", place: "godown:g1", unitCostPaise: 40_000, amountPaise: 400_000, brandId: "b2" })),
+    ).toBe("Ramesh bought 10 bags of UltraTech Trade OPC 53 into Main Godown at ₹400 a bag (₹4,000 to UltraTech)");
+    // A purchase logged before brands came back has no brand id.
+    expect(say(row("stock", "purchase", { bags: 1, productId: "p1", place: "godown:g1", amountPaise: 100 }))).toBe(
+      "Ramesh bought 1 bag of Prism Trade OPC 43 into Main Godown (₹1 to the supplier)",
+    );
     expect(say(row("stock", "adjustment", { bags: -5, productId: "p1", place: "godown:g1", reason: "burst" }))).toBe(
       "Ramesh corrected Prism Trade OPC 43 at Main Godown by −5 bags: burst",
     );
@@ -155,10 +175,32 @@ describe("activitySentence", () => {
     );
   });
 
-  it("prism and masters", () => {
+  it("supplier accounts name the brand", () => {
+    expect(say(row("supplier_entry", "payment", { brandId: "b2", amountPaise: -50_000_000, mode: "bank", reference: "UTRX" }))).toBe(
+      "Ramesh paid UltraTech ₹5,00,000 by bank (UTRX)",
+    );
+    expect(say(row("supplier_entry", "opening", { brandId: "b1", amountPaise: -20_000 }))).toBe(
+      "Ramesh set the Prism opening balance: Prism owes us ₹200",
+    );
+    expect(say(row("supplier_entry", "credit", { brandId: "b2", amountPaise: -1_500_000, note: "Scheme" }))).toBe(
+      "Ramesh recorded a scheme credit of ₹15,000 from UltraTech: Scheme",
+    );
+    expect(say(row("supplier_entry", "adjustment", { brandId: "b1", amountPaise: 5000, note: "Typo" }))).toBe(
+      "Ramesh adjusted the Prism account by +₹50: Typo",
+    );
+    expect(say(row("supplier_entry", "payment", { amountPaise: -100 }))).toBe("Ramesh paid the supplier ₹1");
+  });
+
+  it("old Prism account rows still read as Prism", () => {
     expect(say(row("prism_entry", "payment", { amountPaise: -50_000_000, mode: "bank", reference: "UTRX" }))).toBe(
       "Ramesh paid Prism ₹5,00,000 by bank (UTRX)",
     );
+  });
+
+  it("masters", () => {
+    expect(say(row("brand", "create", { name: "UltraTech" }, "b2"))).toBe("Ramesh added brand UltraTech");
+    expect(say(row("brand", "rename", { from: "Ultra", to: "UltraTech" }, "b2"))).toBe("Ramesh renamed brand Ultra to UltraTech");
+    expect(say(row("brand", "deactivate", {}, "b2"))).toBe("Ramesh switched off brand UltraTech");
     expect(say(row("retailer", "create", { name: "New Shop" }, "rNew"))).toBe("Ramesh added retailer New Shop");
     expect(say(row("retailer", "assign_sales_rep", { salesRepId: { before: null, after: "u2" } }, "r1"))).toBe(
       "Ramesh made Suresh the sales person of Sharma Traders",
@@ -182,7 +224,9 @@ describe("referencedIds", () => {
       { actorId: "u1", entity: "retailer", entityId: "r1", action: "assign_sales_rep", details: { salesRepId: { before: "u2", after: "u3" } } },
       { actorId: "u1", entity: "stock", entityId: "m1", action: "transfer", details: { productId: "p1", from: "godown:g1", to: "vehicle:v1" } },
       { actorId: "u4", entity: "dispatch", entityId: "d1", action: "create", details: null },
+      { actorId: "u4", entity: "supplier_entry", entityId: "s1", action: "payment", details: { brandId: "b2" } },
+      { actorId: "u4", entity: "brand", entityId: "b3", action: "create", details: {} },
     ]);
-    expect(ids.sort()).toEqual(["g1", "p1", "r1", "u1", "u2", "u3", "u4", "v1"]);
+    expect(ids.sort()).toEqual(["b2", "b3", "g1", "p1", "r1", "u1", "u2", "u3", "u4", "v1"]);
   });
 });

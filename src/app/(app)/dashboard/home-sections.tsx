@@ -27,7 +27,7 @@ import {
 } from "@/lib/home-stats";
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
-import { prismBalanceLabel } from "@/lib/prism-rules";
+import { supplierHomeLines } from "@/lib/supplier-rules";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
@@ -140,7 +140,6 @@ export async function LogisticsHome() {
 
 export async function AdminHome() {
   const s = await getAdminHome();
-  const prism = prismBalanceLabel(s.prismPaise);
   const today = toISTDateKey(new Date());
   return (
     <Cards>
@@ -164,9 +163,9 @@ export async function AdminHome() {
       <Card index={6} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
       <Card
         index={7}
-        href="/prism"
-        title="Prism" icon={Factory} tone="amber"
-        stats={[{ label: s.prismPaise < 0 ? "Prism owes you" : "You owe", value: money(prism.amountPaise) }]}
+        href="/suppliers"
+        title="Suppliers" icon={Factory} tone="amber"
+        stats={supplierHomeLines(s.suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) }))}
       />
       <Card index={8} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
       <Card index={9} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />

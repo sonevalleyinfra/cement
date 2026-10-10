@@ -4,8 +4,9 @@ import { useState } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { SelectField } from "@/components/app/select-field";
 import { Stat } from "@/components/app/stat";
-import { CHANNEL_LABELS, formatTonnes, PRODUCT_CHANNELS, type ProductChannel } from "@/lib/catalogue-rules";
+import { CHANNEL_LABELS, formatTonnes, hasManyBrands, PRODUCT_CHANNELS, type ProductChannel } from "@/lib/catalogue-rules";
 import {
+  brandNames,
   NO_FILTERS,
   stockByPlace,
   stockByProduct,
@@ -32,12 +33,13 @@ function Line({ label, bags }: { label: string; bags: number }) {
   );
 }
 
-/** Stock by product or by place, with Trade / Non-trade and type filters. */
+/** Stock by product or by place, with brand (when more than one), Trade / Non-trade and type filters. */
 export function StockView({ products, rows }: { products: StockProduct[]; rows: StockRow[] }) {
   const [view, setView] = useState<View>("product");
   const [filters, setFilters] = useState<StockFilters>(NO_FILTERS);
   const total = stockTotal(rows, products, filters);
   const placeLabel = (kind: string, name: string) => (kind === "vehicle" ? `Truck ${name}` : name);
+  const brands = brandNames(rows, products);
 
   const bySection = view === "product" ? stockByProduct(rows, products, filters) : [];
   const byPlace = view === "place" ? stockByPlace(rows, products, filters) : [];
@@ -53,6 +55,14 @@ export function StockView({ products, rows }: { products: StockProduct[]; rows: 
           By place
         </button>
       </div>
+      {hasManyBrands(brands) && (
+        <SelectField
+          label="Brand"
+          value={filters.brand}
+          onChange={(v) => setFilters({ ...filters, brand: v })}
+          options={[{ value: "all", label: "All" }, ...brands.map((b) => ({ value: b, label: b }))]}
+        />
+      )}
       <div className="grid grid-cols-2 gap-2">
         <SelectField
           label="Trade / Non-trade"

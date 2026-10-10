@@ -7,11 +7,11 @@ import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { productGroups } from "@/lib/catalogue-rules";
+import { hasManyBrands, productGroups, startBrand } from "@/lib/catalogue-rules";
 import { placeGroups } from "@/lib/stock-rules";
 import { transferStock } from "../actions";
 
-type ProductOption = { id: string; name: string; channel: string };
+type ProductOption = { id: string; name: string; channel: string; brandId: string; brand: string };
 type PlaceOption = { key: string; kind: string; name: string };
 type Balance = { productId: string; placeKey: string; bags: number };
 
@@ -26,7 +26,13 @@ export function TransferForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
+  // Brand first (only asked when there is more than one), then that brand's products.
+  const brands = [...new Map(products.map((p) => [p.brandId, { id: p.brandId, name: p.brand }])).values()];
+  const [brandPick, setBrandPick] = useState(products[0]?.brandId ?? "");
+  const brandId = startBrand(brands, brandPick);
+  const brandProducts = products.filter((p) => p.brandId === brandId);
+  const [productPick, setProductPick] = useState(products[0]?.id ?? "");
+  const productId = brandProducts.some((p) => p.id === productPick) ? productPick : (brandProducts[0]?.id ?? "");
   const [from, setFrom] = useState(places[0]?.key ?? "");
   const [to, setTo] = useState(places[1]?.key ?? "");
   const [digits, setDigits] = useState("");
@@ -59,7 +65,15 @@ export function TransferForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <SelectField label="Product" value={productId} onChange={setProductId} groups={productGroups(products)} />
+      {hasManyBrands(brands) && (
+        <SelectField
+          label="Brand"
+          value={brandId}
+          onChange={setBrandPick}
+          options={brands.map((b) => ({ value: b.id, label: b.name }))}
+        />
+      )}
+      <SelectField label="Product" value={productId} onChange={setProductPick} groups={productGroups(brandProducts)} />
       <SelectField label="From" value={from} onChange={setFrom} groups={placeGroups(places)} />
       <p className="text-sm text-muted-foreground">There now: {bagsAt(from)} bags</p>
       <SelectField label="To" value={to} onChange={setTo} groups={placeGroups(places)} />

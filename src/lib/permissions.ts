@@ -48,10 +48,10 @@ export const ACTION_ROLES = {
   setOpeningBalance: ["admin"],
   /** Add a + or - adjustment to a retailer's ledger, with a reason. */
   adjustLedger: ["admin"],
-  // Prism account (docs/idea.md section 7): admin only
-  viewPrism: ["admin"],
-  /** Opening balance, payment to Prism, scheme credit and adjustment. (A purchase is `manageStock`.) */
-  managePrism: ["admin"],
+  // Supplier accounts, one per brand (docs/idea.md section 7): admin only
+  viewSuppliers: ["admin"],
+  /** Opening balance, payment to a supplier, scheme credit and adjustment. (A purchase is `manageStock`.) */
+  manageSuppliers: ["admin"],
   // Stock
   viewStock: STAFF,
   manageStock: ["admin"],
@@ -64,7 +64,7 @@ export const ACTION_ROLES = {
   /** Pick (or change) the sales person who looks after a retailer. */
   assignSalesRep: ["admin"],
   manageUsers: ["admin"],
-  /** Types, grades and products (the drop-down lists). The brand is always Prism. */
+  /** Brands, types, grades and products (the drop-down lists). */
   manageCatalogue: ["admin"],
   // Reports and the activity log (docs/idea.md section 9): admin only
   viewReports: ["admin"],

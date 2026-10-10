@@ -1,6 +1,6 @@
 /**
- * Account statements (a retailer's ledger, the Prism account) as plain functions (no database).
- * Source: docs/idea.md section 9 ("a retailer statement", "Prism account statement").
+ * Account statements (a retailer's ledger, a supplier account) as plain functions (no database).
+ * Source: docs/idea.md section 9 ("a retailer statement", "Supplier account statement (per brand)").
  *
  * A statement for a date range = the opening balance (every entry before the range), every entry
  * in the range with the balance after it, and the closing balance.
@@ -70,7 +70,7 @@ export function byMoment(range: Pick<ReportRange, "start" | "end">) {
   };
 }
 
-/** Where a row with a calendar day falls (Prism account: `entryDate`, "YYYY-MM-DD"). */
+/** Where a row with a calendar day falls (supplier account: `entryDate`, "YYYY-MM-DD"). */
 export function byDay(range: Pick<ReportRange, "from" | "to">) {
   return (day: string): Position => {
     if (day < range.from) return "before";

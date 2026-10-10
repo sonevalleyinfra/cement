@@ -33,7 +33,7 @@ const rows: Row[] = [
   { href: "/stock", label: "Stock", icon: Package, tone: "blue", permission: "viewStock" },
   { href: "/godowns", label: "Godowns", icon: Warehouse, tone: "blue", permission: "manageStock" },
   { href: "/dispatch", label: "Dispatch", icon: Truck, tone: "blue", permission: "dispatch" },
-  { href: "/prism", label: "Prism account", icon: Factory, tone: "amber", permission: "viewPrism" },
+  { href: "/suppliers", label: "Suppliers", icon: Factory, tone: "amber", permission: "viewSuppliers" },
   { href: "/ledger", label: "Ledger", icon: BookOpen, tone: "rose", permission: "viewLedger" },
   { href: "/receipts", label: "Payments", icon: Receipt, tone: "teal", permission: "viewReceipts" },
   { href: "/wallet", label: "Cash", icon: Wallet, tone: "green", permission: "useWallet" },

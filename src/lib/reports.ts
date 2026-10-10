@@ -5,11 +5,11 @@ import {
   ledgerEntries,
   orderEvents,
   orders,
-  prismLedgerEntries,
   products,
   receipts,
   retailers,
   stockMovements,
+  supplierLedgerEntries,
   user,
   walletMovements,
 } from "@/db/schema";
@@ -20,6 +20,8 @@ import { profitReport, salesReport, schemeCreditsPaise, type SaleRow } from "@/l
 import { cashByPerson, onlineWaiting, paymentsByMode, staffActivity } from "@/lib/staff-report";
 import { buildStatement, byDay, byMoment } from "@/lib/statement-rules";
 import { stockFlows, stockNow, totalFlow } from "@/lib/stock-report";
+import { balancesByBrand } from "@/lib/supplier-rules";
+import { getSuppliers } from "@/lib/suppliers";
 
 /**
  * Read-only data for the reports (docs/idea.md section 9). Server-only.
@@ -95,22 +97,36 @@ export async function getRetailerStatement(retailerId: string, range: ReportRang
   return buildStatement(rows, (r) => at(r.createdAt));
 }
 
-/** The Prism account statement for the range (by entry date). */
-export async function getPrismStatement(range: ReportRange) {
+/** One brand's supplier account statement for the range (by entry date). */
+export async function getSupplierStatement(brandId: string, range: ReportRange) {
   const rows = await db
     .select({
-      id: prismLedgerEntries.id,
-      kind: prismLedgerEntries.kind,
-      amountPaise: prismLedgerEntries.amountPaise,
-      entryDate: prismLedgerEntries.entryDate,
-      mode: prismLedgerEntries.mode,
-      reference: prismLedgerEntries.reference,
-      note: prismLedgerEntries.note,
+      id: supplierLedgerEntries.id,
+      kind: supplierLedgerEntries.kind,
+      amountPaise: supplierLedgerEntries.amountPaise,
+      entryDate: supplierLedgerEntries.entryDate,
+      mode: supplierLedgerEntries.mode,
+      reference: supplierLedgerEntries.reference,
+      note: supplierLedgerEntries.note,
     })
-    .from(prismLedgerEntries)
-    .orderBy(asc(prismLedgerEntries.entryDate), asc(prismLedgerEntries.createdAt), asc(prismLedgerEntries.id));
+    .from(supplierLedgerEntries)
+    .where(eq(supplierLedgerEntries.brandId, brandId))
+    .orderBy(asc(supplierLedgerEntries.entryDate), asc(supplierLedgerEntries.createdAt), asc(supplierLedgerEntries.id));
   const at = byDay(range);
   return buildStatement(rows, (r) => at(r.entryDate));
+}
+
+/** What we owed each supplier at the end of the range (entries up to the To day), for the reports list. */
+export async function getSupplierClosings(range: ReportRange) {
+  const [suppliers, rows] = await Promise.all([
+    getSuppliers(),
+    db
+      .select({ brandId: supplierLedgerEntries.brandId, amountPaise: supplierLedgerEntries.amountPaise })
+      .from(supplierLedgerEntries)
+      .where(lte(supplierLedgerEntries.entryDate, range.to)),
+  ]);
+  const closing = balancesByBrand(rows);
+  return suppliers.map((s) => ({ id: s.id, name: s.name, balancePaise: closing.get(s.id) ?? 0 }));
 }
 
 /** Stock now by product and place, and the range's opening → closing per product. */
@@ -183,7 +199,7 @@ export async function getCashReport(range: ReportRange, now = new Date()) {
   };
 }
 
-/** Profit per product for the range, and Prism scheme credits in the range (shown apart). */
+/** Profit per product for the range, and supplier scheme credits (all brands) in the range (shown apart). */
 export async function getProfitReport(range: ReportRange) {
   const [sales, purchases, credits] = await Promise.all([
     salesRows(range),
@@ -192,13 +208,13 @@ export async function getProfitReport(range: ReportRange) {
       .from(stockMovements)
       .where(and(eq(stockMovements.type, "purchase"), lt(stockMovements.createdAt, range.end))),
     db
-      .select({ kind: prismLedgerEntries.kind, amountPaise: prismLedgerEntries.amountPaise })
-      .from(prismLedgerEntries)
+      .select({ kind: supplierLedgerEntries.kind, amountPaise: supplierLedgerEntries.amountPaise })
+      .from(supplierLedgerEntries)
       .where(
         and(
-          eq(prismLedgerEntries.kind, "credit"),
-          gte(prismLedgerEntries.entryDate, range.from),
-          lte(prismLedgerEntries.entryDate, range.to),
+          eq(supplierLedgerEntries.kind, "credit"),
+          gte(supplierLedgerEntries.entryDate, range.from),
+          lte(supplierLedgerEntries.entryDate, range.to),
         ),
       ),
   ]);

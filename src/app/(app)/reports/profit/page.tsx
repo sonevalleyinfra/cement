@@ -49,7 +49,7 @@ export default async function ProfitReportPage({ searchParams }: { searchParams:
           {money(r.unknown.salesPaise)} sales): not in the total.
         </p>
       )}
-      <Section title="Prism scheme credits" />
+      <Section title="Supplier scheme credits" />
       <Stats items={[{ label: "Credits in the dates picked", value: money(r.schemeCreditsPaise) }]} />
     </ReportFrame>
   );

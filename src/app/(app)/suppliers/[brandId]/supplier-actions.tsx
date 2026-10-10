@@ -9,29 +9,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseRupeesToPaise } from "@/lib/money";
-import { PRISM_MODE_LABELS, PRISM_PAYMENT_MODES } from "@/lib/prism-rules";
 import { MAX_REASON } from "@/lib/receipt-rules";
-import { addPrismAdjustment, recordPrismCredit, recordPrismPayment, setPrismOpening } from "./actions";
+import { SUPPLIER_MODE_LABELS, SUPPLIER_PAYMENT_MODES } from "@/lib/supplier-rules";
+import { addSupplierAdjustment, recordSupplierCredit, recordSupplierPayment, setSupplierOpening } from "../actions";
 
 type Kind = "opening" | "payment" | "credit" | "adjustment";
 
-const TITLES: Record<Kind, string> = {
+const titles = (brand: string): Record<Kind, string> => ({
   opening: "Opening balance",
-  payment: "Payment to Prism",
+  payment: `Payment to ${brand}`,
   credit: "Scheme credit",
   adjustment: "Adjustment",
-};
+});
 
 /**
- * The four things the admin can add to the Prism account. Payment is the one main button;
+ * The four things the admin can add to one brand's supplier account. Payment is the one main button;
  * credit, adjustment and (until it is set) opening balance sit above the list.
  * Each opens a sheet with one short form. `children` is the entry list.
  */
-export function PrismActions({
+export function SupplierActions({
+  brandId,
+  brandName,
   hasOpening,
   today,
   children,
 }: {
+  brandId: string;
+  brandName: string;
   hasOpening: boolean;
   /** Today in India, "YYYY-MM-DD". */
   today: string;
@@ -52,18 +56,39 @@ export function PrismActions({
       <PinnedAction>
         <Button onClick={() => setOpen("payment")}>Record payment</Button>
       </PinnedAction>
-      <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)} title={open ? TITLES[open] : ""}>
-        {open && <EntryForm key={open} kind={open} today={today} onDone={() => setOpen(null)} />}
+      <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)} title={open ? titles(brandName)[open] : ""}>
+        {open && (
+          <EntryForm
+            key={open}
+            kind={open}
+            brandId={brandId}
+            brandName={brandName}
+            today={today}
+            onDone={() => setOpen(null)}
+          />
+        )}
       </Sheet>
     </>
   );
 }
 
-function EntryForm({ kind, today, onDone }: { kind: Kind; today: string; onDone: () => void }) {
+function EntryForm({
+  kind,
+  brandId,
+  brandName,
+  today,
+  onDone,
+}: {
+  kind: Kind;
+  brandId: string;
+  brandName: string;
+  today: string;
+  onDone: () => void;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
-  // Opening: true = we owe Prism. Adjustment: true = we owe more.
+  // Opening: true = we owe the supplier. Adjustment: true = we owe more.
   const [plus, setPlus] = useState(true);
   const [mode, setMode] = useState<string>("bank");
 
@@ -79,12 +104,18 @@ function EntryForm({ kind, today, onDone }: { kind: Kind; today: string; onDone:
     start(async () => {
       const res =
         kind === "opening"
-          ? await setPrismOpening({ amountPaise: paise, weOwe: plus, entryDate })
+          ? await setSupplierOpening({ brandId, amountPaise: paise, weOwe: plus, entryDate })
           : kind === "payment"
-            ? await recordPrismPayment({ amountPaise: paise, mode, reference: String(f.get("reference") ?? ""), entryDate })
+            ? await recordSupplierPayment({
+                brandId,
+                amountPaise: paise,
+                mode,
+                reference: String(f.get("reference") ?? ""),
+                entryDate,
+              })
             : kind === "credit"
-              ? await recordPrismCredit({ amountPaise: paise, reason, entryDate })
-              : await addPrismAdjustment({ amountPaise: plus ? paise : -paise, reason, entryDate });
+              ? await recordSupplierCredit({ brandId, amountPaise: paise, reason, entryDate })
+              : await addSupplierAdjustment({ brandId, amountPaise: plus ? paise : -paise, reason, entryDate });
       if (res.ok) {
         onDone();
         router.refresh();
@@ -105,7 +136,7 @@ function EntryForm({ kind, today, onDone }: { kind: Kind; today: string; onDone:
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      {kind === "opening" && toggle(["We owe Prism", "Prism owes us"])}
+      {kind === "opening" && toggle([`We owe ${brandName}`, `${brandName} owes us`])}
       {kind === "adjustment" && toggle(["We owe more", "We owe less"])}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="amount">Amount (₹)</Label>
@@ -117,7 +148,7 @@ function EntryForm({ kind, today, onDone }: { kind: Kind; today: string; onDone:
             label="Mode"
             value={mode}
             onChange={setMode}
-            options={PRISM_PAYMENT_MODES.map((m) => ({ value: m, label: PRISM_MODE_LABELS[m] }))}
+            options={SUPPLIER_PAYMENT_MODES.map((m) => ({ value: m, label: SUPPLIER_MODE_LABELS[m] }))}
           />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="reference">{mode === "bank" ? "UTR / reference" : "Reference (optional)"}</Label>

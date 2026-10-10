@@ -4,10 +4,10 @@ import { ListCard } from "@/components/app/list-card";
 import { RangeForm } from "@/components/app/range-form";
 import { Stat } from "@/components/app/stat";
 import { rolesFor } from "@/lib/permissions";
-import { prismBalanceLabel } from "@/lib/prism-rules";
 import { param, rangeQuery, reportRange } from "@/lib/report-range";
-import { getCashHolders, getDuesAging, getPrismStatement, getProfitReport, getSalesReport } from "@/lib/reports";
+import { getCashHolders, getDuesAging, getProfitReport, getSalesReport, getSupplierClosings } from "@/lib/reports";
 import { requireRole } from "@/lib/session";
+import { supplierHomeLines } from "@/lib/supplier-rules";
 import { money, num } from "./report-frame";
 
 type Card = { href: string; title: string; icon: LucideIcon; tone: Tone; stats: { label: string; value: string }[] };
@@ -16,15 +16,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
-  const [sales, dues, cash, prism, profit] = await Promise.all([
+  const [sales, dues, cash, suppliers, profit] = await Promise.all([
     getSalesReport(range),
     getDuesAging(range),
     getCashHolders(),
-    getPrismStatement(range),
+    getSupplierClosings(range),
     getProfitReport(range),
   ]);
   const q = rangeQuery(range);
-  const prismLabel = prismBalanceLabel(prism.closingPaise);
   const cards: Card[] = [
     { href: `/reports/sales?${q}`, title: "Sales", icon: ChartColumn, tone: "orange", stats: [{ label: "Value", value: money(sales.valuePaise) }, { label: "Bags", value: num(sales.bags) }] },
     { href: `/reports/profit?${q}`, title: "Profit", icon: Coins, tone: "green", stats: [{ label: "Profit", value: money(profit.total.profitPaise) }] },
@@ -32,7 +31,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     { href: `/reports/statement?${q}`, title: "Retailer statement", icon: BookOpen, tone: "rose", stats: [] },
     { href: `/reports/stock?${q}`, title: "Stock", icon: Package, tone: "blue", stats: [] },
     { href: `/reports/cash?${q}`, title: "Cash and online", icon: Wallet, tone: "green", stats: [{ label: "Held by staff", value: money(cash.reduce((n, h) => n + h.heldPaise, 0)) }] },
-    { href: `/reports/prism?${q}`, title: "Prism statement", icon: Factory, tone: "amber", stats: [{ label: prismLabel.text, value: money(prismLabel.amountPaise) }] },
+    {
+      href: `/reports/suppliers?${q}`,
+      title: "Supplier statement",
+      icon: Factory,
+      tone: "amber",
+      stats: supplierHomeLines(suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) })),
+    },
     { href: `/reports/staff?${q}`, title: "Staff activity", icon: Users, tone: "violet", stats: [] },
   ];
 

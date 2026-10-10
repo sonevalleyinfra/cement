@@ -12,7 +12,7 @@ import { productGroups } from "@/lib/catalogue-rules";
 import { placeOrder } from "../actions";
 
 type Retailer = { id: string; name: string; place: string };
-type Product = { id: string; name: string; channel: string };
+type Product = { id: string; name: string; channel: string; brand: string };
 
 export function NewOrderForm({
   retailers,

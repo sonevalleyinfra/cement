@@ -12,7 +12,7 @@
  *   purchases with a known cost up to the end of the range (older purchases without a cost are
  *   left out). Cost of the bags sold = bags × that average, rounded to the paisa (no floats).
  * - A product with no known cost shows "cost unknown" and is left out of the profit total.
- * - Scheme / discount credits from Prism are shown on their own, never mixed into product profit.
+ * - Scheme / discount credits from suppliers (all brands) are shown on their own, never mixed into product profit.
  */
 import { toISTDateKey } from "./datetime";
 import { mulDivRound } from "./money";
@@ -170,7 +170,7 @@ export function profitReport(sales: readonly SaleRow[], purchases: readonly Purc
   return { lines, total, unknown };
 }
 
-/** Scheme / discount credits from Prism in the range, as a plus amount (entries store them as minus). */
+/** Scheme / discount credits from suppliers in the range, as a plus amount (entries store them as minus). */
 export function schemeCreditsPaise(entries: readonly { kind: string; amountPaise: number }[]): number {
   return entries.filter((e) => e.kind === "credit").reduce((n, e) => n - e.amountPaise, 0);
 }

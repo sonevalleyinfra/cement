@@ -8,7 +8,8 @@
  * looked up when the log is shown, so the sentence always uses today's name of a shop or product.
  *
  * Details conventions (all optional, all plain JSON):
- *   retailerId, productId, collectorId, userId  ids, turned into names when shown
+ *   retailerId, productId, collectorId, userId, ids, turned into names when shown
+ *   brandId
  *   place, from, to                             place keys ("godown:<id>" / "vehicle:<id>")
  *   bags, cancelledBags                         whole bags (adjustments are signed)
  *   amountPaise, ratePaise, unitCostPaise,      integer paise
@@ -16,7 +17,7 @@
  *   reason, mode, utr, receiptNo, name, ...     short text / numbers
  */
 import { formatINR } from "./money";
-import { PRISM_KINDS } from "./prism-rules";
+import { SUPPLIER_KINDS } from "./supplier-rules";
 
 /* ---------- What may be logged ---------- */
 
@@ -31,12 +32,13 @@ export const AUDIT_ACTIONS = {
   payment: ["record", "verify", "reject", "reverse"],
   handover: ["request", "confirm", "reject"],
   ledger: ["opening", "adjustment"],
-  // Prism account (spec section 7)
-  prism_entry: PRISM_KINDS,
+  // Supplier accounts, one per brand (spec section 7)
+  supplier_entry: SUPPLIER_KINDS,
   // Masters
   user: ["create", "update", "rename", "activate", "deactivate", "delete"],
   retailer: ["create", "update", "activate", "deactivate", "link", "assign_sales_rep"],
   godown: ["create", "update", "activate", "deactivate"],
+  brand: ["create", "rename", "activate", "deactivate"],
   product: ["create", "activate", "deactivate"],
   cement_type: ["create", "activate", "deactivate", "rename"],
   grade: ["create", "activate", "deactivate", "rename"],
@@ -59,6 +61,13 @@ export function isAllowedAudit(entity: unknown, action: unknown): boolean {
   return (AUDIT_ACTIONS[entity] as readonly string[]).includes(String(action));
 }
 
+/**
+ * Entity names that old rows may still carry, and what they mean today. Never written again.
+ * "prism_entry": the Prism account before it became one supplier account per brand (every such
+ * row was owed to Prism).
+ */
+export const LEGACY_ENTITIES: Record<string, AuditEntity> = { prism_entry: "supplier_entry" };
+
 /* ---------- Filter groups ---------- */
 
 /** The "type" filter on the activity page. Every entity is in exactly one group. */
@@ -66,8 +75,8 @@ export const ACTIVITY_GROUPS = {
   orders: ["order", "dispatch"],
   stock: ["stock"],
   payments: ["payment", "handover", "ledger"],
-  prism: ["prism_entry"],
-  masters: ["user", "retailer", "godown", "product", "cement_type", "grade", "vehicle"],
+  suppliers: ["supplier_entry"],
+  masters: ["user", "retailer", "godown", "brand", "product", "cement_type", "grade", "vehicle"],
 } as const satisfies Record<string, readonly AuditEntity[]>;
 
 export type ActivityGroup = keyof typeof ACTIVITY_GROUPS;
@@ -76,7 +85,7 @@ export const ACTIVITY_GROUP_LABELS: Record<ActivityGroup, string> = {
   orders: "Orders",
   stock: "Stock",
   payments: "Payments",
-  prism: "Prism",
+  suppliers: "Suppliers",
   masters: "Masters",
 };
 
@@ -85,21 +94,24 @@ export function isActivityGroup(value: unknown): value is ActivityGroup {
 }
 
 /**
- * What one filter group matches: its entities, plus a few single actions from other groups.
- * A stock purchase also adds to the Prism account (its one log row is the stock row), so the
- * Prism filter shows purchases too.
+ * What one filter group matches: its entities (and their old names), plus a few single actions
+ * from other groups. A stock purchase also adds to a supplier account (its one log row is the
+ * stock row), so the Suppliers filter shows purchases too.
  */
 export function groupFilter(group: ActivityGroup): { entities: string[]; extra: { entity: string; action: string }[] } {
+  const entities: string[] = [...ACTIVITY_GROUPS[group]];
+  for (const [old, now] of Object.entries(LEGACY_ENTITIES)) if (entities.includes(now)) entities.push(old);
   return {
-    entities: [...ACTIVITY_GROUPS[group]],
-    extra: group === "prism" ? [{ entity: "stock", action: "purchase" }] : [],
+    entities,
+    extra: group === "suppliers" ? [{ entity: "stock", action: "purchase" }] : [],
   };
 }
 
-/** The group an entity belongs to, or null for an unknown entity. */
+/** The group an entity (or its old name) belongs to, or null for an unknown entity. */
 export function groupOf(entity: string): ActivityGroup | null {
+  const now = LEGACY_ENTITIES[entity] ?? entity;
   for (const [group, entities] of Object.entries(ACTIVITY_GROUPS)) {
-    if ((entities as readonly string[]).includes(entity)) return group as ActivityGroup;
+    if ((entities as readonly string[]).includes(now)) return group as ActivityGroup;
   }
   return null;
 }
@@ -145,8 +157,8 @@ export type ActivityRow = {
 };
 
 /** Entities whose `entityId` is itself a named record (user, shop, product...). */
-const NAMED_ENTITIES = new Set(["user", "retailer", "godown", "product", "cement_type", "grade", "vehicle"]);
-const ID_KEYS = ["retailerId", "productId", "collectorId", "userId"] as const;
+const NAMED_ENTITIES = new Set(["user", "retailer", "godown", "brand", "product", "cement_type", "grade", "vehicle"]);
+const ID_KEYS = ["retailerId", "productId", "collectorId", "userId", "brandId"] as const;
 const PLACE_KEYS = ["place", "from", "to"] as const;
 
 /** The id inside a place key ("godown:<id>" → "<id>"), or null. */
@@ -251,7 +263,7 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
       switch (row.action) {
         case "purchase": {
           const cost = n(d.unitCostPaise);
-          const owed = amount !== null ? ` (${rs(amount)} to Prism)` : "";
+          const owed = amount !== null ? ` (${rs(amount)} to ${name(d.brandId, "the supplier")})` : "";
           return say(`bought ${count} of ${product} into ${place(d.place)}${cost !== null ? ` at ${rs(cost)} a bag` : ""}${owed}`);
         }
         case "opening":
@@ -302,20 +314,23 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
       if (row.action === "adjustment") return say(`adjusted ${possessive(shop)} dues by ${signed(value)}${reason}`);
       break;
     }
+    case "supplier_entry":
     case "prism_entry": {
       const value = amount ?? 0;
       const ref = s(d.reference);
+      // Old "prism_entry" rows have no brand: they were all Prism.
+      const supplier = name(d.brandId, row.entity === "prism_entry" ? "Prism" : "the supplier");
       switch (row.action) {
         case "opening":
-          return say(`set the Prism opening balance: ${value < 0 ? "Prism owes us" : "we owe"} ${rs(Math.abs(value))}`);
+          return say(`set the ${supplier} opening balance: ${value < 0 ? `${supplier} owes us` : "we owe"} ${rs(Math.abs(value))}`);
         case "purchase":
-          return say(`recorded a Prism purchase of ${rs(value)}${s(d.note) ? ` (${s(d.note)})` : ""}`);
+          return say(`recorded a purchase of ${rs(value)} from ${supplier}${s(d.note) ? ` (${s(d.note)})` : ""}`);
         case "payment":
-          return say(`paid Prism ${rs(Math.abs(value))}${s(d.mode) ? ` by ${s(d.mode)}` : ""}${ref ? ` (${ref})` : ""}`);
+          return say(`paid ${supplier} ${rs(Math.abs(value))}${s(d.mode) ? ` by ${s(d.mode)}` : ""}${ref ? ` (${ref})` : ""}`);
         case "credit":
-          return say(`recorded a Prism scheme credit of ${rs(Math.abs(value))}${s(d.note) ? `: ${s(d.note)}` : ""}`);
+          return say(`recorded a scheme credit of ${rs(Math.abs(value))} from ${supplier}${s(d.note) ? `: ${s(d.note)}` : ""}`);
         case "adjustment":
-          return say(`adjusted the Prism account by ${signed(value)}${s(d.note) ? `: ${s(d.note)}` : ""}`);
+          return say(`adjusted the ${supplier} account by ${signed(value)}${s(d.note) ? `: ${s(d.note)}` : ""}`);
       }
       break;
     }
@@ -359,6 +374,11 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
         case "deactivate":
           return switched("retailer");
       }
+      break;
+    case "brand":
+      if (row.action === "create") return say(`added ${thing("brand")}`);
+      if (row.action === "rename") return say(`renamed brand ${s(d.from)} to ${s(d.to)}`);
+      if (row.action === "activate" || row.action === "deactivate") return switched("brand");
       break;
     case "godown":
     case "product":

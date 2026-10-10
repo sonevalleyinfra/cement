@@ -13,16 +13,20 @@ import {
   CHANNEL_LABELS,
   DEFAULT_BAG_KG,
   findProductByParts,
+  hasManyBrands,
+  listsUsedBy,
   PRODUCT_CHANNELS,
+  startBrand,
 } from "@/lib/catalogue-rules";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
-import { purchaseAmountPaise } from "@/lib/prism-rules";
+import { purchaseAmountPaise } from "@/lib/supplier-rules";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
 import { ListEditorSheet } from "./list-editor-sheet";
 
-type ProductOption = { id: string; name: string; channel: string; gradeId: string; bagKg: number };
+type ProductOption = { id: string; name: string; channel: string; brandId: string; gradeId: string; bagKg: number };
 type Lists = {
+  brands: { id: string; name: string }[];
   types: { id: string; code: string; name: string }[];
   grades: { id: string; typeId: string; name: string }[];
 };
@@ -47,7 +51,7 @@ export function StockForm({
   places: PlaceOption[];
   products: ProductOption[];
   balances: Balance[];
-  /** Types and grades for the product drop-downs (the brand is always Prism). */
+  /** Brands, types and grades for the product drop-downs. */
   lists: Lists;
   /** Shows the edit buttons next to the drop-downs (purchase, admin only). */
   canManageCatalogue: boolean;
@@ -55,6 +59,7 @@ export function StockForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const first = products[0];
+  const [brandPick, setBrandPick] = useState(first?.brandId ?? "");
   const [channel, setChannel] = useState(first?.channel ?? PRODUCT_CHANNELS[0]);
   const [typePick, setTypePick] = useState(lists.grades.find((g) => g.id === first?.gradeId)?.typeId ?? "");
   const [gradePick, setGradePick] = useState(first?.gradeId ?? "");
@@ -63,7 +68,7 @@ export function StockForm({
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
-  // Purchase only: what one bag cost (typed in rupees) and the optional Prism invoice number.
+  // Purchase only: what one bag cost (typed in rupees) and the optional supplier invoice number.
   const [costText, setCostText] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   // The quick truck form (purchase into a hired truck): nothing about the truck is saved for next time.
@@ -71,13 +76,19 @@ export function StockForm({
   const newTruck = mode === "purchase" && place === NEW_TRUCK_PLACE;
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Brand first. With one brand there is no Brand drop-down: that brand is used.
   // A pick that left the list (removed, or a grade of another type) falls back to the first one.
-  const typeId = lists.types.some((t) => t.id === typePick) ? typePick : (lists.types[0]?.id ?? "");
-  const typeGrades = lists.grades.filter((g) => g.typeId === typeId);
+  const brandId = startBrand(lists.brands, brandPick);
+  const brandName = lists.brands.find((b) => b.id === brandId)?.name ?? "";
+  // A purchase may make a new product from any type and grade; opening and adjust offer only
+  // the types and grades this brand's products are made from.
+  const shown = mode === "purchase" ? lists : listsUsedBy(lists, products.filter((p) => p.brandId === brandId));
+  const typeId = shown.types.some((t) => t.id === typePick) ? typePick : (shown.types[0]?.id ?? "");
+  const typeGrades = shown.grades.filter((g) => g.typeId === typeId);
   const gradeId = typeGrades.some((g) => g.id === gradePick) ? gradePick : (typeGrades[0]?.id ?? "");
-  const typeCode = lists.types.find((t) => t.id === typeId)?.code ?? "";
-  const picked = Boolean(typeId && gradeId);
-  const product = findProductByParts(products, { channel, gradeId, bagKg: DEFAULT_BAG_KG });
+  const typeCode = shown.types.find((t) => t.id === typeId)?.code ?? "";
+  const picked = Boolean(brandId && typeId && gradeId);
+  const product = findProductByParts(products, { brandId, channel, gradeId, bagKg: DEFAULT_BAG_KG });
   const missing = picked && !product;
 
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
@@ -88,6 +99,7 @@ export function StockForm({
   function submit() {
     setMessage(null);
     const input = {
+      brandId,
       channel,
       typeId,
       gradeId,
@@ -112,10 +124,18 @@ export function StockForm({
     });
   }
 
-  if ((places.length === 0 && mode !== "purchase") || (products.length === 0 && !canManageCatalogue)) {
+  if (
+    (places.length === 0 && mode !== "purchase") ||
+    (products.length === 0 && !canManageCatalogue) ||
+    lists.brands.length === 0
+  ) {
     return (
       <p className="rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
-        {places.length === 0 ? "Add a godown or vehicle first." : "Add a product first."}
+        {places.length === 0 && mode !== "purchase"
+          ? "Add a godown or vehicle first."
+          : lists.brands.length === 0
+            ? "Add a brand first (Catalogue)."
+            : "Add a product first."}
       </p>
     );
   }
@@ -134,6 +154,14 @@ export function StockForm({
 
   return (
     <div className="flex flex-col gap-4">
+      {hasManyBrands(lists.brands) && (
+        <SelectField
+          label="Brand"
+          value={brandId}
+          onChange={setBrandPick}
+          options={lists.brands.map((b) => ({ value: b.id, label: b.name }))}
+        />
+      )}
       <SelectField
         label="Trade-type"
         value={channel}
@@ -145,8 +173,8 @@ export function StockForm({
           label="Type"
           value={typeId}
           onChange={setTypePick}
-          options={lists.types.map((t) => ({ value: t.id, label: t.code }))}
-          placeholder={lists.types.length === 0 ? "Add one" : undefined}
+          options={shown.types.map((t) => ({ value: t.id, label: t.code }))}
+          placeholder={shown.types.length === 0 ? "Add one" : undefined}
           action={edit("cement_type", "types")}
         />
         <SelectField
@@ -231,7 +259,7 @@ export function StockForm({
           />
           {owedPaise !== null && (
             <div className="tabular text-center text-sm text-muted-foreground" aria-live="polite">
-              Owed to Prism <span className="font-semibold text-foreground">{formatINR(owedPaise)}</span>
+              Owed to {brandName} <span className="font-semibold text-foreground">{formatINR(owedPaise)}</span>
             </div>
           )}
           <Input

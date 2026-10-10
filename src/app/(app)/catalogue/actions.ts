@@ -6,7 +6,9 @@ import { db } from "@/db";
 import { brands, cementTypes, grades, products, stockMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import {
+  canSwitchOffBrand,
   canSwitchOffProduct,
+  canSwitchOnProduct,
   cleanListName,
   cleanTypeCode,
   isDuplicateName,
@@ -26,13 +28,14 @@ function done(res: CatalogueResult = { ok: true }): CatalogueResult {
   revalidatePath("/catalogue");
   revalidatePath("/stock", "layout");
   revalidatePath("/orders/new");
+  revalidatePath("/suppliers", "layout");
   return res;
 }
 
-/** Adds a product from the drop-downs (always the Prism brand). Its name is built, never typed. Admin only. */
+/** Adds a product from the drop-downs (brand first). Its name is built, never typed. Admin only. */
 export async function addProduct(input: NewProductInput): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
-  if (!isUuid(input.typeId) || !isUuid(input.gradeId)) {
+  if (!isUuid(input.brandId) || !isUuid(input.typeId) || !isUuid(input.gradeId)) {
     return { ok: false, error: "Pick every option." };
   }
   const res = await db.transaction(async (tx): Promise<CatalogueResult> => {
@@ -42,7 +45,9 @@ export async function addProduct(input: NewProductInput): Promise<CatalogueResul
       tx.select({ id: brands.id, name: brands.name, active: brands.active }).from(brands),
       tx.select({ id: cementTypes.id, code: cementTypes.code, active: cementTypes.active }).from(cementTypes),
       tx.select({ id: grades.id, typeId: grades.typeId, name: grades.name, active: grades.active }).from(grades),
-      tx.select({ channel: products.channel, gradeId: products.gradeId, bagKg: products.bagKg }).from(products),
+      tx
+        .select({ brandId: products.brandId, channel: products.channel, gradeId: products.gradeId, bagKg: products.bagKg })
+        .from(products),
     ]);
     const check = validateNewProduct(
       { ...input, bagKg: Number(input.bagKg) },
@@ -62,14 +67,18 @@ export async function addProduct(input: NewProductInput): Promise<CatalogueResul
   return res.ok ? done(res) : res;
 }
 
-/** Switches a product on or off. Off is refused while any of its bags are still in stock. */
+/** Switches a product on or off. Off is refused while any of its bags are still in stock; on needs its brand on. */
 export async function setProductActive(id: string, active: boolean): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
   if (!isUuid(id)) return { ok: false, error: "Product not found." };
   const res = await db.transaction(async (tx): Promise<CatalogueResult> => {
     const [row] = await tx.select().from(products).where(eq(products.id, id)).for("update");
     if (!row) return { ok: false, error: "Product not found." };
-    if (!active) {
+    if (active) {
+      const [brand] = await tx.select({ active: brands.active }).from(brands).where(eq(brands.id, row.brandId)).for("share");
+      const ok = canSwitchOnProduct(Boolean(brand?.active));
+      if (!ok.ok) return ok;
+    } else {
       const [left] = await tx
         .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
         .from(stockMovements)
@@ -86,6 +95,22 @@ export async function setProductActive(id: string, active: boolean): Promise<Cat
       details: { name: row.name },
     });
     return { ok: true };
+  });
+  return res.ok ? done(res) : res;
+}
+
+/** Adds a brand, e.g. "UltraTech". It gets its own supplier account (empty until the first entry). */
+export async function addBrand(name: string): Promise<CatalogueResult> {
+  const session = await requireRole(...rolesFor("manageCatalogue"));
+  const clean = cleanListName(name);
+  if (!clean) return { ok: false, error: "Enter a brand name." };
+  const res = await db.transaction(async (tx): Promise<CatalogueResult> => {
+    await tx.execute(sql`lock table ${brands} in share row exclusive mode`);
+    const existing = await tx.select({ name: brands.name }).from(brands);
+    if (isDuplicateName(clean, existing.map((e) => e.name))) return { ok: false, error: "Brand already added." };
+    const [row] = await tx.insert(brands).values({ name: clean }).returning({ id: brands.id });
+    await writeAudit(tx, { actorId: session.user.id, entity: "brand", entityId: row.id, action: "create", details: { name: clean } });
+    return { ok: true, id: row.id };
   });
   return res.ok ? done(res) : res;
 }
@@ -137,19 +162,37 @@ export async function addGrade(form: { typeId: string; name: string }): Promise<
   return res.ok ? done(res) : res;
 }
 
-/** The lists admin edits. There is no brand list: the business sells Prism only. */
-export type CatalogueList = "cement_type" | "grade";
+/** The lists admin edits. */
+export type CatalogueList = "brand" | "cement_type" | "grade";
 
 /**
- * Switches a type or grade on or off. Off only hides it when adding new products;
- * products already made from it stay as they are (switch those off in the Products tab).
+ * Switches a brand, type or grade on or off. Off only hides it when adding new products;
+ * products already made from a type or grade stay as they are (switch those off in the Products tab).
+ * A brand can be switched off only when none of its products are on and none of its bags are in stock.
  */
 export async function setListItemActive(list: CatalogueList, id: string, active: boolean): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
   if (!isUuid(id)) return { ok: false, error: "Not found." };
   const res = await db.transaction(async (tx): Promise<CatalogueResult> => {
     let changed: { id: string }[];
-    if (list === "cement_type") {
+    if (list === "brand") {
+      if (!active) {
+        // Locked so no product of this brand is switched on (or bought) while we check.
+        await tx.execute(sql`lock table ${products} in share row exclusive mode`);
+        const [on] = await tx
+          .select({ n: sql<number>`count(*)`.mapWith(Number) })
+          .from(products)
+          .where(and(eq(products.brandId, id), eq(products.active, true)));
+        const [stock] = await tx
+          .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
+          .from(stockMovements)
+          .innerJoin(products, eq(products.id, stockMovements.productId))
+          .where(eq(products.brandId, id));
+        const ok = canSwitchOffBrand({ activeProducts: on?.n ?? 0, bagsInStock: stock?.bags ?? 0 });
+        if (!ok.ok) return ok;
+      }
+      changed = await tx.update(brands).set({ active, updatedAt: new Date() }).where(eq(brands.id, id)).returning({ id: brands.id });
+    } else if (list === "cement_type") {
       changed = await tx.update(cementTypes).set({ active }).where(eq(cementTypes.id, id)).returning({ id: cementTypes.id });
     } else if (list === "grade") {
       changed = await tx.update(grades).set({ active }).where(eq(grades.id, id)).returning({ id: grades.id });
@@ -163,9 +206,10 @@ export async function setListItemActive(list: CatalogueList, id: string, active:
   return res.ok ? done(res) : res;
 }
 
-/** Products made from a type or grade, with their parts, to rebuild their names. */
+/** Products made from a brand, type or grade, with their parts, to rebuild their names. */
 async function productsWithParts(tx: Tx, list: CatalogueList, id: string) {
-  const where = list === "grade" ? eq(products.gradeId, id) : eq(grades.typeId, id);
+  const where =
+    list === "brand" ? eq(products.brandId, id) : list === "grade" ? eq(products.gradeId, id) : eq(grades.typeId, id);
   return tx
     .select({
       id: products.id,
@@ -184,7 +228,7 @@ async function productsWithParts(tx: Tx, list: CatalogueList, id: string) {
 }
 
 /**
- * Renames a type (code and full name) or grade. Product names are built from these,
+ * Renames a brand, type (code and full name) or grade. Product names are built from these,
  * so every product made from it gets its new name in the same transaction.
  */
 export async function renameListItem(
@@ -198,7 +242,17 @@ export async function renameListItem(
     await tx.execute(sql`lock table ${products} in share row exclusive mode`);
     let from: string;
     let to: string;
-    if (list === "cement_type") {
+    if (list === "brand") {
+      const name = cleanListName(form.name);
+      if (!name) return { ok: false, error: "Enter a brand name." };
+      await tx.execute(sql`lock table ${brands} in share row exclusive mode`);
+      const [row] = await tx.select().from(brands).where(eq(brands.id, id));
+      if (!row) return { ok: false, error: "Not found." };
+      const others = await tx.select({ name: brands.name }).from(brands).where(ne(brands.id, id));
+      if (isDuplicateName(name, others.map((o) => o.name))) return { ok: false, error: "Brand already added." };
+      await tx.update(brands).set({ name, updatedAt: new Date() }).where(eq(brands.id, id));
+      [from, to] = [row.name, name];
+    } else if (list === "cement_type") {
       const code = cleanTypeCode(form.code ?? "");
       if (!code) return { ok: false, error: "Enter a short code, e.g. PSC." };
       const name = cleanListName(form.name, 60) ?? "";
