@@ -2,7 +2,8 @@ import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
-import { products, retailers } from "@/db/schema";
+import { retailers } from "@/db/schema";
+import { getProducts } from "@/lib/catalogue";
 import { isRetailerOnly } from "@/lib/order-access";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
@@ -30,11 +31,7 @@ export default async function NewOrderPage() {
     return <EmptyState title="Your login is not linked to a retailer" />;
   }
   if (retailerRows.length === 0) return <EmptyState title="Add a retailer first" />;
-  const productRows = await db
-    .select({ id: products.id, name: products.name })
-    .from(products)
-    .where(eq(products.active, true))
-    .orderBy(asc(products.name));
+  const productRows = (await getProducts({ activeOnly: true })).map((p) => ({ id: p.id, name: p.name, channel: p.channel }));
   if (productRows.length === 0) return <EmptyState title="No products yet. Ask admin." />;
 
   return (

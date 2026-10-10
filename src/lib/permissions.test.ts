@@ -35,6 +35,7 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   editVehicles:      [Y, N, N, Y, N, N],
   manageUsers:       [Y, N, N, N, N, N],
   manageFirms:       [Y, N, N, N, N, N],
+  manageCatalogue:   [Y, N, N, N, N, N],
 };
 
 describe("permission matrix", () => {

@@ -6,6 +6,7 @@ import {
   KeyRound,
   Package,
   Receipt,
+  Tags,
   Truck,
   Users,
   Wallet,
@@ -23,6 +24,7 @@ type Row = { href: string; label: string; icon: LucideIcon; tone: Tone; permissi
 const rows: Row[] = [
   { href: "/users", label: "Users", icon: Users, tone: "violet", permission: "manageUsers" },
   { href: "/firms", label: "Firms", icon: Building2, tone: "slate", permission: "manageFirms" },
+  { href: "/catalogue", label: "Catalogue", icon: Tags, tone: "blue", permission: "manageCatalogue" },
   { href: "/approvals", label: "Approvals", icon: BadgeCheck, tone: "violet", permission: "viewApprovals" },
   { href: "/stock", label: "Stock", icon: Package, tone: "blue", permission: "viewStock" },
   { href: "/dispatch", label: "Dispatch", icon: Truck, tone: "blue", permission: "dispatch" },

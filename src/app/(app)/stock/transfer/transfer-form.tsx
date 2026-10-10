@@ -4,11 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { productGroups } from "@/lib/catalogue-rules";
 import { transferStock } from "../actions";
 
 type Option = { id: string; name: string };
+type ProductOption = Option & { channel: string };
 type Balance = { productId: string; locationId: string; bags: number };
 
 const selectClass = "h-11 w-full rounded-xl border bg-background px-3 text-base";
@@ -21,7 +24,7 @@ export function TransferForm({
 }: {
   firmId: string;
   places: Option[];
-  products: Option[];
+  products: ProductOption[];
   balances: Balance[];
 }) {
   const router = useRouter();
@@ -60,16 +63,7 @@ export function TransferForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1 text-sm font-medium">
-        Product
-        <select className={selectClass} value={productId} onChange={(e) => setProductId(e.target.value)}>
-          {products.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SelectField label="Product" value={productId} onChange={setProductId} groups={productGroups(products)} />
       <label className="flex flex-col gap-1 text-sm font-medium">
         From
         <select className={selectClass} value={fromId} onChange={(e) => setFromId(e.target.value)}>

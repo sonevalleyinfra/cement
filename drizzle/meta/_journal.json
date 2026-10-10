@@ -120,6 +120,27 @@
       "when": 1791623185191,
       "tag": "0016_user_deleted_at",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791629691519,
+      "tag": "0017_catalogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791629704493,
+      "tag": "0018_catalogue_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791629718125,
+      "tag": "0019_catalogue_required",
+      "breakpoints": true
     }
   ]
 }
