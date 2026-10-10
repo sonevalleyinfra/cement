@@ -41,6 +41,8 @@ export const stockMovements = pgTable(
     bags: integer("bags").notNull(),
     orderId: uuid("order_id").references(() => orders.id),
     reason: text("reason").default("").notNull(),
+    /** Purchases only: what one bag cost, in paise (used for the average purchase cost per product). */
+    unitCostPaise: integer("unit_cost_paise"),
     actorId: text("actor_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -48,6 +50,7 @@ export const stockMovements = pgTable(
     index("stock_movements_godown_idx").on(t.godownId, t.productId),
     index("stock_movements_vehicle_idx").on(t.vehicleId, t.productId),
     check("stock_movements_bags_not_zero", sql`${t.bags} <> 0`),
+    check("stock_movements_unit_cost_positive", sql`${t.unitCostPaise} is null or ${t.unitCostPaise} > 0`),
     check("stock_movements_one_place", sql`num_nonnulls(${t.godownId}, ${t.vehicleId}) = 1`),
   ],
 );

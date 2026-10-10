@@ -11,3 +11,4 @@ export * from "./dispatches";
 export * from "./ledger";
 export * from "./receipts";
 export * from "./audit";
+export * from "./prism";

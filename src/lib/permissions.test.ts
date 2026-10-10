@@ -27,6 +27,8 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   viewLedger:        [Y, Y, Y, N, Y, N],
   setOpeningBalance: [Y, N, N, N, N, N],
   adjustLedger:      [Y, N, N, N, N, N],
+  viewPrism:         [Y, N, N, N, N, N],
+  managePrism:       [Y, N, N, N, N, N],
   viewStock:         [Y, Y, Y, Y, N, N],
   manageStock:       [Y, N, N, N, N, N],
   transferStock:     [Y, N, N, Y, N, N],

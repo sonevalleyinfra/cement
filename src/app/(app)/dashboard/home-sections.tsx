@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   CalendarDays,
   ClipboardList,
+  Factory,
   Package,
   Receipt,
   Truck,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/home-stats";
 import { formatDate } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
+import { prismBalanceLabel } from "@/lib/prism-rules";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
@@ -134,6 +136,7 @@ export async function LogisticsHome() {
 
 export async function AdminHome() {
   const s = await getAdminHome();
+  const prism = prismBalanceLabel(s.prismPaise);
   return (
     <Cards>
       <Card index={0} href="/orders" title="Today" icon={CalendarDays} tone="orange" stats={[{ label: "Orders", value: num(s.todayOrders) }, { label: "Bags sent", value: num(s.bagsDispatched) }]} />
@@ -143,6 +146,12 @@ export async function AdminHome() {
       <Card index={4} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
       <Card index={5} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
       <Card index={6} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
+      <Card
+        index={7}
+        href="/prism"
+        title="Prism" icon={Factory} tone="amber"
+        stats={[{ label: s.prismPaise < 0 ? "Prism owes you" : "You owe", value: money(prism.amountPaise) }]}
+      />
     </Cards>
   );
 }

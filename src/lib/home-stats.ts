@@ -19,6 +19,7 @@ import {
   totalDuesPaise,
 } from "@/lib/home-rules";
 import { ORDER_STATUSES } from "@/lib/order-rules";
+import { getPrismBalance } from "@/lib/prism";
 import { walletBalance } from "@/lib/wallet-rules";
 
 /** Read-only numbers for the home screens. Server-only. */
@@ -130,7 +131,7 @@ export async function getLogisticsHome() {
 
 export async function getAdminHome(now = new Date()) {
   const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline] = await Promise.all([
+  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, prismPaise] = await Promise.all([
     countOrders(gte(orders.createdAt, start)),
     db
       .select({ b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
@@ -144,6 +145,7 @@ export async function getAdminHome(now = new Date()) {
     countOrders(waitingApproval),
     countOrders(toDispatch),
     countUnverifiedOnline(),
+    getPrismBalance(),
   ]);
   return {
     todayOrders,
@@ -154,6 +156,7 @@ export async function getAdminHome(now = new Date()) {
     approvals,
     toDispatch: dispatchable,
     unverifiedOnline,
+    prismPaise,
   };
 }
 

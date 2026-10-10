@@ -48,6 +48,10 @@ export const ACTION_ROLES = {
   setOpeningBalance: ["admin"],
   /** Add a + or - adjustment to a retailer's ledger, with a reason. */
   adjustLedger: ["admin"],
+  // Prism account (docs/idea.md section 7): admin only
+  viewPrism: ["admin"],
+  /** Opening balance, payment to Prism, scheme credit and adjustment. (A purchase is `manageStock`.) */
+  managePrism: ["admin"],
   // Stock
   viewStock: STAFF,
   manageStock: ["admin"],
