@@ -1,40 +1,36 @@
 /**
- * Reversing a receipt, as plain functions (no database) so they are easy to test.
- * Source: docs/idea.md section 6 ("A verified / recorded payment can be reversed ... with a
- * reason") and section 5 (append-only ledger: mistakes are fixed by a new reversing entry).
+ * Reversing a payment, as plain functions (no database) so they are easy to test.
+ * Source: docs/idea.md section 6 ("A verified / recorded payment can be reversed by accounts or
+ * admin with a reason (dues go back up; cash leaves the holder's balance if not yet handed over)")
+ * and section 5 (append-only ledger: mistakes are fixed by a new reversing entry).
  *
- * Choices where the spec is silent:
- * - Who: accounts (admin passes), see permissions.ts "reverseReceipt".
- * - Which: received (cash), unverified / verified (online) and cleared (cheque).
- *   A pending cheque uses "Bounced" instead; bounced and reversed are final.
+ * - Who: accounts or admin (permissions.ts "reverseReceipt").
+ * - Which: a "received" cash payment or a "verified" online payment. An unverified online
+ *   payment is rejected instead (receipt-rules planReject); rejected and reversed are final.
  * - A reason is required (trimmed, at most 300 characters). It goes into the ledger note.
  * - Ledger: one compensating row of +amount (kind "receipt_credit"), so the retailer owes
  *   that money again. Nothing posted before is edited.
- * - Cash: the money leaves the collector's wallet with one "reversed" row. If the collector's
- *   AVAILABLE cash (balance minus pending handovers) is less than the receipt, the reversal
- *   is refused: the cash was already handed over, so accounts must sort it out first.
- * - Online "Not received" on the review screen is the same reversal.
+ * - Cash: the money leaves the recorder's cash-held balance (one "reversed" wallet row). Only
+ *   allowed while they still hold that much. If they already handed it over, the reversal is
+ *   refused and admin fixes the dues with a ledger adjustment. If a handover request is waiting
+ *   for that cash, accounts answer the request first.
  */
-import { can } from "@/lib/permissions";
+import { can } from "./permissions";
+import { checkReason } from "./receipt-rules";
 
-export const REVERSIBLE_STATUSES = ["received", "unverified", "verified", "cleared"] as const;
-export const MAX_REVERSAL_REASON = 300;
+export const REVERSIBLE_STATUSES = ["received", "verified"] as const;
 
 export function isReversibleStatus(status: string): boolean {
   return (REVERSIBLE_STATUSES as readonly string[]).includes(status);
 }
 
-/** May this person reverse a receipt in this status? */
+/** May this person reverse a payment in this status? */
 export function canReverseReceipt(role: string | null | undefined, status: string): boolean {
   return can(role, "reverseReceipt") && isReversibleStatus(status);
 }
 
-export function checkReversalReason(reason: unknown): { ok: true; reason: string } | { ok: false; error: string } {
-  const clean = typeof reason === "string" ? reason.trim() : "";
-  if (!clean) return { ok: false, error: "Enter the reason." };
-  if (clean.length > MAX_REVERSAL_REASON) return { ok: false, error: `Keep the reason under ${MAX_REVERSAL_REASON} characters.` };
-  return { ok: true, reason: clean };
-}
+export const CASH_HANDED_OVER =
+  "This cash was already handed over, so it cannot be reversed. Ask admin to add a ledger adjustment instead.";
 
 export type ReversalPlan =
   | {
@@ -42,41 +38,42 @@ export type ReversalPlan =
       reason: string;
       /** Signed ledger amount to post (+ = the retailer owes again). */
       ledgerPaise: number;
-      /** Cash to take out of the collector's wallet (0 for online and cheque). */
+      /** Cash to take out of the recorder's cash-held balance (0 for online). */
       walletPaise: number;
       note: string;
     }
   | { ok: false; error: string };
 
 /**
- * `receipt.totalPaise` is what the receipt credited. `availablePaise` is the collector's
- * available wallet cash (needed for cash).
+ * `holder` is the recorder's cash right now (needed for cash): `balancePaise` = cash held,
+ * `availablePaise` = cash held minus handover requests still waiting.
  */
 export function planReversal(
   role: string | null | undefined,
   receipt: { mode: string; status: string; receiptNo: number; totalPaise: number },
   reason: unknown,
-  availablePaise = 0,
+  holder: { balancePaise: number; availablePaise: number } = { balancePaise: 0, availablePaise: 0 },
 ): ReversalPlan {
-  if (!can(role, "reverseReceipt")) return { ok: false, error: "Only accounts or admin can reverse a receipt." };
+  if (!can(role, "reverseReceipt")) return { ok: false, error: "Only accounts or admin can reverse a payment." };
   if (!isReversibleStatus(receipt.status)) {
-    if (receipt.status === "pending") return { ok: false, error: "Mark the cheque as bounced instead." };
-    return { ok: false, error: `A ${receipt.status} receipt cannot be reversed.` };
+    if (receipt.status === "unverified") return { ok: false, error: "Reject it instead: it is not verified yet." };
+    return { ok: false, error: `A ${receipt.status} payment cannot be reversed.` };
   }
-  const r = checkReversalReason(reason);
+  const r = checkReason(reason);
   if (!r.ok) return r;
   if (!Number.isSafeInteger(receipt.totalPaise) || receipt.totalPaise <= 0) {
-    return { ok: false, error: "This receipt has nothing to reverse." };
+    return { ok: false, error: "This payment has nothing to reverse." };
   }
   const cash = receipt.mode === "cash";
-  if (cash && availablePaise < receipt.totalPaise) {
-    return { ok: false, error: "This cash was already handed over. Settle it with the collector first." };
+  if (cash && holder.balancePaise < receipt.totalPaise) return { ok: false, error: CASH_HANDED_OVER };
+  if (cash && holder.availablePaise < receipt.totalPaise) {
+    return { ok: false, error: "A handover of this cash is waiting. Confirm or reject it first." };
   }
   return {
     ok: true,
     reason: r.reason,
     ledgerPaise: receipt.totalPaise,
     walletPaise: cash ? receipt.totalPaise : 0,
-    note: `Receipt #${receipt.receiptNo} reversed: ${r.reason}`,
+    note: `Payment #${receipt.receiptNo} reversed: ${r.reason}`,
   };
 }

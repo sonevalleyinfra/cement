@@ -11,7 +11,7 @@
  *   order; the load's rate only to staff.
  */
 import { hasAnyRole, isRetailerOnly } from "./roles";
-import { isValidBags, type OrderStatus } from "./order-rules";
+import { isValidBags } from "./order-rules";
 import { isRateEvent, rateEventLabel } from "./rate-rules";
 
 export { isRetailerOnly };
@@ -65,29 +65,6 @@ export function orderListScope(
 ): { kind: "all" } | { kind: "retailer"; retailerId: string } | { kind: "none" } {
   if (!isRetailerOnly(role)) return { kind: "all" };
   return ownRetailerId ? { kind: "retailer", retailerId: ownRetailerId } : { kind: "none" };
-}
-
-/** Words for the chip when the colour group would be misleading (a cancelled order is not "Rejected"). */
-export function chipLabel(status: OrderStatus): string | undefined {
-  if (status === "cancelled") return "Cancelled";
-  if (status === "partly_dispatched") return "Partly dispatched";
-  return undefined;
-}
-
-/** Maps the order status to the colours the status chip knows. */
-export function chipStatus(status: OrderStatus): "pending" | "approved" | "rejected" | "dispatched" {
-  switch (status) {
-    case "placed":
-      return "pending";
-    case "approved":
-      return "approved";
-    case "rejected":
-    case "cancelled":
-      return "rejected";
-    case "partly_dispatched":
-    case "dispatched":
-      return "dispatched";
-  }
 }
 
 /**

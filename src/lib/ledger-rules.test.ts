@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adjustmentEntry,
   balanceOf,
   canViewLedger,
   dispatchEntry,
@@ -121,4 +122,27 @@ describe("canViewLedger", () => {
     expect(canViewLedger({ ...none, retailer: true }, null, "r2")).toBe(false);
   });
   it("logistics-only sees nothing", () => expect(canViewLedger(none, null, "r1")).toBe(false));
+});
+
+describe("adjustmentEntry", () => {
+  it("adds a signed adjustment with its reason as the note", () => {
+    expect(adjustmentEntry("R", 5000, " Rounding ")).toEqual({
+      ok: true,
+      entry: { retailerId: "R", kind: "adjustment", amountPaise: 5000 },
+      note: "Rounding",
+    });
+    expect(adjustmentEntry("R", -5000, "Cash reversed after handover")).toMatchObject({
+      ok: true,
+      entry: { amountPaise: -5000 },
+    });
+  });
+  it("needs a reason", () => {
+    expect(adjustmentEntry("R", 5000, "")).toEqual({ ok: false, error: "Enter the reason." });
+    expect(adjustmentEntry("R", 5000, undefined).ok).toBe(false);
+  });
+  it("refuses zero, fractions and huge amounts", () => {
+    for (const n of [0, 1.5, Number.NaN, MAX_OPENING_PAISE + 1, -MAX_OPENING_PAISE - 1]) {
+      expect(adjustmentEntry("R", n, "x").ok).toBe(false);
+    }
+  });
 });

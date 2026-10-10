@@ -6,26 +6,30 @@
  * - Admin sees one summary section that covers everything, instead of every role section.
  * - Other users see one section per role they hold, in this order: sales, accounts,
  *   logistics, retailer. A user with no known role sees no sections.
+ * - Every staff member (admin too, since anyone on staff may take cash) also gets one
+ *   "cash" section at the end: my cash held. It is shown once, even with several roles.
  * - "Today" is the calendar day in India (IST), starting at 00:00 IST.
  * - Dues add up each retailer's positive balance (one retailer's advance does not
  *   cancel what another retailer owes).
- * - Cash in hand = cash collected - handovers confirmed (pending requests still count as in hand).
+ * - Cash held = cash collected - reversed - handovers confirmed (requests still waiting count as held).
  * - Logistics "Ready" = approved orders; "Partly sent" = partly dispatched ones. Any logistics
  *   person may dispatch any of them (same list as the dispatch screen).
  */
 import { toISTDateKey } from "./datetime";
 import { duesFrom, type LedgerEntry } from "./ledger-rules";
 import { isFinalStatus, isOrderStatus } from "./order-rules";
+import { isStaff } from "./permissions";
 import { isAdmin, parseRoles } from "./roles";
 
-export const HOME_SECTIONS = ["sales", "accounts", "logistics", "retailer", "admin"] as const;
+export const HOME_SECTIONS = ["sales", "accounts", "logistics", "retailer", "admin", "cash"] as const;
 export type HomeSection = (typeof HOME_SECTIONS)[number];
 
 /** Which sections to show, in order, for a stored role string. */
 export function homeSections(role: string | null | undefined): HomeSection[] {
-  if (isAdmin(role)) return ["admin"];
+  const cash: HomeSection[] = isStaff(role) ? ["cash"] : [];
+  if (isAdmin(role)) return ["admin", ...cash];
   const roles = parseRoles(role);
-  return HOME_SECTIONS.filter((s) => s !== "admin" && roles.includes(s));
+  return [...HOME_SECTIONS.filter((s) => s !== "admin" && s !== "cash" && roles.includes(s)), ...cash];
 }
 
 /** The moment today started in India, as a Date (00:00 IST of the IST calendar day of `now`). */
@@ -56,7 +60,7 @@ export function retailersWithDues(rows: readonly BalanceRow[]): number {
   return count;
 }
 
-/** Cash collectors should still be holding: collected - reversed receipts - confirmed handovers. */
+/** Cash staff should still be holding: collected - reversed payments - confirmed handovers. */
 export function cashInHandPaise(collectedPaise: number, confirmedPaise: number, reversedPaise = 0): number {
   return collectedPaise - reversedPaise - confirmedPaise;
 }

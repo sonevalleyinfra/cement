@@ -18,9 +18,11 @@ import {
   getAccountsHome,
   getAdminHome,
   getLogisticsHome,
+  getMyCash,
   getRetailerHome,
   getSalesHome,
 } from "@/lib/home-stats";
+import { formatDate } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
@@ -79,7 +81,15 @@ export async function SalesHome({ userId }: { userId: string }) {
   return (
     <Cards>
       <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
-      <Card index={1} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Retailers", value: num(s.retailersWithDues) }]} />
+      <Card
+        index={1}
+        href="/ledger"
+        title="My shops' dues" icon={Banknote} tone="rose"
+        stats={[
+          { label: "Retailers", value: num(s.retailersWithDues) },
+          { label: "Due", value: money(s.duesPaise) },
+        ]}
+      />
     </Cards>
   );
 }
@@ -89,16 +99,16 @@ export async function AccountsHome() {
   return (
     <Cards>
       <Card index={0} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+      <Card index={1} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
       <Card
-        index={1}
-        href="/receipts/review"
-        title="Receipts" icon={Receipt} tone="teal"
+        index={2}
+        href="/wallet"
+        title="Cash handovers" icon={Wallet} tone="green"
         stats={[
-          { label: "Online to verify", value: num(s.unverifiedOnline) },
-          { label: "Cheques pending", value: num(s.pendingCheques) },
+          { label: "To confirm", value: num(s.handoversToConfirm) },
+          { label: "Amount", value: money(s.cashToConfirmPaise) },
         ]}
       />
-      <Card index={2} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "To confirm", value: money(s.cashToConfirmPaise) }]} />
     </Cards>
   );
 }
@@ -129,9 +139,10 @@ export async function AdminHome() {
       <Card index={0} href="/orders" title="Today" icon={CalendarDays} tone="orange" stats={[{ label: "Orders", value: num(s.todayOrders) }, { label: "Bags sent", value: num(s.bagsDispatched) }]} />
       <Card index={1} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Outstanding", value: money(s.duesPaise) }]} />
       <Card index={2} href="/stock" title="Stock" icon={Package} tone="blue" stats={[{ label: "Bags", value: num(s.stockBags) }]} />
-      <Card index={3} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "In hand", value: money(s.cashInHandPaise) }]} />
-      <Card index={4} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
-      <Card index={5} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
+      <Card index={3} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "Held by staff", value: money(s.cashInHandPaise) }]} />
+      <Card index={4} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
+      <Card index={5} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+      <Card index={6} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
     </Cards>
   );
 }
@@ -142,7 +153,37 @@ export async function RetailerHome({ userId }: { userId: string }) {
   return (
     <Cards>
       <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Open", value: num(s.openOrders) }]} />
-      <Card index={1} href="/ledger" title="Balance" icon={Banknote} tone="rose" stats={[{ label: "Due", value: money(s.balancePaise) }]} />
+      <Card
+        index={1}
+        href="/ledger"
+        title="My dues" icon={Banknote} tone="rose"
+        stats={[{ label: s.balancePaise < 0 ? "Advance" : "Due", value: money(Math.abs(s.balancePaise)) }]}
+      />
+      <Card
+        index={2}
+        href="/receipts"
+        title="My payments" icon={Receipt} tone="teal"
+        stats={
+          s.lastPayment
+            ? [
+                { label: "Last", value: money(s.lastPayment.totalPaise) },
+                { label: "On", value: formatDate(s.lastPayment.createdAt) },
+              ]
+            : [{ label: "Last", value: "None" }]
+        }
+      />
+    </Cards>
+  );
+}
+
+/** "My cash held": shown once on every staff member's home. */
+export async function MyCashHome({ userId }: { userId: string }) {
+  const s = await getMyCash(userId);
+  const stats = [{ label: "Held", value: money(s.heldPaise) }];
+  if (s.pendingPaise > 0) stats.push({ label: "Waiting", value: money(s.pendingPaise) });
+  return (
+    <Cards>
+      <Card index={1} href="/wallet" title="My cash" icon={Wallet} tone="green" stats={stats} />
     </Cards>
   );
 }

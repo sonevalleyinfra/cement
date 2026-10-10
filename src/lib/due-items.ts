@@ -7,8 +7,8 @@
  * - Debit items, oldest first: a positive opening balance (always first), then
  *   each order's NET of every entry with that orderId (approval debit + rate changes +
  *   cancel reversal). An order whose net is 0 or less is not an item.
- * - Credits = minus the sum of every entry WITHOUT an orderId (receipt credits, cheque
- *   bounce and reversal re-debits, a negative opening), plus minus each negative order net.
+ * - Credits = minus the sum of every entry WITHOUT an orderId (payment credits, payment
+ *   reversals, adjustments, a negative opening), plus minus each negative order net.
  *   Credits are applied to the items oldest first; what is left of each item is still due.
  * - So an advance pays later orders by itself, money paid on a later-cancelled order
  *   stays with the retailer, and an opening balance shows as the oldest due.

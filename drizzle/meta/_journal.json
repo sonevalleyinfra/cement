@@ -204,6 +204,27 @@
       "when": 1791654786019,
       "tag": "0028_order_flow",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791655699326,
+      "tag": "0029_payments_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791655895536,
+      "tag": "0030_payments_no_cheques",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791655908344,
+      "tag": "0031_payments_review",
+      "breakpoints": true
     }
   ]
 }

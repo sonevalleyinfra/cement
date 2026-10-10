@@ -10,13 +10,17 @@ import {
 } from "./home-rules";
 
 describe("homeSections", () => {
-  it("gives admin one summary section", () => {
-    expect(homeSections("admin")).toEqual(["admin"]);
-    expect(homeSections("sales,admin")).toEqual(["admin"]);
+  it("gives admin one summary section plus my cash held", () => {
+    expect(homeSections("admin")).toEqual(["admin", "cash"]);
+    expect(homeSections("sales,admin")).toEqual(["admin", "cash"]);
   });
-  it("gives one section per role in a sensible order", () => {
-    expect(homeSections("logistics,sales")).toEqual(["sales", "logistics"]);
-    expect(homeSections("retailer,accounts,sales")).toEqual(["sales", "accounts", "retailer"]);
+  it("gives one section per role in a sensible order, then my cash held once", () => {
+    expect(homeSections("logistics,sales")).toEqual(["sales", "logistics", "cash"]);
+    expect(homeSections("retailer,accounts,sales")).toEqual(["sales", "accounts", "retailer", "cash"]);
+    expect(homeSections("accounts")).toEqual(["accounts", "cash"]);
+  });
+  it("a pure retailer has no cash section", () => {
+    expect(homeSections("retailer")).toEqual(["retailer"]);
   });
   it("ignores unknown or missing roles", () => {
     expect(homeSections("user")).toEqual([]);

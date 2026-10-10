@@ -26,6 +26,7 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   reverseReceipt:    [Y, N, Y, N, N, N],
   viewLedger:        [Y, Y, Y, N, Y, N],
   setOpeningBalance: [Y, N, N, N, N, N],
+  adjustLedger:      [Y, N, N, N, N, N],
   viewStock:         [Y, Y, Y, Y, N, N],
   manageStock:       [Y, N, N, N, N, N],
   transferStock:     [Y, N, N, Y, N, N],
@@ -60,6 +61,12 @@ describe("permission matrix", () => {
       expect(can(null, action)).toBe(false);
       expect(can("", action)).toBe(false);
     }
+  });
+
+  it("a shop owner who also works as sales may record payments; a pure retailer may not", () => {
+    expect(can("retailer,sales", "recordReceipt")).toBe(true);
+    expect(can("retailer", "recordReceipt")).toBe(false);
+    expect(can("retailer", "useWallet")).toBe(false);
   });
 
   it("rolesFor returns a copy of the allowed roles", () => {

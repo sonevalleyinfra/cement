@@ -7,15 +7,12 @@ import {
   mentionsMoney,
   canPlaceOrder,
   canSeePrice,
-  chipLabel,
-  chipStatus,
   isBagsInRange,
   isRetailerOnly,
   orderListScope,
   resolveOrderRetailer,
   validatePlaceOrder,
 } from "./order-access";
-import { ORDER_STATUSES } from "./order-rules";
 
 describe("price and placing", () => {
   it("retailer-only sees no price", () => {
@@ -66,25 +63,6 @@ describe("retailer scoping", () => {
     expect(orderListScope("sales", null)).toEqual({ kind: "all" });
     expect(orderListScope("retailer", "mine")).toEqual({ kind: "retailer", retailerId: "mine" });
     expect(orderListScope("retailer", null)).toEqual({ kind: "none" });
-  });
-});
-
-describe("chipStatus", () => {
-  it("maps every status", () => {
-    for (const s of ORDER_STATUSES) expect(chipStatus(s)).toBeTruthy();
-    expect(chipStatus("placed")).toBe("pending");
-    expect(chipStatus("approved")).toBe("approved");
-    expect(chipStatus("dispatched")).toBe("dispatched");
-    expect(chipStatus("cancelled")).toBe("rejected");
-    expect(chipStatus("partly_dispatched")).toBe("dispatched");
-  });
-});
-
-describe("chipLabel", () => {
-  it("names cancelled and partly dispatched orders honestly", () => {
-    expect(chipLabel("cancelled")).toBe("Cancelled");
-    expect(chipLabel("partly_dispatched")).toBe("Partly dispatched");
-    expect(chipLabel("placed")).toBeUndefined();
   });
 });
 

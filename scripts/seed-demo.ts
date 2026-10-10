@@ -1,7 +1,8 @@
 /**
  * Fills a LOCAL database with demo data: one user per role, retailers, trucks,
  * a godown with opening stock, orders in different statuses (dues come from their dispatches)
- * and a receipt.
+ * and payments: cash by sales and logistics, one handover confirmed and one waiting, online
+ * payments waiting / verified / rejected, and one reversed cash payment.
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
  * Safe to run twice: it skips whatever already exists (orders are added only once).
  * Refuses to run on production or a non-local database (rules in scripts/lib/demo-seed-rules.ts).
@@ -26,6 +27,8 @@ import { env } from "@/env";
 import { auth } from "@/lib/auth";
 import { postEntry } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
+import { planReversal } from "@/lib/receipt-reversal";
+import { planReceipt, planVerify } from "@/lib/receipt-rules";
 import { statusAfterDispatch, type OrderStatus } from "@/lib/order-rules";
 import { DEMO_PASSWORD, DEMO_USERS, demoSeedBlocker } from "./lib/demo-seed-rules";
 
@@ -198,29 +201,97 @@ async function main() {
     });
   }
 
-  // A cash receipt of Rs 10,000 from Kumar Cement Store, paid against its partly dispatched order.
-  const paid = 1_000_000;
+  // Payments (spec section 6). Amounts in paise.
+  // Cash is "received": the dues go down at once and the person who took it holds the cash.
+  const cash = (shopIdx: number, paise: number, by: string) =>
+    db.transaction(async (tx) => {
+      const plan = planReceipt({ retailerId: shopRows[shopIdx].id, mode: "cash", totalPaise: paise });
+      if (!plan.ok || !plan.ledger) throw new Error("Bad demo cash payment");
+      const [r] = await tx
+        .insert(receipts)
+        .values({ retailerId: shopRows[shopIdx].id, mode: "cash", totalPaise: paise, status: plan.status, receivedBy: by })
+        .returning();
+      await postEntry(tx, plan.ledger, by, `Payment #${r.receiptNo}`, r.id);
+      await tx.insert(walletMovements).values({ collectorId: by, kind: "collected", amountPaise: paise, receiptId: r.id, actorId: by });
+      return r;
+    });
+  // Online is "unverified" (dues unchanged) until accounts verify or reject it.
+  const online = async (shopIdx: number, paise: number, by: string, utr: string, result: "unverified" | "verified" | "rejected") => {
+    const plan = planReceipt({ retailerId: shopRows[shopIdx].id, mode: "online", totalPaise: paise, utr });
+    if (!plan.ok) throw new Error(plan.error);
+    await db.transaction(async (tx) => {
+      const [r] = await tx
+        .insert(receipts)
+        .values({
+          retailerId: shopRows[shopIdx].id,
+          mode: "online",
+          totalPaise: paise,
+          utr: plan.utr,
+          status: result,
+          receivedBy: by,
+          checkedBy: result === "unverified" ? null : ids.accounts,
+          checkedAt: result === "unverified" ? null : new Date(),
+          rejectReason: result === "rejected" ? "Not in the bank statement" : "",
+        })
+        .returning();
+      if (result === "verified") {
+        const v = planVerify("accounts", { ...r, status: "unverified" });
+        if (!v.ok) throw new Error(v.error);
+        await postEntry(tx, v.ledger, ids.accounts, `Payment #${r.receiptNo} (online)`, r.id);
+      }
+    });
+  };
+  const handover = async (by: string, paise: number, answer: "pending" | "confirmed") => {
+    const [req] = await db
+      .insert(walletMovements)
+      .values({ collectorId: by, kind: "handover_request", amountPaise: paise, actorId: by })
+      .returning();
+    if (answer === "confirmed") {
+      await db.insert(walletMovements).values({
+        collectorId: by,
+        kind: "handover_confirmed",
+        amountPaise: paise,
+        refId: req.id,
+        actorId: ids.accounts,
+      });
+    }
+  };
+
+  // Sales takes Rs 10,000 cash from Kumar Cement Store and Rs 2,000 from Sharma Traders.
+  await cash(3, 1_000_000, ids.sales);
+  const wrong = await cash(0, 200_000, ids.sales);
+  // Accounts reverse the Rs 2,000 (wrong shop) while sales still holds it.
   await db.transaction(async (tx) => {
-    const shop = shopRows[3];
-    const [r] = await tx
-      .insert(receipts)
-      .values({ retailerId: shop.id, mode: "cash", totalPaise: paid, status: "received", receivedBy: ids.accounts })
-      .returning({ id: receipts.id, receiptNo: receipts.receiptNo });
+    const plan = planReversal("accounts", wrong, "Wrong shop", { balancePaise: 1_200_000, availablePaise: 1_200_000 });
+    if (!plan.ok) throw new Error(plan.error);
     await postEntry(
       tx,
-      { retailerId: shop.id, kind: "receipt_credit", amountPaise: -paid },
+      { retailerId: wrong.retailerId, kind: "receipt_credit", amountPaise: plan.ledgerPaise },
       ids.accounts,
-      `Receipt #${r.receiptNo}`,
-      r.id,
+      plan.note,
+      wrong.id,
     );
     await tx.insert(walletMovements).values({
-      collectorId: ids.accounts,
-      kind: "collected",
-      amountPaise: paid,
-      receiptId: r.id,
+      collectorId: ids.sales,
+      kind: "reversed",
+      amountPaise: plan.walletPaise,
+      receiptId: wrong.id,
       actorId: ids.accounts,
     });
+    await tx
+      .update(receipts)
+      .set({ status: "reversed", reversedAt: new Date(), reversedBy: ids.accounts, reversalReason: plan.reason })
+      .where(eq(receipts.id, wrong.id));
   });
+  // Sales hands over Rs 6,000 (confirmed by accounts) and keeps Rs 4,000.
+  await handover(ids.sales, 600_000, "confirmed");
+  // Logistics takes Rs 5,000 cash from Yadav Enterprises and asks to hand it over (waiting for accounts).
+  await cash(4, 500_000, ids.logistics);
+  await handover(ids.logistics, 500_000, "pending");
+  // Online: one waiting for accounts, one verified, one rejected.
+  await online(4, 700_000, ids.logistics, "DEMOUTR0001", "unverified");
+  await online(3, 400_000, ids.sales, "DEMOUTR0002", "verified");
+  await online(2, 300_000, ids.sales, "DEMOUTR0003", "rejected");
 
   const n = await db.select({ id: ledgerEntries.id }).from(ledgerEntries);
   console.log(`[seed-demo] Done: ${shopRows.length} retailers, ${orderIds.length} orders, ${n.length} ledger rows.`);

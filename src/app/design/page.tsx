@@ -64,7 +64,7 @@ export default function DesignPage() {
           href="/design"
           top={
             <>
-              <StatusChip status="pending" />
+              <StatusChip status="placed" />
             </>
           }
           title="Sharma Traders"
@@ -100,9 +100,10 @@ export default function DesignPage() {
           title="Verma & Sons"
           bottom={<Stat label="Bags" value="40" />}
         />
-        <div className="flex gap-4 px-1">
+        <div className="flex flex-wrap gap-2 px-1">
           <StatusChip status="rejected" />
-          <StatusChip status="delivered" />
+          <StatusChip status="partly_dispatched" />
+          <StatusChip status="cancelled" />
         </div>
       </div>
 

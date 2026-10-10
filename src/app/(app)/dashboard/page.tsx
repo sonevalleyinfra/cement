@@ -3,7 +3,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { Skeleton } from "@/components/app/skeleton";
 import { homeSections, type HomeSection } from "@/lib/home-rules";
 import { requireUser } from "@/lib/session";
-import { AccountsHome, AdminHome, LogisticsHome, RetailerHome, SalesHome } from "./home-sections";
+import { AccountsHome, AdminHome, LogisticsHome, MyCashHome, RetailerHome, SalesHome } from "./home-sections";
 
 function SectionSkeleton() {
   return (
@@ -32,6 +32,8 @@ export default async function DashboardPage() {
         return <LogisticsHome />;
       case "retailer":
         return <RetailerHome userId={user.id} />;
+      case "cash":
+        return <MyCashHome userId={user.id} />;
     }
   };
 

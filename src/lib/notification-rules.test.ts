@@ -107,7 +107,7 @@ describe("buildNotifications", () => {
 });
 
 describe("money notifications", () => {
-  const people = { adminIds: ["adm1", "adm2"], collectorId: "col" };
+  const people = { accountsIds: ["acc1", "acc2"], collectorId: "col" };
   const base = {
     retailerName: "Raju Stores",
     amountPaise: 500000,
@@ -115,54 +115,68 @@ describe("money notifications", () => {
     actorId: "col",
   };
 
-  it("payment recorded goes to every admin, not the collector", () => {
-    expect(moneyRecipientIds("payment_recorded", people, "col")).toEqual(["adm1", "adm2"]);
+  it("online payment recorded and handover request go to every accounts person", () => {
+    for (const event of ["online_recorded", "handover_requested"] as const) {
+      expect(moneyRecipientIds(event, people, "col")).toEqual(["acc1", "acc2"]);
+    }
   });
-  it("an admin who records a payment is not told about it", () => {
-    expect(moneyRecipientIds("payment_recorded", people, "adm1")).toEqual(["adm2"]);
+  it("an accounts person who records a payment is not told about it", () => {
+    expect(moneyRecipientIds("online_recorded", people, "acc1")).toEqual(["acc2"]);
   });
-  it("verified, handover and reversal go to the collector only", () => {
-    for (const event of ["online_verified", "handover_confirmed", "handover_rejected", "receipt_reversed"] as const) {
-      expect(moneyRecipientIds(event, people, "acc")).toEqual(["col"]);
+  it("verified, rejected, handover answers and reversal go to the staff member only", () => {
+    for (const event of [
+      "online_verified",
+      "online_rejected",
+      "handover_confirmed",
+      "handover_rejected",
+      "receipt_reversed",
+    ] as const) {
+      expect(moneyRecipientIds(event, people, "acc1")).toEqual(["col"]);
       expect(moneyRecipientIds(event, people, "col")).toEqual([]);
-      expect(moneyRecipientIds(event, { ...people, collectorId: null }, "acc")).toEqual([]);
+      expect(moneyRecipientIds(event, { ...people, collectorId: null }, "acc1")).toEqual([]);
     }
   });
   it("nobody is told twice", () => {
-    expect(moneyRecipientIds("payment_recorded", { adminIds: ["a", "a", "b"], collectorId: null }, null)).toEqual([
+    expect(moneyRecipientIds("online_recorded", { accountsIds: ["a", "a", "b"], collectorId: null }, null)).toEqual([
       "a",
       "b",
     ]);
   });
 
-  it("payment recorded: amount in rupees, opens the receipts", () => {
-    expect(buildMoneyNotifications({ ...base, event: "payment_recorded" })).toEqual([
-      { userId: "adm1", type: "payment_recorded", title: "Payment recorded", body: "₹5,000.00 from Raju Stores.", link: "/receipts" },
-      { userId: "adm2", type: "payment_recorded", title: "Payment recorded", body: "₹5,000.00 from Raju Stores.", link: "/receipts" },
+  it("online recorded: amount in rupees, opens the verify list", () => {
+    expect(buildMoneyNotifications({ ...base, event: "online_recorded" })).toEqual([
+      { userId: "acc1", type: "online_recorded", title: "Online payment to verify", body: "₹5,000.00 from Raju Stores.", link: "/receipts/review" },
+      { userId: "acc2", type: "online_recorded", title: "Online payment to verify", body: "₹5,000.00 from Raju Stores.", link: "/receipts/review" },
     ]);
   });
-  it("online verified", () => {
-    const [n] = buildMoneyNotifications({ ...base, event: "online_verified", actorId: "acc" });
-    expect(n).toEqual({
+  it("online verified and rejected (with the reason)", () => {
+    const [ok] = buildMoneyNotifications({ ...base, event: "online_verified", actorId: "acc1" });
+    expect(ok).toEqual({
       userId: "col",
       type: "online_verified",
       title: "Online payment verified",
       body: "₹5,000.00 from Raju Stores verified.",
       link: "/receipts",
     });
+    const [no] = buildMoneyNotifications({ ...base, event: "online_rejected", actorId: "acc1", reason: "Not in bank" });
+    expect(no).toMatchObject({ title: "Online payment rejected", body: "₹5,000.00 from Raju Stores rejected. Reason: Not in bank" });
   });
-  it("handover confirmed and rejected open the wallet; a reason is added", () => {
-    const [ok] = buildMoneyNotifications({ ...base, event: "handover_confirmed", retailerName: null, actorId: "acc" });
+  it("handover request, confirmed, partly confirmed and rejected open the cash screen", () => {
+    const [req] = buildMoneyNotifications({ ...base, event: "handover_requested", retailerName: null });
+    expect(req).toMatchObject({ userId: "acc1", title: "Cash handover", body: "₹5,000.00 cash to confirm.", link: "/wallet" });
+    const [ok] = buildMoneyNotifications({ ...base, event: "handover_confirmed", retailerName: null, actorId: "acc1", requestedPaise: 500000 });
     expect(ok).toMatchObject({ title: "Handover confirmed", body: "₹5,000.00 cash handover confirmed.", link: "/wallet" });
-    const [no] = buildMoneyNotifications({ ...base, event: "handover_rejected", actorId: "acc", reason: " Count is short " });
+    const [part] = buildMoneyNotifications({ ...base, event: "handover_confirmed", actorId: "acc1", amountPaise: 300000, requestedPaise: 500000 });
+    expect(part).toMatchObject({ title: "Handover partly confirmed", body: "₹3,000.00 of ₹5,000.00 received. The rest stays with you." });
+    const [no] = buildMoneyNotifications({ ...base, event: "handover_rejected", actorId: "acc1", reason: " Count is short " });
     expect(no).toMatchObject({ title: "Handover rejected", body: "₹5,000.00 cash handover rejected. Reason: Count is short", link: "/wallet" });
   });
-  it("receipt reversed, with the caller's link and reason", () => {
-    const [n] = buildMoneyNotifications({ ...base, event: "receipt_reversed", actorId: "acc", link: "/receipts/r1", reason: "Wrong shop" });
+  it("payment reversed, with the caller's link and reason", () => {
+    const [n] = buildMoneyNotifications({ ...base, event: "receipt_reversed", actorId: "acc1", link: "/receipts/r1", reason: "Wrong shop" });
     expect(n).toEqual({
       userId: "col",
       type: "receipt_reversed",
-      title: "Receipt reversed",
+      title: "Payment reversed",
       body: "₹5,000.00 from Raju Stores reversed. Reason: Wrong shop",
       link: "/receipts/r1",
     });

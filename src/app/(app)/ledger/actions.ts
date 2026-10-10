@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { ledgerEntries, retailers } from "@/db/schema";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
-import { openingEntry } from "@/lib/ledger-rules";
+import { adjustmentEntry, openingEntry } from "@/lib/ledger-rules";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 
@@ -43,6 +43,38 @@ export async function setOpeningBalance(input: {
     revalidatePath("/ledger");
     revalidatePath(`/ledger/${input.retailerId}`);
     revalidatePath("/approvals");
+  }
+  return res;
+}
+
+/**
+ * Admin adds an adjustment to one retailer's ledger: `amountPaise` is signed
+ * (+ the retailer owes more, - owes less). A reason is required.
+ */
+export async function addAdjustment(input: {
+  retailerId: string;
+  amountPaise: number;
+  reason: string;
+}): Promise<LedgerResult> {
+  const session = await requireRole(...rolesFor("adjustLedger"));
+  if (!isUuid(input?.retailerId)) return { ok: false, error: "Retailer not found." };
+  const plan = adjustmentEntry(input.retailerId, Number(input.amountPaise), input.reason);
+  if (!plan.ok) return plan;
+  const res = await db.transaction(async (tx): Promise<LedgerResult> => {
+    const [retailer] = await tx
+      .select({ id: retailers.id })
+      .from(retailers)
+      .where(eq(retailers.id, input.retailerId))
+      .for("no key update");
+    if (!retailer) return { ok: false, error: "Retailer not found." };
+    await postEntry(tx, plan.entry, session.user.id, plan.note);
+    return { ok: true };
+  });
+  if (res.ok) {
+    revalidatePath("/ledger");
+    revalidatePath(`/ledger/${input.retailerId}`);
+    revalidatePath("/approvals");
+    revalidatePath("/dashboard");
   }
   return res;
 }

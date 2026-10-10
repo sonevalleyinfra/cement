@@ -11,9 +11,11 @@ import { withRunningBalance } from "@/lib/ledger-rules";
 import { ledgerEntryLabel, showLedgerNotes } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
-import { hasAnyRole, isAdmin } from "@/lib/roles";
+import { can } from "@/lib/permissions";
+import { hasAnyRole } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 import { mayViewLedger } from "../access";
+import { AdjustmentForm } from "./adjustment-form";
 import { OpeningForm } from "./opening-form";
 
 export default async function RetailerLedgerPage({
@@ -58,7 +60,8 @@ export default async function RetailerLedgerPage({
         <div className="text-xs text-muted-foreground">{balance < 0 ? "Advance" : "Dues"}</div>
         <div className="tabular text-3xl font-bold">{formatINR(Math.abs(balance))}</div>
       </div>
-      {isAdmin(user.role) && !hasOpening && <OpeningForm retailerId={retailerId} />}
+      {can(user.role, "setOpeningBalance") && !hasOpening && <OpeningForm retailerId={retailerId} />}
+      {can(user.role, "adjustLedger") && <AdjustmentForm retailerId={retailerId} />}
       {entries.length === 0 ? (
         <EmptyState title="No entries yet" />
       ) : (

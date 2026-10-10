@@ -9,8 +9,6 @@ import { isUuid } from "@/lib/ids";
 import {
   canSeePrice,
   cancelledNote,
-  chipLabel,
-  chipStatus,
   historyForViewer,
   historyReason,
   historyStepLabel,
@@ -99,7 +97,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-end">
-        {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} label={chipLabel(o.status)} />}
+        {isOrderStatus(o.status) && <StatusChip status={o.status} />}
       </div>
       <div>
         <h1 className="text-xl font-bold">{o.retailer}</h1>

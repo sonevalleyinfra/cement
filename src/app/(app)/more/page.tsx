@@ -29,8 +29,8 @@ const rows: Row[] = [
   { href: "/godowns", label: "Godowns", icon: Warehouse, tone: "blue", permission: "manageStock" },
   { href: "/dispatch", label: "Dispatch", icon: Truck, tone: "blue", permission: "dispatch" },
   { href: "/ledger", label: "Ledger", icon: BookOpen, tone: "rose", permission: "viewLedger" },
-  { href: "/receipts", label: "Receipts", icon: Receipt, tone: "teal", permission: "viewReceipts" },
-  { href: "/wallet", label: "Wallet", icon: Wallet, tone: "green", permission: "useWallet" },
+  { href: "/receipts", label: "Payments", icon: Receipt, tone: "teal", permission: "viewReceipts" },
+  { href: "/wallet", label: "Cash", icon: Wallet, tone: "green", permission: "useWallet" },
   { href: "/account", label: "Change password", icon: KeyRound, tone: "orange" },
 ];
 

@@ -82,7 +82,7 @@ describe("duesFromLedger", () => {
     ]);
   });
 
-  it("a bounced cheque brings the dues back", () => {
+  it("a reversed payment brings the dues back", () => {
     const f = one([order("o1", 1000, 1), pay(1000, 2), row("receipt_credit", 1000, null, 3)]);
     expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(1), duePaise: 1000 }]);
   });
@@ -107,7 +107,7 @@ describe("duesFromLedger", () => {
 
   it("promise: due === max(0, balance) and items are whole and positive (seeded random)", () => {
     const rand = rng(7);
-    const kinds = ["order", "pay", "bounce", "reverse", "cancel", "rate", "opening", "advance"] as const;
+    const kinds = ["order", "pay", "adjust", "reverse", "cancel", "rate", "opening", "advance"] as const;
     for (let n = 0; n < 2000; n++) {
       const rows: LedgerRow[] = [];
       const orderIds: string[] = [];
@@ -122,7 +122,8 @@ describe("duesFromLedger", () => {
           orderIds.push(id);
           rows.push(order(id, amount, d));
         } else if (k === "pay" || k === "advance") rows.push(pay(amount, d));
-        else if (k === "bounce" || k === "reverse") rows.push(row("receipt_credit", amount, null, d));
+        else if (k === "reverse") rows.push(row("receipt_credit", amount, null, d));
+        else if (k === "adjust") rows.push(row("adjustment", d % 2 ? amount : -amount, null, d));
         else if (k === "opening" && !hasOpening) {
           hasOpening = true;
           rows.push(opening(rand() < 0.5 ? amount : -amount, d));

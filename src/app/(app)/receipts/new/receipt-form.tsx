@@ -8,13 +8,11 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatINR } from "@/lib/money";
-import { PAYMENT_MODES, validateModeDetails, type PaymentMode } from "@/lib/receipt-rules";
+import { formatINR, parseRupeesToPaise } from "@/lib/money";
+import { MAX_REASON, MAX_UTR, MODE_LABELS, PAYMENT_MODES, validateModeDetails, type PaymentMode } from "@/lib/receipt-rules";
 import { loadDues, saveReceipt } from "../actions";
 
 type RetailerRow = { id: string; name: string; place: string };
-
-const modeLabel: Record<PaymentMode, string> = { cash: "Cash", online: "Online", cheque: "Cheque" };
 
 const chip = (on: boolean) =>
   `h-11 rounded-full px-4 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
@@ -27,19 +25,17 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
   const [digits, setDigits] = useState("");
   const [mode, setMode] = useState<PaymentMode>("cash");
   const [utr, setUtr] = useState("");
-  const [chequeNumber, setChequeNumber] = useState("");
-  const [chequeDate, setChequeDate] = useState("");
-  const [bankName, setBankName] = useState("");
+  const [note, setNote] = useState("");
   // What the picked retailer owes right now (null until loaded).
   const [duesPaise, setDuesPaise] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
-  const totalPaise = digits ? Number(digits) * 100 : 0;
+  const totalPaise = parseRupeesToPaise(digits || "0") ?? 0;
   // Paying more than the dues is fine: the rest stays with the shop as an advance.
   const advancePaise = duesPaise !== null && totalPaise > duesPaise ? totalPaise - duesPaise : 0;
 
-  const modeError = validateModeDetails(mode, { utr, chequeNumber, chequeDate, bankName });
+  const modeError = validateModeDetails(mode, { utr });
   const canSave = !!retailer && totalPaise > 0 && !modeError && !pending;
 
   function pickRetailer(r: RetailerRow) {
@@ -62,10 +58,8 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
         retailerId: retailer.id,
         mode,
         totalPaise,
-        utr,
-        chequeNumber,
-        chequeDate,
-        bankName,
+        utr: mode === "online" ? utr : "",
+        note: mode === "online" ? note : "",
       });
       if (res.ok) router.push(`/receipts/${res.id}`);
       else setError(res.error);
@@ -76,7 +70,7 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-xl font-bold">New receipt</h1>
+      <h1 className="text-xl font-bold">New payment</h1>
 
       <button
         type="button"
@@ -123,24 +117,16 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
         <div className="flex gap-2">
           {PAYMENT_MODES.map((m) => (
             <button key={m} type="button" className={chip(mode === m)} onClick={() => setMode(m)}>
-              {modeLabel[m]}
+              {MODE_LABELS[m]}
             </button>
           ))}
         </div>
         {mode === "online" && (
           <div className="flex flex-col gap-2">
             <Label htmlFor="utr">UTR / reference</Label>
-            <Input id="utr" value={utr} onChange={(e) => setUtr(e.target.value)} />
-          </div>
-        )}
-        {mode === "cheque" && (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="chq">Cheque number</Label>
-            <Input id="chq" value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} />
-            <Label htmlFor="chqd">Cheque date</Label>
-            <Input id="chqd" type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
-            <Label htmlFor="bank">Bank</Label>
-            <Input id="bank" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+            <Input id="utr" value={utr} maxLength={MAX_UTR + 10} autoComplete="off" onChange={(e) => setUtr(e.target.value)} />
+            <Label htmlFor="note">Note</Label>
+            <Input id="note" value={note} maxLength={MAX_REASON} onChange={(e) => setNote(e.target.value)} />
           </div>
         )}
       </section>
@@ -148,7 +134,7 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <PinnedAction>
         <Button type="button" size="lg" disabled={!canSave} onClick={submit}>
-          {pending ? "Saving…" : "Save receipt"}
+          {pending ? "Saving…" : "Save payment"}
         </Button>
       </PinnedAction>
     </div>

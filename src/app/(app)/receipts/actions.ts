@@ -1,23 +1,23 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { receipts, retailers, user, walletMovements } from "@/db/schema";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { isUuid } from "@/lib/ids";
-import { getBalance, postEntry } from "@/lib/ledger";
+import { getBalance, postEntry, type DbOrTx } from "@/lib/ledger";
 import { duesFrom } from "@/lib/ledger-rules";
 import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
-import { planReceipt } from "@/lib/receipt-plan";
 import { planReversal } from "@/lib/receipt-reversal";
-import { PAYMENT_MODES } from "@/lib/receipt-rules";
+import { isUtrTaken, PAYMENT_MODES, planReceipt, planReject, planVerify, UTR_TAKEN } from "@/lib/receipt-rules";
 import { requireRole } from "@/lib/session";
 import { walletBalance } from "@/lib/wallet-rules";
 
 export type DuesResult = { ok: true; duesPaise: number } | { ok: false; error: string };
 export type SaveReceiptResult = { ok: true; id: string } | { ok: false; error: string };
-export type ReverseResult = { ok: true } | { ok: false; error: string };
+export type PaymentResult = { ok: true } | { ok: false; error: string };
 
 /** What one retailer owes right now (from the ledger; an advance counts as 0). */
 export async function loadDues(retailerId: string): Promise<DuesResult> {
@@ -26,120 +26,194 @@ export async function loadDues(retailerId: string): Promise<DuesResult> {
   return { ok: true, duesPaise: duesFrom(await getBalance(retailerId)) };
 }
 
-const isWholePaise = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n);
+function refresh(retailerId: string, receiptId?: string) {
+  revalidatePath("/receipts");
+  revalidatePath("/receipts/review");
+  if (receiptId) revalidatePath(`/receipts/${receiptId}`);
+  revalidatePath("/wallet");
+  revalidatePath("/ledger");
+  revalidatePath(`/ledger/${retailerId}`);
+  revalidatePath("/dashboard");
+}
+
+/** Locks one retailer row (same lock order everywhere: payment, then retailer, then staff member). */
+async function lockRetailer(tx: DbOrTx, retailerId: string) {
+  const [retailer] = await tx
+    .select({ id: retailers.id, name: retailers.name })
+    .from(retailers)
+    .where(eq(retailers.id, retailerId))
+    .for("no key update");
+  return retailer ?? null;
+}
 
 /**
- * Saves one receipt: the receipt, one ledger credit for the retailer, and (cash) the money
- * in the collector's wallet, all in one transaction. The server re-checks every number.
+ * Records one payment from a retailer. Any staff member may.
+ * Cash: the ledger credit (dues go down now) and the cash held by the recorder, in one transaction.
+ * Online: saved as unverified with its UTR (dues unchanged); accounts are told.
  */
 export async function saveReceipt(input: {
   retailerId: string;
   mode: string;
   totalPaise: number;
   utr?: string;
-  chequeNumber?: string;
-  chequeDate?: string;
-  bankName?: string;
+  note?: string;
 }): Promise<SaveReceiptResult> {
   const session = await requireRole(...rolesFor("recordReceipt"));
   if (!isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
-  if (!(PAYMENT_MODES as readonly string[]).includes(input.mode)) return { ok: false, error: "Pick a payment mode." };
-  if (!isWholePaise(input.totalPaise)) return { ok: false, error: "Enter the amount received." };
-  const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  if (!(PAYMENT_MODES as readonly string[]).includes(input.mode)) return { ok: false, error: "Pick cash or online." };
+  if (typeof input.totalPaise !== "number") return { ok: false, error: "Enter the amount received." };
   const plan = planReceipt({
     retailerId: input.retailerId,
     mode: input.mode,
     totalPaise: input.totalPaise,
-    details: {
-      utr: text(input.utr),
-      chequeNumber: text(input.chequeNumber),
-      chequeDate: text(input.chequeDate),
-      bankName: text(input.bankName),
-    },
+    utr: typeof input.utr === "string" ? input.utr : null,
+    note: input.mode === "online" && typeof input.note === "string" ? input.note : null,
   });
   if (!plan.ok) return plan;
 
-  const res = await db.transaction(async (tx): Promise<SaveReceiptResult> => {
-    // Lock the retailer so a reversal or a bounce of the same shop waits for this save.
-    const [retailer] = await tx
-      .select({ id: retailers.id, name: retailers.name })
-      .from(retailers)
-      .where(eq(retailers.id, input.retailerId))
-      .for("no key update");
-    if (!retailer) return { ok: false, error: "Retailer not found." };
+  try {
+    const res = await db.transaction(async (tx): Promise<SaveReceiptResult> => {
+      const retailer = await lockRetailer(tx, input.retailerId);
+      if (!retailer) return { ok: false, error: "Retailer not found." };
+      if (plan.utr) {
+        const same = await tx
+          .select({ mode: receipts.mode, status: receipts.status, utr: receipts.utr })
+          .from(receipts)
+          .where(and(eq(receipts.utr, plan.utr), ne(receipts.status, "rejected")));
+        if (isUtrTaken(plan.utr, same)) return { ok: false, error: UTR_TAKEN };
+      }
 
-    const [receipt] = await tx
-      .insert(receipts)
-      .values({
-        retailerId: input.retailerId,
-        mode: input.mode,
-        totalPaise: input.totalPaise,
-        utr: input.mode === "online" ? text(input.utr) : null,
-        chequeNumber: input.mode === "cheque" ? text(input.chequeNumber) : null,
-        chequeDate: input.mode === "cheque" ? text(input.chequeDate) : null,
-        bankName: input.mode === "cheque" ? text(input.bankName) : null,
-        status: plan.status,
-        receivedBy: session.user.id,
-      })
-      .returning({ id: receipts.id, receiptNo: receipts.receiptNo });
-    await postEntry(tx, plan.ledger, session.user.id, `Receipt #${receipt.receiptNo}`, receipt.id);
-    // Cash goes into the collector's wallet.
-    if (plan.walletPaise > 0) {
-      await tx.insert(walletMovements).values({
-        collectorId: session.user.id,
-        kind: "collected",
-        amountPaise: plan.walletPaise,
-        receiptId: receipt.id,
-        actorId: session.user.id,
-      });
-    }
+      const [receipt] = await tx
+        .insert(receipts)
+        .values({
+          retailerId: input.retailerId,
+          mode: input.mode,
+          totalPaise: input.totalPaise,
+          utr: plan.utr,
+          note: plan.note,
+          status: plan.status,
+          receivedBy: session.user.id,
+        })
+        .returning({ id: receipts.id, receiptNo: receipts.receiptNo });
+      if (plan.ledger) await postEntry(tx, plan.ledger, session.user.id, `Payment #${receipt.receiptNo}`, receipt.id);
+      if (plan.walletPaise > 0) {
+        await tx.insert(walletMovements).values({
+          collectorId: session.user.id,
+          kind: "collected",
+          amountPaise: plan.walletPaise,
+          receiptId: receipt.id,
+          actorId: session.user.id,
+        });
+      }
+      if (plan.status === "unverified") {
+        await notifyMoney(tx, {
+          event: "online_recorded",
+          retailerName: retailer.name,
+          amountPaise: input.totalPaise,
+          actorId: session.user.id,
+          link: `/receipts/${receipt.id}`,
+        });
+      }
+      return { ok: true, id: receipt.id };
+    });
+    if (res.ok) refresh(input.retailerId, res.id);
+    return res;
+  } catch (error) {
+    // Two people saving the same UTR at the same moment: the database rule stops the second.
+    if (isUniqueViolation(error, "receipts_utr_unique_idx")) return { ok: false, error: UTR_TAKEN };
+    throw error;
+  }
+}
+
+/** Accounts / admin tap "Verified" on an online payment: the dues go down now. */
+export async function verifyOnline(receiptId: string): Promise<PaymentResult> {
+  const session = await requireRole(...rolesFor("verifyPayments"));
+  if (!isUuid(receiptId)) return { ok: false, error: "Payment not found." };
+  let retailerId = "";
+  const res = await db.transaction(async (tx): Promise<PaymentResult> => {
+    const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("no key update");
+    if (!receipt) return { ok: false, error: "Payment not found." };
+    retailerId = receipt.retailerId;
+    const retailer = await lockRetailer(tx, receipt.retailerId);
+    const plan = planVerify(session.user.role, receipt);
+    if (!plan.ok) return plan;
+    await postEntry(tx, plan.ledger, session.user.id, `Payment #${receipt.receiptNo} (online)`, receipt.id);
+    const now = new Date();
+    await tx
+      .update(receipts)
+      .set({ status: "verified", checkedBy: session.user.id, checkedAt: now, updatedAt: now })
+      .where(eq(receipts.id, receiptId));
     await notifyMoney(tx, {
-      event: "payment_recorded",
-      retailerName: retailer.name,
-      amountPaise: input.totalPaise,
+      event: "online_verified",
+      retailerName: retailer?.name ?? null,
+      amountPaise: receipt.totalPaise,
       actorId: session.user.id,
+      collectorId: receipt.receivedBy,
       link: `/receipts/${receipt.id}`,
     });
-    return { ok: true, id: receipt.id };
+    return { ok: true };
   });
-  if (res.ok) {
-    revalidatePath("/wallet");
-    revalidatePath("/receipts");
-    revalidatePath("/ledger");
-    revalidatePath(`/ledger/${input.retailerId}`);
-  }
+  if (res.ok) refresh(retailerId, receiptId);
+  return res;
+}
+
+/** Accounts / admin reject an online payment that never arrived (reason required). Dues unchanged. */
+export async function rejectOnline(receiptId: string, reason: string): Promise<PaymentResult> {
+  const session = await requireRole(...rolesFor("verifyPayments"));
+  if (!isUuid(receiptId)) return { ok: false, error: "Payment not found." };
+  let retailerId = "";
+  const res = await db.transaction(async (tx): Promise<PaymentResult> => {
+    const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("no key update");
+    if (!receipt) return { ok: false, error: "Payment not found." };
+    retailerId = receipt.retailerId;
+    const plan = planReject(session.user.role, receipt, reason);
+    if (!plan.ok) return plan;
+    const now = new Date();
+    await tx
+      .update(receipts)
+      .set({ status: "rejected", checkedBy: session.user.id, checkedAt: now, rejectReason: plan.reason, updatedAt: now })
+      .where(eq(receipts.id, receiptId));
+    const [shop] = await tx.select({ name: retailers.name }).from(retailers).where(eq(retailers.id, receipt.retailerId));
+    await notifyMoney(tx, {
+      event: "online_rejected",
+      retailerName: shop?.name ?? null,
+      amountPaise: receipt.totalPaise,
+      actorId: session.user.id,
+      collectorId: receipt.receivedBy,
+      link: `/receipts/${receipt.id}`,
+      reason: plan.reason,
+    });
+    return { ok: true };
+  });
+  if (res.ok) refresh(retailerId, receiptId);
   return res;
 }
 
 /**
- * Reverses a whole receipt. Accounts / admin only.
- * Locks the receipt, then the retailer, then (cash) the collector, so it cannot race a
- * new receipt, a cheque bounce, a verification or a handover request.
+ * Reverses a received cash or verified online payment. Accounts / admin only, reason required.
+ * Locks the payment, then the retailer, then (cash) the recorder, so it cannot race a new
+ * payment, a verification or a handover request.
  */
-export async function reverseReceipt(receiptId: string, reason: string): Promise<ReverseResult> {
+export async function reverseReceipt(receiptId: string, reason: string): Promise<PaymentResult> {
   const session = await requireRole(...rolesFor("reverseReceipt"));
-  if (!isUuid(receiptId)) return { ok: false, error: "Receipt not found." };
+  if (!isUuid(receiptId)) return { ok: false, error: "Payment not found." };
   let retailerId = "";
-  const res = await db.transaction(async (tx): Promise<ReverseResult> => {
+  const res = await db.transaction(async (tx): Promise<PaymentResult> => {
     const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("no key update");
-    if (!receipt) return { ok: false, error: "Receipt not found." };
+    if (!receipt) return { ok: false, error: "Payment not found." };
     retailerId = receipt.retailerId;
-    const [retailer] = await tx
-      .select({ id: retailers.id, name: retailers.name })
-      .from(retailers)
-      .where(eq(retailers.id, receipt.retailerId))
-      .for("no key update");
+    const retailer = await lockRetailer(tx, receipt.retailerId);
     if (!retailer) return { ok: false, error: "Retailer not found." };
 
-    let available = 0;
+    let holder = { balancePaise: 0, availablePaise: 0 };
     if (receipt.mode === "cash") {
-      // Lock the collector (like a handover request) so the cash cannot be handed over meanwhile.
+      // Lock the recorder (like a handover request) so the cash cannot be handed over meanwhile.
       await tx.select({ id: user.id }).from(user).where(eq(user.id, receipt.receivedBy)).for("no key update");
       const moves = await tx.select().from(walletMovements).where(eq(walletMovements.collectorId, receipt.receivedBy));
-      available = walletBalance(moves).availablePaise;
+      holder = walletBalance(moves);
     }
 
-    const plan = planReversal(session.user.role, receipt, reason, available);
+    const plan = planReversal(session.user.role, receipt, reason, holder);
     if (!plan.ok) return plan;
     await postEntry(
       tx,
@@ -173,13 +247,6 @@ export async function reverseReceipt(receiptId: string, reason: string): Promise
     });
     return { ok: true };
   });
-  if (res.ok) {
-    revalidatePath("/receipts");
-    revalidatePath(`/receipts/${receiptId}`);
-    revalidatePath("/receipts/review");
-    revalidatePath("/wallet");
-    revalidatePath("/ledger");
-    revalidatePath(`/ledger/${retailerId}`);
-  }
+  if (res.ok) refresh(retailerId, receiptId);
   return res;
 }

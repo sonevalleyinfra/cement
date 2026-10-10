@@ -11,9 +11,11 @@
  * - Rate filled (by the sales person or admin on a placed order): accounts and the sales person,
  *   so accounts know it is ready to approve.
  * - Cancelled: placer, sales person, the shop's login.
- * Money rows:
- * - Payment recorded: admin. Handover confirmed / online verified: collector.
- * - Handover rejected and receipt reversed: collector (same as handover confirmed).
+ * Money rows (section 8, plus the simplest choice where it is silent):
+ * - Online payment recorded and cash handover request: accounts.
+ * - Handover confirmed / partly confirmed / rejected: the staff member who handed over.
+ * - Online verified / rejected and payment reversed: the staff member who recorded the payment.
+ * - A cash payment tells nobody (its dues change at once and the cash shows as held).
  * Rules: the person who did the action is never told about their own action; nobody
  * gets the same notification twice; ORDER messages never contain a price (retailers also read these).
  * Money messages go to staff only, so they may show the amount.
@@ -48,8 +50,10 @@ export type OrderPeople = {
 
 /** Money events: not about one order, staff only. */
 export const MONEY_EVENTS = [
-  "payment_recorded",
+  "online_recorded",
   "online_verified",
+  "online_rejected",
+  "handover_requested",
   "handover_confirmed",
   "handover_rejected",
   "receipt_reversed",
@@ -136,27 +140,38 @@ export function buildNotifications(input: {
   }));
 }
 
+/** Events that go to accounts; every other money event goes to the staff member it is about. */
+const TO_ACCOUNTS: readonly MoneyEvent[] = ["online_recorded", "handover_requested"];
+
 /** Who is told about a money event. */
 export function moneyRecipientIds(
   event: MoneyEvent,
-  people: { adminIds: readonly string[]; collectorId: string | null },
+  people: { accountsIds: readonly string[]; collectorId: string | null },
   actorId: string | null,
 ): string[] {
-  const list = event === "payment_recorded" ? people.adminIds : [people.collectorId];
+  const list = TO_ACCOUNTS.includes(event) ? people.accountsIds : [people.collectorId];
   return uniqueRecipients(list, actorId);
 }
 
 /** Where a money notification opens when the caller gives no link. */
 export function defaultMoneyLink(event: MoneyEvent): string {
-  return event === "handover_confirmed" || event === "handover_rejected" ? "/wallet" : "/receipts";
+  if (event === "online_recorded") return "/receipts/review";
+  return event.startsWith("handover_") ? "/wallet" : "/receipts";
 }
 
-const MONEY_MESSAGES: Record<MoneyEvent, (amount: string, from: string) => { title: string; body: string }> = {
-  payment_recorded: (a, f) => ({ title: "Payment recorded", body: `${a}${f}.` }),
-  online_verified: (a, f) => ({ title: "Online payment verified", body: `${a}${f} verified.` }),
-  handover_confirmed: (a) => ({ title: "Handover confirmed", body: `${a} cash handover confirmed.` }),
-  handover_rejected: (a) => ({ title: "Handover rejected", body: `${a} cash handover rejected.` }),
-  receipt_reversed: (a, f) => ({ title: "Receipt reversed", body: `${a}${f} reversed.` }),
+type MoneyText = { amount: string; from: string; of: string };
+
+const MONEY_MESSAGES: Record<MoneyEvent, (t: MoneyText) => { title: string; body: string }> = {
+  online_recorded: (t) => ({ title: "Online payment to verify", body: `${t.amount}${t.from}.` }),
+  online_verified: (t) => ({ title: "Online payment verified", body: `${t.amount}${t.from} verified.` }),
+  online_rejected: (t) => ({ title: "Online payment rejected", body: `${t.amount}${t.from} rejected.` }),
+  handover_requested: (t) => ({ title: "Cash handover", body: `${t.amount} cash to confirm.` }),
+  handover_confirmed: (t) =>
+    t.of
+      ? { title: "Handover partly confirmed", body: `${t.amount} of ${t.of} received. The rest stays with you.` }
+      : { title: "Handover confirmed", body: `${t.amount} cash handover confirmed.` },
+  handover_rejected: (t) => ({ title: "Handover rejected", body: `${t.amount} cash handover rejected.` }),
+  receipt_reversed: (t) => ({ title: "Payment reversed", body: `${t.amount}${t.from} reversed.` }),
 };
 
 export type MoneyNotificationInput = {
@@ -165,7 +180,9 @@ export type MoneyNotificationInput = {
   retailerName?: string | null;
   /** Integer paise. */
   amountPaise: number;
-  people: { adminIds: readonly string[]; collectorId: string | null };
+  /** For a handover confirmed in part: the amount that was asked for. */
+  requestedPaise?: number | null;
+  people: { accountsIds: readonly string[]; collectorId: string | null };
   actorId: string | null;
   /** Internal path to open, e.g. "/receipts/<id>". Default: see defaultMoneyLink. */
   link?: string | null;
@@ -173,10 +190,15 @@ export type MoneyNotificationInput = {
   reason?: string | null;
 };
 
-/** Drafts for a money event, e.g. title "Payment recorded", body "₹5,000.00 from Raju Stores." */
+/** Drafts for a money event, e.g. title "Online payment verified", body "₹5,000.00 from Raju Stores verified." */
 export function buildMoneyNotifications(input: MoneyNotificationInput): NotificationDraft[] {
   const from = input.retailerName?.trim() ? ` from ${input.retailerName.trim()}` : "";
-  const msg = MONEY_MESSAGES[input.event](formatINR(input.amountPaise), from);
+  const part = input.requestedPaise != null && input.requestedPaise > input.amountPaise;
+  const msg = MONEY_MESSAGES[input.event]({
+    amount: formatINR(input.amountPaise),
+    from,
+    of: part ? formatINR(input.requestedPaise!) : "",
+  });
   const reason = input.reason?.trim();
   const body = reason ? `${msg.body} Reason: ${reason}` : msg.body;
   const link = input.link ?? defaultMoneyLink(input.event);

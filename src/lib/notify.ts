@@ -22,11 +22,6 @@ async function activePeople(conn: DbOrTx) {
     .where(or(isNull(user.banned), eq(user.banned, false)));
 }
 
-/** Ids of every admin who is not banned. */
-export async function activeAdminIds(conn: DbOrTx): Promise<string[]> {
-  return (await activePeople(conn)).filter((r) => isAdmin(r.role)).map((r) => r.id);
-}
-
 /** Saves ready-made drafts, one row each. */
 export async function insertNotifications(
   conn: DbOrTx,
@@ -38,16 +33,16 @@ export async function insertNotifications(
 }
 
 /**
- * Saves notifications for a money event (payment recorded, online verified, handover
- * confirmed / rejected, receipt reversed). Loads the admins itself when they are needed.
+ * Saves notifications for a money event (see MONEY_EVENTS). Loads the accounts people itself;
+ * `collectorId` is the staff member the event is about.
  */
 export async function notifyMoney(
   tx: DbOrTx,
   input: Omit<MoneyNotificationInput, "people"> & { collectorId?: string | null },
 ): Promise<void> {
   const { collectorId = null, ...rest } = input;
-  const adminIds = input.event === "payment_recorded" ? await activeAdminIds(tx) : [];
-  const drafts = buildMoneyNotifications({ ...rest, people: { adminIds, collectorId } });
+  const accountsIds = (await activePeople(tx)).filter((p) => hasRole(p.role, "accounts")).map((p) => p.id);
+  const drafts = buildMoneyNotifications({ ...rest, people: { accountsIds, collectorId } });
   await insertNotifications(tx, drafts);
 }
 

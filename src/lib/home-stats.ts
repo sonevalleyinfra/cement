@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, isNotNull, isNull, notExists, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, ne, notExists, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
@@ -19,6 +19,7 @@ import {
   totalDuesPaise,
 } from "@/lib/home-rules";
 import { ORDER_STATUSES } from "@/lib/order-rules";
+import { walletBalance } from "@/lib/wallet-rules";
 
 /** Read-only numbers for the home screens. Server-only. */
 
@@ -29,13 +30,16 @@ async function countOrders(where: SQL | undefined) {
   return n(row?.c);
 }
 
-async function dueRows() {
+/** Balance per retailer; `salesRepId` limits it to that sales person's shops. */
+async function dueRows(salesRepId?: string) {
   return db
     .select({
       retailerId: ledgerEntries.retailerId,
       amountPaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
+    .innerJoin(retailers, eq(retailers.id, ledgerEntries.retailerId))
+    .where(salesRepId ? eq(retailers.salesRepId, salesRepId) : undefined)
     .groupBy(ledgerEntries.retailerId);
 }
 
@@ -49,12 +53,13 @@ export async function getSalesHome(userId: string, now = new Date()) {
     // "Rate to fill": my shops' placed orders with no rate yet.
     countOrders(and(eq(orders.salesRepId, userId), eq(orders.status, "placed"), isNull(orders.ratePaise))),
     countOrders(and(eq(orders.salesRepId, userId), gte(orders.createdAt, istDayStart(now)))),
-    dueRows(),
+    dueRows(userId),
   ]);
-  return { pendingRate, today, retailersWithDues: retailersWithDues(dues) };
+  return { pendingRate, today, retailersWithDues: retailersWithDues(dues), duesPaise: totalDuesPaise(dues) };
 }
 
-async function pendingHandoverPaise() {
+/** Handover requests nobody has answered yet: how many, and how much cash. */
+async function pendingHandovers() {
   const answer = db
     .select({ one: sql`1` })
     .from(sql`${walletMovements} as a`)
@@ -65,33 +70,40 @@ async function pendingHandoverPaise() {
       ),
     );
   const [row] = await db
-    .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number) })
+    .select({
+      c: count(),
+      p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number),
+    })
     .from(walletMovements)
-    .where(
-      and(eq(walletMovements.kind, "handover_request"), notExists(answer)),
-    );
-  return n(row?.p);
+    .where(and(eq(walletMovements.kind, "handover_request"), notExists(answer)));
+  return { count: n(row?.c), paise: n(row?.p) };
+}
+
+async function countUnverifiedOnline() {
+  const [row] = await db
+    .select({ c: count() })
+    .from(receipts)
+    .where(and(eq(receipts.mode, "online"), eq(receipts.status, "unverified")));
+  return n(row?.c);
 }
 
 export async function getAccountsHome() {
-  const [approvals, unverified, cheques, cash] = await Promise.all([
+  const [approvals, unverifiedOnline, handovers] = await Promise.all([
     countOrders(waitingApproval),
-    db
-      .select({ c: count() })
-      .from(receipts)
-      .where(and(eq(receipts.mode, "online"), eq(receipts.status, "unverified"))),
-    db
-      .select({ c: count() })
-      .from(receipts)
-      .where(and(eq(receipts.mode, "cheque"), eq(receipts.status, "pending"))),
-    pendingHandoverPaise(),
+    countUnverifiedOnline(),
+    pendingHandovers(),
   ]);
-  return {
-    approvals,
-    unverifiedOnline: n(unverified[0]?.c),
-    pendingCheques: n(cheques[0]?.c),
-    cashToConfirmPaise: cash,
-  };
+  return { approvals, unverifiedOnline, handoversToConfirm: handovers.count, cashToConfirmPaise: handovers.paise };
+}
+
+/** One staff member's cash: held now, and how much of it waits for accounts to confirm. */
+export async function getMyCash(userId: string) {
+  const rows = await db
+    .select({ id: walletMovements.id, kind: walletMovements.kind, amountPaise: walletMovements.amountPaise, refId: walletMovements.refId })
+    .from(walletMovements)
+    .where(eq(walletMovements.collectorId, userId));
+  const b = walletBalance(rows);
+  return { heldPaise: b.balancePaise, pendingPaise: b.pendingPaise };
 }
 
 export async function stockByProduct() {
@@ -118,7 +130,7 @@ export async function getLogisticsHome() {
 
 export async function getAdminHome(now = new Date()) {
   const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable] = await Promise.all([
+  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline] = await Promise.all([
     countOrders(gte(orders.createdAt, start)),
     db
       .select({ b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
@@ -131,6 +143,7 @@ export async function getAdminHome(now = new Date()) {
     walletSum("reversed"),
     countOrders(waitingApproval),
     countOrders(toDispatch),
+    countUnverifiedOnline(),
   ]);
   return {
     todayOrders,
@@ -140,6 +153,7 @@ export async function getAdminHome(now = new Date()) {
     cashInHandPaise: cashInHandPaise(collected, confirmed, reversed),
     approvals,
     toDispatch: dispatchable,
+    unverifiedOnline,
   };
 }
 
@@ -167,5 +181,12 @@ export async function getRetailerHome(userId: string) {
     .select({ p: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
     .from(ledgerEntries)
     .where(eq(ledgerEntries.retailerId, shop.id));
-  return { openOrders: n(open?.c), balancePaise: n(bal?.p) };
+  // Own payments only: the newest one that was not rejected.
+  const [last] = await db
+    .select({ totalPaise: receipts.totalPaise, createdAt: receipts.createdAt })
+    .from(receipts)
+    .where(and(eq(receipts.retailerId, shop.id), ne(receipts.status, "rejected")))
+    .orderBy(desc(receipts.createdAt))
+    .limit(1);
+  return { openOrders: n(open?.c), balancePaise: n(bal?.p), lastPayment: last ?? null };
 }

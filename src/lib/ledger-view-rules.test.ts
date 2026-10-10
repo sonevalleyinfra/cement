@@ -20,7 +20,7 @@ describe("ledgerEntryLabel", () => {
   it("calls a credit (negative) receipt row a payment", () => {
     expect(ledgerEntryLabel("receipt_credit", -50_000)).toBe("Payment");
   });
-  it("calls a re-debit (positive) receipt row a reversed payment (bounce or reversal)", () => {
+  it("calls a re-debit (positive) receipt row a reversed payment ", () => {
     expect(ledgerEntryLabel("receipt_credit", 50_000)).toBe("Payment reversed");
   });
   it("labels the other kinds by kind, whatever the sign", () => {

@@ -14,7 +14,7 @@ import { MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { requireUser } from "@/lib/session";
 
 /**
- * Which receipts to list: a pure retailer sees their own shop's; staff see all of them.
+ * Which payments to list: a pure retailer sees their own shop's; staff see all of them.
  * Null = not allowed; "none" = nothing to show; `where` empty = every receipt.
  */
 async function receiptFilter(user: { id: string; role?: string | null }): Promise<{ where?: SQL } | "none" | null> {
@@ -55,7 +55,7 @@ export default async function ReceiptsPage() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">{staff ? "Receipts" : "Payments"}</h1>
+        <h1 className="text-xl font-bold">Payments</h1>
         {staff && (
           <div className="flex gap-4">
             {can(user.role, "verifyPayments") && (
@@ -65,14 +65,14 @@ export default async function ReceiptsPage() {
             )}
             {can(user.role, "recordReceipt") && (
               <Link href="/receipts/new" className="text-sm font-semibold underline">
-                New receipt
+                New payment
               </Link>
             )}
           </div>
         )}
       </div>
       {rows.length === 0 ? (
-        <EmptyState title={staff ? "No receipts yet" : "No payments yet"} />
+        <EmptyState title="No payments yet" />
       ) : (
         <ul className="flex flex-col gap-3">
           {rows.map((r, i) => {

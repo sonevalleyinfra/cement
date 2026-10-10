@@ -9,7 +9,7 @@ import { db } from "@/db";
 import { dispatches, orders, products, retailers } from "@/db/schema";
 import { formatINR } from "@/lib/money";
 import { formatDate } from "@/lib/datetime";
-import { canPlaceOrder, canSeePrice, cancelledNote, chipLabel, chipStatus, orderListScope } from "@/lib/order-access";
+import { canPlaceOrder, canSeePrice, cancelledNote, orderListScope } from "@/lib/order-access";
 import { isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,7 @@ export default async function OrdersPage() {
                 index={i}
                 href={`/orders/${o.id}`}
                 title={o.retailer}
-                top={isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} label={chipLabel(o.status)} />}
+                top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
                 bottom={
                   <>
                     <div>

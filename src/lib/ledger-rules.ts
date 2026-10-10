@@ -9,8 +9,14 @@
  *   bags that were never billed, and needs no correcting entry.
  * - Entries are never edited; only new rows are added.
  * - One ledger per retailer. One opening balance per retailer. It may be negative (retailer has advance).
+ * - Payments post a credit ("receipt_credit", minus the amount); a reversed payment posts the
+ *   same kind with plus the amount. See receipt-rules.ts.
+ * - Admin may add an adjustment (+ the retailer owes more, - owes less) with a reason, to fix
+ *   anything else (for example cash reversed after it was already handed over).
  * - Retailers can see their own ledger (their dues).
  */
+import { checkReason } from "./receipt-rules";
+
 export const LEDGER_KINDS = ["opening", "order_debit", "receipt_credit", "adjustment"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
@@ -92,6 +98,19 @@ export function openingEntry(
     return { ok: false, error: "Opening balance is already set for this retailer." };
   }
   return { ok: true, entry: { retailerId, kind: "opening", amountPaise } };
+}
+
+/** Admin's manual adjustment: signed, not zero, with a reason (stored as the ledger note). */
+export function adjustmentEntry(
+  retailerId: string,
+  amountPaise: number,
+  reason: unknown,
+): { ok: true; entry: LedgerEntry; note: string } | { ok: false; error: string } {
+  if (!Number.isSafeInteger(amountPaise) || amountPaise === 0) return { ok: false, error: "Enter the amount." };
+  if (Math.abs(amountPaise) > MAX_OPENING_PAISE) return { ok: false, error: "That amount is too large." };
+  const r = checkReason(reason);
+  if (!r.ok) return r;
+  return { ok: true, entry: { retailerId, kind: "adjustment", amountPaise }, note: r.reason };
 }
 
 /** Which roles may see all retailers' ledgers; a retailer sees only their own. */
