@@ -1,6 +1,8 @@
 /** Rules for the retailers master. Plain functions: no database, no request. */
 
+import { canLinkRetailerUser } from "./rate-rules";
 import { hasRole } from "./roles";
+import { checkSalesRepPick, type SalesRepCandidate } from "./sales-rep-rules";
 
 /** Keeps digits only, and drops a leading 91 or 0 country/trunk prefix. */
 export function normalizePhone(input: string): string {
@@ -69,4 +71,74 @@ export function matchesRetailerSearch(shop: { name: string; place: string; phone
   if (terms.length === 0) return true;
   const haystack = `${shop.name} ${shop.place} ${shop.phone}`.toLowerCase();
   return terms.every((t) => haystack.includes(t));
+}
+
+/** What admin changed in the shop sheet. Left out (undefined) = not touched. `userId` null = unlink the login. */
+export type ShopEditForm = {
+  name: string;
+  phone: string;
+  place: string;
+  salesRepId?: string;
+  userId?: string | null;
+};
+
+/** The facts the server looked up for the edit (inside the transaction, after locking the shop). */
+export type ShopEditFacts = {
+  /** Another shop already uses the new phone. */
+  phoneTaken: boolean;
+  /** The sales person picked, if one was picked. */
+  salesRep?: SalesRepCandidate;
+  /** The login picked, if one was picked. */
+  login?: { id: string; role: string | null };
+  /** Shops that use the picked login right now. */
+  loginLinks: readonly { retailerId: string; userId: string | null }[];
+};
+
+export type ShopEditPlan =
+  | {
+      ok: true;
+      /** Name, phone and place to save (always written; the activity row only when something changed). */
+      details: RetailerInput;
+      /** The new sales person, or null when it stays the same. */
+      salesRepId: string | null;
+      /** The new login (null = unlink), or undefined when it stays the same. */
+      userId: string | null | undefined;
+    }
+  | { ok: false; error: string };
+
+/**
+ * The shop sheet saves everything at once: name, phone and place, its sales person and its login.
+ * Every part is checked first; the first problem refuses the whole save (nothing is changed).
+ * - Name and phone are required (validateRetailer); the phone must not belong to another shop.
+ * - A changed sales person must be an active sales person (an unchanged one is kept even if they left).
+ * - A changed login must be a retailer login not linked to another shop; empty unlinks it.
+ */
+export function planShopEdit(
+  shop: { id: string; salesRepId: string | null; userId: string | null },
+  form: ShopEditForm,
+  facts: ShopEditFacts,
+): ShopEditPlan {
+  const check = validateRetailer(form);
+  if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
+  if (facts.phoneTaken) return { ok: false, error: "Phone already used" };
+
+  let salesRepId: string | null = null;
+  if (form.salesRepId && form.salesRepId !== shop.salesRepId) {
+    const rep = checkSalesRepPick(form.salesRepId, facts.salesRep);
+    if (!rep.ok) return rep;
+    salesRepId = form.salesRepId;
+  }
+
+  let userId: string | null | undefined = undefined;
+  if (form.userId !== undefined && (form.userId || null) !== shop.userId) {
+    userId = form.userId || null;
+    if (userId) {
+      if (!facts.login || facts.login.id !== userId || !hasRole(facts.login.role, "retailer")) {
+        return { ok: false, error: "Pick a user with the retailer role." };
+      }
+      const link = canLinkRetailerUser(userId, shop.id, facts.loginLinks);
+      if (!link.ok) return link;
+    }
+  }
+  return { ok: true, details: check.value, salesRepId, userId };
 }

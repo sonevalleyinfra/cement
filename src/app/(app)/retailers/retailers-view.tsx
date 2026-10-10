@@ -14,14 +14,7 @@ import { Label } from "@/components/ui/label";
 import { firstMissing } from "@/lib/form-rules";
 import { matchesRetailerSearch } from "@/lib/retailer-rules";
 import { useFormError } from "@/lib/use-form-error";
-import {
-  addRetailer,
-  linkRetailerUser,
-  type RetailerResult,
-  saveRetailer,
-  setRetailerActive,
-  setRetailerSalesRep,
-} from "./actions";
+import { addRetailer, saveShop, setRetailerActive } from "./actions";
 
 type Row = {
   id: string;
@@ -175,22 +168,20 @@ function ShopDetail({
     );
   }
 
-  /** Runs the saves in order and stops at the first problem. */
+  /** One save for everything (details, sales person, login): all of it is saved, or nothing. */
   function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     clearError();
     start(async () => {
-      const steps: (() => Promise<RetailerResult>)[] = [];
-      if (name !== row.name || phone !== row.phone || place !== row.place) {
-        steps.push(() => saveRetailer(row.id, { name, phone, place }));
-      }
-      if (salesReps && repId && repId !== (row.salesRepId ?? "")) steps.push(() => setRetailerSalesRep(row.id, repId));
-      if (logins && loginId !== (row.userId ?? "")) steps.push(() => linkRetailerUser(row.id, loginId || null));
-      for (const step of steps) {
-        const res = await step();
-        if (!res.ok) return setError(res.error);
-      }
-      onDone();
+      const res = await saveShop(row.id, {
+        name,
+        phone,
+        place,
+        salesRepId: salesReps && repId && repId !== (row.salesRepId ?? "") ? repId : undefined,
+        userId: logins && loginId !== (row.userId ?? "") ? loginId || null : undefined,
+      });
+      if (res.ok) onDone();
+      else setError(res.error);
     });
   }
 

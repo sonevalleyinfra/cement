@@ -8,41 +8,115 @@ import { writeAudit } from "@/lib/audit";
 import { changedFields } from "@/lib/audit-rules";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { isUuid } from "@/lib/ids";
-import { rolesFor } from "@/lib/permissions";
-import { canLinkRetailerUser } from "@/lib/rate-rules";
-import { hasRole } from "@/lib/roles";
+import { can, rolesFor } from "@/lib/permissions";
 import { ORDER_STATUSES } from "@/lib/order-rules";
-import { validateRetailer } from "@/lib/retailer-rules";
+import { normalizePhone, planShopEdit, type ShopEditForm, validateRetailer } from "@/lib/retailer-rules";
 import { checkSalesRepPick, movesWithSalesRep } from "@/lib/sales-rep-rules";
 import { requireRole } from "@/lib/session";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
-/** Edits a retailer's name, phone and place. Admin only. */
-export async function saveRetailer(
-  id: string,
-  form: { name: string; phone: string; place: string },
-): Promise<RetailerResult> {
+/**
+ * Admin saves the shop sheet: name, phone, place, its sales person and its login, all or nothing
+ * (rules in planShopEdit). One transaction, with the shop row locked so two saves cannot interleave.
+ * A new sales person also takes over the shop's unfinished orders (sales-rep-rules.ts).
+ * Each part that changed writes its own activity row, inside the same transaction.
+ */
+export async function saveShop(id: string, form: ShopEditForm): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
+  const me = session.user;
   if (!isUuid(id)) return { ok: false, error: "Retailer not found." };
-  const check = validateRetailer(form);
-  if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
-  const { name, phone, place } = check.value;
+  const input: ShopEditForm = {
+    name: String(form?.name ?? ""),
+    phone: String(form?.phone ?? ""),
+    place: String(form?.place ?? ""),
+    salesRepId: typeof form?.salesRepId === "string" ? form.salesRepId : undefined,
+    userId: typeof form?.userId === "string" || form?.userId === null ? form.userId : undefined,
+  };
+  if (input.salesRepId !== undefined && !can(me.role, "assignSalesRep")) return { ok: false, error: "Only admin can do this." };
+  if (input.userId !== undefined && !can(me.role, "linkRetailerLogin")) return { ok: false, error: "Only admin can do this." };
 
-  const clash = await db
-    .select({ id: retailers.id })
-    .from(retailers)
-    .where(and(eq(retailers.phone, phone), ne(retailers.id, id)))
-    .limit(1);
-  if (clash.length > 0) return { ok: false, error: "Phone already used" };
+  let changedRep = false;
+  try {
+    const res = await db.transaction(async (tx): Promise<RetailerResult> => {
+      const [before] = await tx.select().from(retailers).where(eq(retailers.id, id)).for("no key update");
+      if (!before) return { ok: false, error: "Retailer not found." };
+      const phone = normalizePhone(input.phone);
+      const clash = await tx
+        .select({ id: retailers.id })
+        .from(retailers)
+        .where(and(eq(retailers.phone, phone), ne(retailers.id, id)))
+        .limit(1);
+      const [salesRep] =
+        input.salesRepId && input.salesRepId !== before.salesRepId
+          ? await tx
+              .select({ id: user.id, role: user.role, banned: user.banned, deletedAt: user.deletedAt })
+              .from(user)
+              .where(eq(user.id, input.salesRepId))
+              .limit(1)
+          : [];
+      const [login] = input.userId
+        ? await tx.select({ id: user.id, role: user.role }).from(user).where(eq(user.id, input.userId)).limit(1)
+        : [];
+      const loginLinks = input.userId
+        ? await tx
+            .select({ retailerId: retailers.id, userId: retailers.userId })
+            .from(retailers)
+            .where(eq(retailers.userId, input.userId))
+        : [];
+      const plan = planShopEdit(before, input, { phoneTaken: clash.length > 0, salesRep, login, loginLinks });
+      if (!plan.ok) return plan;
 
-  await db.transaction(async (tx) => {
-    const [before] = await tx.select().from(retailers).where(eq(retailers.id, id)).limit(1);
-    await tx.update(retailers).set({ name, phone, place, updatedAt: new Date() }).where(eq(retailers.id, id));
-    const diff = changedFields(before, { name, phone, place });
-    if (diff) await writeAudit(tx, { actorId: session.user.id, entity: "retailer", entityId: id, action: "update", details: diff });
-  });
+      const now = new Date();
+      await tx
+        .update(retailers)
+        .set({
+          ...plan.details,
+          ...(plan.salesRepId ? { salesRepId: plan.salesRepId } : {}),
+          ...(plan.userId !== undefined ? { userId: plan.userId } : {}),
+          updatedAt: now,
+        })
+        .where(eq(retailers.id, id));
+      const diff = changedFields(before, plan.details);
+      if (diff) await writeAudit(tx, { actorId: me.id, entity: "retailer", entityId: id, action: "update", details: diff });
+      if (plan.salesRepId) {
+        changedRep = true;
+        const moved = await tx
+          .update(orders)
+          .set({ salesRepId: plan.salesRepId, updatedAt: now })
+          .where(and(eq(orders.retailerId, id), inArray(orders.status, ORDER_STATUSES.filter(movesWithSalesRep))))
+          .returning({ id: orders.id });
+        await writeAudit(tx, {
+          actorId: me.id,
+          entity: "retailer",
+          entityId: id,
+          action: "assign_sales_rep",
+          details: { salesRepId: { before: before.salesRepId, after: plan.salesRepId }, ordersMoved: moved.length },
+        });
+      }
+      if (plan.userId !== undefined) {
+        await writeAudit(tx, {
+          actorId: me.id,
+          entity: "retailer",
+          entityId: id,
+          action: "link",
+          details: { before: { userId: before.userId }, after: { userId: plan.userId } },
+        });
+      }
+      return { ok: true };
+    });
+    if (!res.ok) return res;
+  } catch (e) {
+    // Two saves at the same moment: the database keeps phones and logins unique (nothing was saved).
+    if (isUniqueViolation(e, "retailers_phone_unique")) return { ok: false, error: "Phone already used" };
+    if (isUniqueViolation(e, "retailers_user_id_unique")) {
+      return { ok: false, error: "That login is already linked to another retailer." };
+    }
+    throw e;
+  }
   revalidatePath("/retailers");
+  revalidatePath("/dashboard");
+  if (changedRep) revalidatePath("/orders");
   return { ok: true };
 }
 
@@ -124,83 +198,4 @@ export async function setRetailerActive(id: string, active: boolean): Promise<Re
   });
   revalidatePath("/retailers");
   return { ok: true };
-}
-
-/** Admin links a retailer to a login (a user with the retailer role), or unlinks with null. */
-export async function linkRetailerUser(
-  retailerId: string,
-  userId: string | null,
-): Promise<RetailerResult> {
-  const session = await requireRole(...rolesFor("linkRetailerLogin"));
-  if (!isUuid(retailerId)) return { ok: false, error: "Retailer not found." };
-  if (userId) {
-    const [u] = await db.select({ role: user.role }).from(user).where(eq(user.id, userId)).limit(1);
-    if (!u || !hasRole(u.role, "retailer")) return { ok: false, error: "Pick a user with the retailer role." };
-    const links = await db
-      .select({ retailerId: retailers.id, userId: retailers.userId })
-      .from(retailers)
-      .where(eq(retailers.userId, userId));
-    const check = canLinkRetailerUser(userId, retailerId, links);
-    if (!check.ok) return check;
-  }
-  await db.transaction(async (tx) => {
-    const [before] = await tx
-      .select({ userId: retailers.userId })
-      .from(retailers)
-      .where(eq(retailers.id, retailerId))
-      .limit(1);
-    await tx.update(retailers).set({ userId, updatedAt: new Date() }).where(eq(retailers.id, retailerId));
-    await writeAudit(tx, {
-      actorId: session.user.id,
-      entity: "retailer",
-      entityId: retailerId,
-      action: "link",
-      details: { before: { userId: before?.userId ?? null }, after: { userId } },
-    });
-  });
-  revalidatePath("/retailers");
-  return { ok: true };
-}
-
-/**
- * Admin picks (or changes) the sales person who looks after a retailer (one is required).
- * The shop's unfinished orders move to the new sales person too (sales-rep-rules.ts).
- */
-export async function setRetailerSalesRep(retailerId: string, pickedId: string): Promise<RetailerResult> {
-  const session = await requireRole(...rolesFor("assignSalesRep"));
-  if (!isUuid(retailerId)) return { ok: false, error: "Retailer not found." };
-  const rep = await checkPickedSalesRep(pickedId);
-  if (!rep.ok) return rep;
-  const salesRepId = rep.id;
-
-  const res = await db.transaction(async (tx): Promise<RetailerResult> => {
-    // Lock the shop so two quick changes cannot interleave.
-    const [before] = await tx
-      .select({ salesRepId: retailers.salesRepId })
-      .from(retailers)
-      .where(eq(retailers.id, retailerId))
-      .for("no key update");
-    if (!before) return { ok: false, error: "Retailer not found." };
-    if (before.salesRepId === salesRepId) return { ok: true };
-    await tx.update(retailers).set({ salesRepId, updatedAt: new Date() }).where(eq(retailers.id, retailerId));
-    const moved = await tx
-      .update(orders)
-      .set({ salesRepId, updatedAt: new Date() })
-      .where(and(eq(orders.retailerId, retailerId), inArray(orders.status, ORDER_STATUSES.filter(movesWithSalesRep))))
-      .returning({ id: orders.id });
-    await writeAudit(tx, {
-      actorId: session.user.id,
-      entity: "retailer",
-      entityId: retailerId,
-      action: "assign_sales_rep",
-      details: { salesRepId: { before: before.salesRepId, after: salesRepId }, ordersMoved: moved.length },
-    });
-    return { ok: true };
-  });
-  if (res.ok) {
-    revalidatePath("/retailers");
-    revalidatePath("/orders");
-    revalidatePath("/dashboard");
-  }
-  return res;
 }

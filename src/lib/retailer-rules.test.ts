@@ -4,6 +4,7 @@ import {
   matchesRetailerSearch,
   normalizePhone,
   pickableRetailerLogins,
+  planShopEdit,
   type RetailerLogin,
   validateRetailer,
 } from "./retailer-rules";
@@ -83,5 +84,71 @@ describe("matchesRetailerSearch", () => {
   });
   it("finds nothing for an unknown word", () => {
     expect(matchesRetailerSearch(shop, "zzz")).toBe(false);
+  });
+});
+
+describe("planShopEdit", () => {
+  const shop = { id: "r1", salesRepId: "s1", userId: null };
+  const form = { name: " Shree  Traders ", phone: "+91 98765 43210", place: "Hubli" };
+  const facts = { phoneTaken: false, loginLinks: [] };
+  const rep = { id: "s2", role: "sales", banned: false, deletedAt: null };
+  const login = { id: "u9", role: "retailer" };
+
+  it("details only: cleaned, nothing else changes", () => {
+    expect(planShopEdit(shop, form, facts)).toEqual({
+      ok: true,
+      details: { name: "Shree Traders", phone: "9876543210", place: "Hubli" },
+      salesRepId: null,
+      userId: undefined,
+    });
+  });
+  it("a bad name or phone, or a phone of another shop, refuses everything", () => {
+    expect(planShopEdit(shop, { ...form, name: " " }, facts)).toEqual({ ok: false, error: "Enter a name" });
+    expect(planShopEdit(shop, { ...form, phone: "123" }, facts)).toEqual({ ok: false, error: "Enter a 10-digit mobile" });
+    expect(planShopEdit(shop, { ...form, salesRepId: "s2" }, { ...facts, salesRep: rep, phoneTaken: true })).toEqual({
+      ok: false,
+      error: "Phone already used",
+    });
+  });
+  it("a new sales person must be an active sales person", () => {
+    const ok = planShopEdit(shop, { ...form, salesRepId: "s2" }, { ...facts, salesRep: rep });
+    expect(ok.ok && ok.salesRepId).toBe("s2");
+    expect(planShopEdit(shop, { ...form, salesRepId: "s2" }, { ...facts, salesRep: { ...rep, banned: true } })).toEqual({
+      ok: false,
+      error: "Pick an active sales person.",
+    });
+    expect(planShopEdit(shop, { ...form, salesRepId: "s2" }, facts).ok).toBe(false);
+  });
+  it("the same (or no) sales person is no change, even if they have left", () => {
+    for (const salesRepId of ["s1", "", undefined]) {
+      const plan = planShopEdit(shop, { ...form, salesRepId }, facts);
+      expect(plan.ok && plan.salesRepId).toBeNull();
+    }
+  });
+  it("a login must be a retailer login not linked to another shop", () => {
+    const ok = planShopEdit(shop, { ...form, userId: "u9" }, { ...facts, login });
+    expect(ok.ok && ok.userId).toBe("u9");
+    expect(planShopEdit(shop, { ...form, userId: "u9" }, { ...facts, login: { ...login, role: "sales" } })).toEqual({
+      ok: false,
+      error: "Pick a user with the retailer role.",
+    });
+    expect(
+      planShopEdit(shop, { ...form, userId: "u9" }, { ...facts, login, loginLinks: [{ retailerId: "r2", userId: "u9" }] }),
+    ).toEqual({ ok: false, error: "That login is already linked to another retailer." });
+  });
+  it("a failing login refuses the sales person change too (all or nothing)", () => {
+    const plan = planShopEdit(
+      shop,
+      { ...form, salesRepId: "s2", userId: "u9" },
+      { ...facts, salesRep: rep, login, loginLinks: [{ retailerId: "r2", userId: "u9" }] },
+    );
+    expect(plan.ok).toBe(false);
+  });
+  it("empty login unlinks; the same login is no change", () => {
+    const linked = { ...shop, userId: "u9" };
+    const unlink = planShopEdit(linked, { ...form, userId: null }, facts);
+    expect(unlink.ok && unlink.userId).toBeNull();
+    const same = planShopEdit(linked, { ...form, userId: "u9" }, facts);
+    expect(same.ok && same.userId).toBeUndefined();
   });
 });
