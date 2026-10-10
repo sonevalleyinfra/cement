@@ -5,7 +5,8 @@ import { user } from "./auth";
  * One row per form that created something (a payment, an order, a dispatch...), keyed by the
  * one-time `id` the form made when it opened (`requestId`). Written in the same transaction as
  * the record it created, so a second tap or a retry with the same id finds it and creates nothing
- * (rules in lib/request-rules.ts). `resultId` is the id of what was created, when the form needs it back.
+ * (rules in lib/request-rules.ts, `saveOnce` in lib/form-submissions.ts). A refused save is undone
+ * together with its row. `resultId` is the id of what was created (always set on a saved form).
  */
 export const formSubmissions = pgTable(
   "form_submissions",

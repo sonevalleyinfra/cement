@@ -70,6 +70,7 @@ Dues = sum. Payments clear oldest dues first (for aging).
   person's cash held; they must hold at least that amount, else it is refused) or **"Cash already handed to office"**
   (nobody's cash held changes).
 - Every save form sends a one-time id, so a double tap never records the same payment, order or dispatch twice.
+  A refused save (for example "Only 50 bags are left") keeps nothing, so fixing the form and saving again works.
 - A staff member holding cash cannot be deactivated, deleted or lose all staff roles until it is handed over.
 
 ## 7. Supplier accounts (one per brand)

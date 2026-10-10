@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ledgerEntries, retailers } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { claimRequest } from "@/lib/form-submissions";
+import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { adjustmentEntry, openingEntry } from "@/lib/ledger-rules";
@@ -74,9 +74,7 @@ export async function addAdjustment(input: {
   if (!request.ok) return request;
   const plan = adjustmentEntry(input.retailerId, Number(input.amountPaise), input.reason);
   if (!plan.ok) return plan;
-  const res = await db.transaction(async (tx): Promise<LedgerResult> => {
-    const claim = await claimRequest(tx, request.id, "ledger_adjustment", session.user.id);
-    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
+  const res = await saveOnce({ id: request.id, kind: "ledger_adjustment", actorId: session.user.id }, async (tx) => {
     const [retailer] = await tx
       .select({ id: retailers.id })
       .from(retailers)
@@ -91,13 +89,12 @@ export async function addAdjustment(input: {
       action: "adjustment",
       details: { retailerId: input.retailerId, amountPaise: plan.entry.amountPaise, reason: plan.note },
     });
-    return { ok: true };
+    return { ok: true, resultId: id };
   });
-  if (res.ok) {
-    revalidatePath("/ledger");
-    revalidatePath(`/ledger/${input.retailerId}`);
-    revalidatePath("/approvals");
-    revalidatePath("/dashboard");
-  }
-  return res;
+  if (!res.ok) return res;
+  revalidatePath("/ledger");
+  revalidatePath(`/ledger/${input.retailerId}`);
+  revalidatePath("/approvals");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { user, walletMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { claimRequest } from "@/lib/form-submissions";
+import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
@@ -29,9 +29,7 @@ export async function requestHandover(input: { amountPaise: number; requestId: s
   const amount = Number(input?.amountPaise);
   const form = checkRequestId(input?.requestId);
   if (!form.ok) return form;
-  const res = await db.transaction(async (tx): Promise<WalletResult> => {
-    const claim = await claimRequest(tx, form.id, "handover_request", session.user.id);
-    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
+  const res = await saveOnce({ id: form.id, kind: "handover_request", actorId: session.user.id }, async (tx) => {
     // Lock the staff member's row so two requests (or a reversal) cannot use the same cash.
     await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
     const rows = await tx.select().from(walletMovements).where(eq(walletMovements.collectorId, session.user.id));
@@ -60,10 +58,11 @@ export async function requestHandover(input: { amountPaise: number; requestId: s
       collectorId: session.user.id,
       link: "/wallet",
     });
-    return { ok: true };
+    return { ok: true, resultId: request.id };
   });
-  if (res.ok) refresh();
-  return res;
+  if (!res.ok) return res;
+  refresh();
+  return { ok: true };
 }
 
 /**

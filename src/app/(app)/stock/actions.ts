@@ -2,7 +2,6 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db";
 import { grades, products, stockMovements } from "@/db/schema";
 import { toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
@@ -10,8 +9,8 @@ import { postSupplierEntry } from "@/lib/suppliers";
 import { checkCostPerBag, purchaseEntry } from "@/lib/supplier-rules";
 import { writeAudit } from "@/lib/audit";
 import { DEFAULT_BAG_KG, isProductChannel, resolveProduct } from "@/lib/catalogue-rules";
-import { claimRequest } from "@/lib/form-submissions";
-import { checkRequestId, type RequestKind } from "@/lib/request-rules";
+import { saveOnce } from "@/lib/form-submissions";
+import { checkRequestId } from "@/lib/request-rules";
 import {
   adjustmentMovement,
   canSetOpening,
@@ -60,27 +59,6 @@ export type StockInput = {
   requestId: string;
 };
 
-/** Thrown inside a transaction to undo everything in it (e.g. a product or truck made a moment ago). */
-class Refused extends Error {
-  constructor(readonly result: { ok: false; error: string }) {
-    super(result.error);
-  }
-}
-
-/** Runs `fn` in a transaction; when it answers "no", nothing it wrote is kept. */
-async function inTransaction(fn: (tx: Tx) => Promise<StockResult>): Promise<StockResult> {
-  try {
-    return await db.transaction(async (tx) => {
-      const res = await fn(tx);
-      if (!res.ok) throw new Refused(res);
-      return res;
-    });
-  } catch (e) {
-    if (e instanceof Refused) return e.result;
-    throw e;
-  }
-}
-
 /** Admin only. Only a purchase may use a typed-in truck. */
 async function prepare(input: StockInput, allowNewTruck = false) {
   const session = await requireRole(...rolesFor("manageStock"));
@@ -93,16 +71,6 @@ async function prepare(input: StockInput, allowNewTruck = false) {
     return { error: "Pick a product and a place.", session: null, place: null, requestId: null } as const;
   }
   return { error: null, session, place, requestId: request.id } as const;
-}
-
-/**
- * Records the form's one-time id in the transaction. Null = go on; otherwise the answer to give
- * (the same form was already saved: nothing more is saved).
- */
-async function firstTime(tx: Tx, requestId: string, kind: RequestKind, actorId: string): Promise<StockResult | null> {
-  const claim = await claimRequest(tx, requestId, kind, actorId);
-  if (claim.fresh) return null;
-  return claim.result.ok ? { ok: true } : claim.result;
 }
 
 /**
@@ -199,9 +167,7 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
   }
   const chosen = p.place;
   const requestId = p.requestId;
-  const res = await inTransaction(async (tx) => {
-    const again = await firstTime(tx, requestId, "purchase", p.session.user.id);
-    if (again) return again;
+  const res = await saveOnce({ id: requestId, kind: "purchase", actorId: p.session.user.id }, async (tx) => {
     const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     // A typed-in truck is found (or made) by its number, so the same truck always has the same stock.
@@ -242,13 +208,11 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
         ...(owed.entry.reference ? { invoiceNo: owed.entry.reference } : {}),
       },
     });
-    return { ok: true };
+    return { ok: true, resultId: moved.id };
   });
-  if (res.ok) {
-    revalidatePath("/suppliers", "layout");
-    revalidatePath("/dashboard");
-  }
-  return res.ok ? done() : res;
+  if (!res.ok) return res;
+  revalidatePath("/suppliers", "layout");
+  return done();
 }
 
 export async function recordOpening(input: StockInput): Promise<StockResult> {
@@ -257,9 +221,7 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
   const place = p.place;
   const requestId = p.requestId;
   if (place === NEW_TRUCK_PLACE) return { ok: false, error: "Pick a product and a place." };
-  const res = await inTransaction(async (tx) => {
-    const again = await firstTime(tx, requestId, "opening_stock", p.session.user.id);
-    if (again) return again;
+  const res = await saveOnce({ id: requestId, kind: "opening_stock", actorId: p.session.user.id }, async (tx) => {
     const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     const loc = await locate(tx, picked.productId, place);
@@ -279,7 +241,7 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
       action: "opening",
       details: movementFacts(m.movement),
     });
-    return { ok: true };
+    return { ok: true, resultId: row.id };
   });
   return res.ok ? done() : res;
 }
@@ -291,9 +253,7 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
   const place = p.place;
   const requestId = p.requestId;
   if (place === NEW_TRUCK_PLACE) return { ok: false, error: "Pick a product and a place." };
-  const res = await inTransaction(async (tx) => {
-    const again = await firstTime(tx, requestId, "stock_adjustment", p.session.user.id);
-    if (again) return again;
+  const res = await saveOnce({ id: requestId, kind: "stock_adjustment", actorId: p.session.user.id }, async (tx) => {
     const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     const loc = await locate(tx, picked.productId, place);
@@ -318,7 +278,7 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
       action: "adjustment",
       details: { ...movementFacts(m.movement), reason: m.movement.reason ?? "" },
     });
-    return { ok: true };
+    return { ok: true, resultId: row.id };
   });
   return res.ok ? done() : res;
 }
@@ -355,9 +315,7 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
     truck = check.value;
     note = truckNote(note, truck);
   }
-  const res = await inTransaction(async (tx) => {
-    const again = await firstTime(tx, request.id, "stock_transfer", session.user.id);
-    if (again) return again;
+  const res = await saveOnce({ id: request.id, kind: "stock_transfer", actorId: session.user.id }, async (tx) => {
     const from = places.from;
     const to: PlaceRef =
       places.to === NEW_TRUCK_PLACE
@@ -393,7 +351,7 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
         ...(note ? { reason: note } : {}),
       },
     });
-    return { ok: true };
+    return { ok: true, resultId: out.id };
   });
   return res.ok ? done() : res;
 }

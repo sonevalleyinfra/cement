@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkRequestId, REFRESH_AND_RETRY, replayDecision } from "./request-rules";
+import { checkRequestId, nextRequestId, REFRESH_AND_RETRY, replayDecision } from "./request-rules";
 
 const ID = "3f2b6c1e-8a4d-4f7e-9b1a-2c3d4e5f6a7b";
 
@@ -20,13 +20,26 @@ describe("replayDecision", () => {
       ok: true,
       resultId: "r1",
     });
+  });
+  it("an id with no stored result is never answered as saved (a failed save keeps nothing)", () => {
     expect(replayDecision({ kind: "order", actorId: "u1", resultId: null }, { kind: "order", actorId: "u1" })).toEqual({
-      ok: true,
-      resultId: null,
+      ok: false,
+      error: REFRESH_AND_RETRY,
     });
+    expect(replayDecision({ kind: "dispatch", actorId: "u1", resultId: "" }, { kind: "dispatch", actorId: "u1" }).ok).toBe(false);
   });
   it("someone else's id, or an id from another form, is refused", () => {
     expect(replayDecision({ kind: "payment", actorId: "u1", resultId: "r1" }, { kind: "payment", actorId: "u2" }).ok).toBe(false);
     expect(replayDecision({ kind: "payment", actorId: "u1", resultId: "r1" }, { kind: "order", actorId: "u1" }).ok).toBe(false);
+  });
+});
+
+describe("nextRequestId", () => {
+  const fresh = () => "new-id";
+  it("any answer (saved or refused) gives the form a fresh id, so a fixed retry is a new save", () => {
+    expect(nextRequestId("old-id", true, fresh)).toBe("new-id");
+  });
+  it("no answer (network dropped) keeps the id, so a retry cannot save twice", () => {
+    expect(nextRequestId("old-id", false, fresh)).toBe("old-id");
   });
 });

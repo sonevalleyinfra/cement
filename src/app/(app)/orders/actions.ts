@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, products, retailers } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { claimRequest } from "@/lib/form-submissions";
+import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { isBagsInRange, resolveOrderRetailer, validatePlaceOrder } from "@/lib/order-access";
 import { planCancel } from "@/lib/order-rules";
@@ -92,9 +92,7 @@ export async function placeOrder(input: {
   // The shop's own sales person gets the order (rules in sales-rep-rules.ts).
   const salesRepId = orderSalesRep(retailer.salesRepId, { id: me.id, role: me.role });
 
-  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
-    const claim = await claimRequest(tx, request.id, "order", me.id);
-    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
+  const result = await saveOnce({ id: request.id, kind: "order", actorId: me.id }, async (tx) => {
     const [order] = await tx
       .insert(orders)
       .values({
@@ -122,10 +120,11 @@ export async function placeOrder(input: {
       details: { retailerId, productId: product.id, bags: input.bags, ratePaise: rate.ratePaise },
     });
     await notify(tx, order.id, "placed", me.id);
-    return { ok: true };
+    return { ok: true, resultId: order.id };
   });
-  if (result.ok) refresh();
-  return result;
+  if (!result.ok) return result;
+  refresh();
+  return { ok: true };
 }
 
 /**

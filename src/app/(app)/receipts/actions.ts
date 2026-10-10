@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { receipts, retailers, user, walletMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/db-errors";
-import { claimRequest, saveRequestResult } from "@/lib/form-submissions";
+import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { getBalance, postEntry, type DbOrTx } from "@/lib/ledger";
 import { duesFrom } from "@/lib/ledger-rules";
@@ -99,12 +99,7 @@ export async function saveReceipt(input: {
   if (!plan.ok) return plan;
 
   try {
-    const res = await db.transaction(async (tx): Promise<SaveReceiptResult> => {
-      const claim = await claimRequest(tx, request.id, "payment", session.user.id);
-      if (!claim.fresh) {
-        if (!claim.result.ok) return claim.result;
-        return claim.result.resultId ? { ok: true, id: claim.result.resultId } : { ok: false, error: "Payment not found." };
-      }
+    const res = await saveOnce({ id: request.id, kind: "payment", actorId: session.user.id }, async (tx) => {
       const retailer = await lockRetailer(tx, input.retailerId);
       if (!retailer) return { ok: false, error: "Retailer not found." };
       if (plan.utr) {
@@ -127,7 +122,6 @@ export async function saveReceipt(input: {
           receivedBy: session.user.id,
         })
         .returning({ id: receipts.id, receiptNo: receipts.receiptNo });
-      await saveRequestResult(tx, request.id, receipt.id);
       if (plan.ledger) await postEntry(tx, plan.ledger, session.user.id, `Payment #${receipt.receiptNo}`, receipt.id);
       await writeAudit(tx, {
         actorId: session.user.id,
@@ -171,10 +165,11 @@ export async function saveReceipt(input: {
           link: `/receipts/${receipt.id}`,
         });
       }
-      return { ok: true, id: receipt.id };
+      return { ok: true, resultId: receipt.id };
     });
-    if (res.ok) refresh(input.retailerId, res.id);
-    return res;
+    if (!res.ok) return res;
+    refresh(input.retailerId, res.resultId);
+    return { ok: true, id: res.resultId };
   } catch (error) {
     // Two people saving the same UTR at the same moment: the database rule stops the second.
     if (isUniqueViolation(error, "receipts_utr_unique_idx")) return { ok: false, error: UTR_TAKEN };

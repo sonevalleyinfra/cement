@@ -2,11 +2,10 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db";
 import { brands, supplierLedgerEntries } from "@/db/schema";
 import { toISTDateKey } from "@/lib/datetime";
 import { isUniqueViolation } from "@/lib/db-errors";
-import { claimRequest } from "@/lib/form-submissions";
+import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { checkRequestId } from "@/lib/request-rules";
@@ -48,9 +47,7 @@ async function save(
 ): Promise<SupplierActionResult> {
   if (!isUuid(brandId)) return { ok: false, error: "Pick a brand." };
   try {
-    const res = await db.transaction(async (tx): Promise<SupplierActionResult> => {
-      const claim = await claimRequest(tx, date.requestId, "supplier_entry", actorId);
-      if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
+    const res = await saveOnce({ id: date.requestId, kind: "supplier_entry", actorId }, async (tx) => {
       const [brand] = await tx.select({ id: brands.id }).from(brands).where(eq(brands.id, brandId));
       if (!brand) return { ok: false, error: "Pick a brand." };
       const existing = await tx
@@ -59,14 +56,13 @@ async function save(
         .where(and(eq(supplierLedgerEntries.brandId, brandId), eq(supplierLedgerEntries.kind, "opening")));
       const plan = build(existing, date.date);
       if (!plan.ok) return plan;
-      await postSupplierEntry(tx, plan.entry, actorId);
-      return { ok: true };
+      const id = await postSupplierEntry(tx, plan.entry, actorId);
+      return { ok: true, resultId: id };
     });
-    if (res.ok) {
-      revalidatePath("/suppliers", "layout");
-      revalidatePath("/dashboard");
-    }
-    return res;
+    if (!res.ok) return res;
+    revalidatePath("/suppliers", "layout");
+    revalidatePath("/dashboard");
+    return { ok: true };
   } catch (e) {
     // Two taps at once: the database allows only one opening balance per brand.
     if (isUniqueViolation(e, "supplier_ledger_entries_one_opening_idx")) {

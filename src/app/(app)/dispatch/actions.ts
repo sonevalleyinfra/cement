@@ -2,10 +2,9 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db";
 import { dispatches, orderEvents, orders, stockMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { claimRequest } from "@/lib/form-submissions";
+import { saveOnce } from "@/lib/form-submissions";
 import { checkDispatchFields, planDispatch } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
@@ -49,9 +48,7 @@ export async function dispatchOrder(input: {
   });
   if (!fields.ok) return fields;
 
-  const result = await db.transaction(async (tx): Promise<DispatchResult> => {
-    const claim = await claimRequest(tx, request.id, "dispatch", me.id);
-    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
+  const result = await saveOnce({ id: request.id, kind: "dispatch", actorId: me.id }, async (tx) => {
     // Lock the order (its rate cannot change meanwhile) and the stock place (nobody else takes the same bags).
     const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("no key update");
     if (!order) return { ok: false, error: "Order not found." };
@@ -130,13 +127,12 @@ export async function dispatchOrder(input: {
     });
     await tx.update(orders).set({ status: plan.newStatus, updatedAt: new Date() }).where(eq(orders.id, order.id));
     await notify(tx, order.id, "dispatched", me.id, input.bags);
-    return { ok: true };
+    return { ok: true, resultId: sentRow.id };
   });
-  if (result.ok) {
-    revalidatePath("/dispatch");
-    revalidatePath("/orders");
-    revalidatePath(`/orders/${input.orderId}`);
-    revalidatePath("/notifications");
-  }
-  return result;
+  if (!result.ok) return result;
+  revalidatePath("/dispatch");
+  revalidatePath("/orders");
+  revalidatePath(`/orders/${input.orderId}`);
+  revalidatePath("/notifications");
+  return { ok: true };
 }

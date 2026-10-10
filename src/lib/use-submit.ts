@@ -2,13 +2,15 @@
 
 import { useRef, useState, useTransition } from "react";
 import { newRequestId } from "@/lib/ids";
+import { nextRequestId } from "@/lib/request-rules";
 
 /**
  * For a form button that saves something. `run` ignores every tap after the first until the save
  * answers (the button is also disabled by `pending`), and passes the form's one-time `requestId`
  * (see lib/request-rules.ts) so the server never saves the same form twice.
- * After a successful save the form gets a fresh id for the next entry; after an error it keeps
- * the same one (nothing was saved, so trying again is safe).
+ * After every answer (saved, or refused and fully undone on the server) the form gets a fresh id,
+ * so fixing the form and saving again is a new save. If no answer came (the network dropped),
+ * it keeps the same id, so a retry can never save twice (`nextRequestId`).
  */
 export function useSubmit() {
   const [pending, startTransition] = useTransition();
@@ -20,11 +22,13 @@ export function useSubmit() {
     busy.current = true;
     const id = requestId;
     startTransition(async () => {
+      let answered = false;
       try {
         const res = await save(id);
-        if (res.ok) setRequestId(newRequestId());
+        answered = true;
         after?.(res);
       } finally {
+        setRequestId((current) => nextRequestId(current, answered, newRequestId));
         busy.current = false;
       }
     });
