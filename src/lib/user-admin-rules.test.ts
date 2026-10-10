@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkDelete,
   checkRolesAndFirms,
   checkSelfDeactivate,
   checkSelfRoleChange,
+  cleanEmail,
   cleanUserPhone,
   passwordFromBytes,
+  usersInTab,
   validateNewUser,
 } from "./user-admin-rules";
 
@@ -49,6 +52,16 @@ describe("validateNewUser", () => {
   });
 });
 
+describe("cleanEmail", () => {
+  it("trims and lower-cases", () => expect(cleanEmail("  Ram@X.Com ")).toBe("ram@x.com"));
+  it("rejects empty and bad emails", () => {
+    expect(cleanEmail("")).toBeNull();
+    expect(cleanEmail(undefined)).toBeNull();
+    expect(cleanEmail("ram@x")).toBeNull();
+    expect(cleanEmail("ram x@y.com")).toBeNull();
+  });
+});
+
 describe("cleanUserPhone", () => {
   it("keeps 10 digits of a valid mobile", () => {
     expect(cleanUserPhone("+91 98765 43210")).toBe("9876543210");
@@ -80,5 +93,33 @@ describe("passwordFromBytes", () => {
     const p = passwordFromBytes(Uint8Array.from({ length: 16 }, (_, i) => i * 17));
     expect(p).toHaveLength(12);
     expect(p).toMatch(/^[a-zA-Z0-9]+$/);
+  });
+});
+
+describe("checkDelete", () => {
+  it("never deletes yourself", () => expect(checkDelete(true, false)).toBe("You cannot delete yourself"));
+  it("needs the account deactivated first", () => expect(checkDelete(false, true)).toBe("Deactivate first"));
+  it("allows a deactivated other user", () => expect(checkDelete(false, false)).toBeNull());
+});
+
+describe("usersInTab", () => {
+  const rows = [
+    { id: "1", role: "sales,accounts", active: true },
+    { id: "2", role: "sales", active: false },
+    { id: "3", role: "admin", active: true },
+    { id: "4", role: "", active: true },
+    { id: "5", role: "user", active: true },
+  ];
+  const ids = (r: { id: string }[]) => r.map((x) => x.id);
+  it("splits by role and active state", () => {
+    expect(ids(usersInTab(rows, "sales", true))).toEqual(["1"]);
+    expect(ids(usersInTab(rows, "sales", false))).toEqual(["2"]);
+    expect(ids(usersInTab(rows, "admin", true))).toEqual(["3"]);
+  });
+  it("shows a person with several roles under each", () => {
+    expect(ids(usersInTab(rows, "accounts", true))).toEqual(["1"]);
+  });
+  it("puts people without a known role under none", () => {
+    expect(ids(usersInTab(rows, "none", true))).toEqual(["4", "5"]);
   });
 });

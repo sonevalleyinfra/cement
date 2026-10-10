@@ -9,12 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseRoles, ROLES } from "@/lib/roles";
-import { createUser, setUserActive, updateUserAccess } from "./actions";
+import { type RoleTab, usersInTab } from "@/lib/user-admin-rules";
+import { createUser, deleteUser, setUserActive, type UserResult, updateUserAccess } from "./actions";
 
 type Row = { id: string; name: string; email: string; phone: string; role: string; active: boolean; firmIds: string[] };
 type Firm = { id: string; name: string };
 
 const chip = "rounded-full bg-muted px-2 py-0.5 text-xs font-medium";
+
+const tabChip = (on: boolean) =>
+  `h-11 shrink-0 rounded-full px-4 text-sm font-semibold capitalize ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
 
 function toggle(list: string[], value: string) {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -39,8 +43,29 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
   const [roles, setRoles] = useState<string[]>([]);
   const [firmIds, setFirmIds] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const [listError, setListError] = useState("");
   const [pending, start] = useTransition();
   const firmName = (id: string) => firms.find((f) => f.id === id)?.name ?? "";
+
+  // Role tabs (a person with several roles shows under each), then Active / Deactivated.
+  const tabs: RoleTab[] = [...ROLES, ...(rows.some((r) => parseRoles(r.role).length === 0) ? ["none" as const] : [])];
+  const count = (t: RoleTab) => usersInTab(rows, t, true).length + usersInTab(rows, t, false).length;
+  const [tab, setTab] = useState<RoleTab>(() => tabs.find((t) => t !== "admin" && count(t) > 0) ?? "admin");
+  const [showActive, setShowActive] = useState(true);
+  const visible = usersInTab(rows, tab, showActive);
+
+  function rowAction(run: () => Promise<UserResult>) {
+    setListError("");
+    start(async () => {
+      const res = await run();
+      if (!res.ok) setListError(res.error);
+    });
+  }
+
+  function remove(r: Row) {
+    if (!window.confirm(`Delete ${r.name}? They disappear from this list. Their records stay.`)) return;
+    rowAction(() => deleteUser(r.id));
+  }
 
   function openSheet(row: Row | null) {
     setEditing(row);
@@ -56,7 +81,12 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
     const formData = new FormData(e.currentTarget);
     start(async () => {
       const res = editing
-        ? await updateUserAccess(editing.id, { phone: String(formData.get("phone") ?? ""), roles, firmIds })
+        ? await updateUserAccess(editing.id, {
+            email: String(formData.get("email") ?? ""),
+            phone: String(formData.get("phone") ?? ""),
+            roles,
+            firmIds,
+          })
         : await createUser({
             name: String(formData.get("name") ?? ""),
             email: String(formData.get("email") ?? ""),
@@ -71,24 +101,35 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
 
   return (
     <>
-      {rows.length === 0 ? (
+      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
+        {tabs.map((t) => (
+          <button key={t} type="button" className={tabChip(tab === t)} onClick={() => setTab(t)}>
+            {t === "none" ? "No role" : t} <span className="tabular opacity-70">{count(t)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        {[true, false].map((a) => (
+          <button key={String(a)} type="button" className={tabChip(showActive === a)} onClick={() => setShowActive(a)}>
+            {a ? "Active" : "Deactivated"} <span className="tabular opacity-70">{usersInTab(rows, tab, a).length}</span>
+          </button>
+        ))}
+      </div>
+      {listError && <p className="mb-3 text-sm text-destructive">{listError}</p>}
+      {visible.length === 0 ? (
         <EmptyState title="No users" />
       ) : (
         <ul className="flex flex-col gap-3">
-          {rows.map((r, i) => (
+          {visible.map((r, i) => (
             <li key={r.id}>
               <ListCard
                 index={i}
                 title={r.name}
-                className={r.active ? undefined : "opacity-60"}
                 top={
-                  <>
-                    <span className="text-xs text-muted-foreground">
-                      {r.email}
-                      {r.phone && <span className="tabular"> · {r.phone}</span>}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{r.active ? "Active" : "Blocked"}</span>
-                  </>
+                  <span className="text-xs text-muted-foreground">
+                    {r.email}
+                    {r.phone && <span className="tabular"> · {r.phone}</span>}
+                  </span>
                 }
                 bottom={
                   <>
@@ -104,15 +145,16 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
                         ))}
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button variant="outline" onClick={() => openSheet(r)}>Edit</Button>
                       {r.id !== myId && (
-                        <Button
-                          variant="ghost"
-                          disabled={pending}
-                          onClick={() => start(async () => void (await setUserActive(r.id, !r.active)))}
-                        >
+                        <Button variant="ghost" disabled={pending} onClick={() => rowAction(() => setUserActive(r.id, !r.active))}>
                           {r.active ? "Deactivate" : "Reactivate"}
+                        </Button>
+                      )}
+                      {!r.active && r.id !== myId && (
+                        <Button variant="ghost" className="text-destructive" disabled={pending} onClick={() => remove(r)}>
+                          Delete
                         </Button>
                       )}
                     </div>
@@ -129,17 +171,15 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
       <Sheet open={open} onOpenChange={setOpen} title={editing ? `Edit ${editing.name}` : "New user"}>
         <form key={editing?.id ?? "new"} onSubmit={submit} className="flex flex-col gap-4">
           {!editing && (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" autoComplete="off" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" autoComplete="off" />
-              </div>
-            </>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" autoComplete="off" />
+            </div>
           )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" name="email" type="email" autoComplete="off" defaultValue={editing?.email ?? ""} />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="phone">Phone</Label>
             <Input

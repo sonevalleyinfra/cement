@@ -1,6 +1,6 @@
 /** Rules for the users page. Plain functions: no database, no request. */
 import { isValidIndianMobile, normalizePhone } from "@/lib/retailer-rules";
-import { isRole, type Role } from "@/lib/roles";
+import { isRole, parseRoles, type Role } from "@/lib/roles";
 
 const STAFF_ROLES: readonly Role[] = ["admin", "sales", "accounts", "logistics"];
 
@@ -28,6 +28,12 @@ export function cleanUserPhone(raw: string | null | undefined): string | null {
   return isValidIndianMobile(phone) ? phone : null;
 }
 
+/** Cleans an email (trimmed, lower case). Returns it, or null if it does not look like an email. */
+export function cleanEmail(raw: string | null | undefined): string | null {
+  const email = (raw ?? "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
 /** Trims and checks the create-user form. The phone is a required 10-digit mobile. */
 export function validateNewUser(raw: {
   name?: string | null;
@@ -37,9 +43,9 @@ export function validateNewUser(raw: {
   firmIds?: readonly string[];
 }): UserCheck {
   const name = (raw.name ?? "").trim().replace(/\s+/g, " ");
-  const email = (raw.email ?? "").trim().toLowerCase();
+  const email = cleanEmail(raw.email);
   if (!name) return { ok: false, error: "Enter a name" };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email" };
+  if (!email) return { ok: false, error: "Enter a valid email" };
   const phone = cleanUserPhone(raw.phone);
   if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const roles = [...new Set(raw.roles ?? [])];
@@ -67,3 +73,29 @@ export function passwordFromBytes(bytes: Uint8Array): string {
   return Array.from(bytes.slice(0, 12), (b) => alphabet[b % alphabet.length]).join("");
 }
 
+
+/**
+ * Deleting only hides a user and marks them deleted (their orders, receipts and history stay).
+ * Allowed once the account is deactivated, and never on yourself. Returns an error or null.
+ */
+export function checkDelete(isSelf: boolean, isActive: boolean): string | null {
+  if (isSelf) return "You cannot delete yourself";
+  if (isActive) return "Deactivate first";
+  return null;
+}
+
+/** The users page groups people by role. "none" collects anyone without a known role. */
+export type RoleTab = Role | "none";
+
+/** Users who hold `tab` (a person with several roles shows under each) and match `active`. */
+export function usersInTab<T extends { role: string; active: boolean }>(
+  rows: readonly T[],
+  tab: RoleTab,
+  active: boolean,
+): T[] {
+  return rows.filter((r) => {
+    if (r.active !== active) return false;
+    const roles = parseRoles(r.role);
+    return tab === "none" ? roles.length === 0 : roles.includes(tab);
+  });
+}

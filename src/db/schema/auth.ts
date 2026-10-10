@@ -21,6 +21,8 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires", { withTimezone: true }),
+  // Set when the admin deletes the user: hidden from the users page, records kept, cannot sign in (also banned).
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const session = pgTable(
