@@ -695,6 +695,22 @@ Commands that change things (ship, release, launch...) only run when **you** typ
   up. Cash can be reversed only while that person still holds it; after it was handed over, admin adds a ledger
   **Adjustment** on the retailer's ledger page instead (owes more / owes less, with a reason).
 
+### Reports and activity (admin)
+- **More → Reports** (also on the admin home). Pick the dates (From / To, India days; this month by default) and open:
+  **Sales** (bags and value of dispatches by product, retailer, sales person and day), **Profit** (sales minus
+  bags x average purchase cost; products with no purchase cost show "Cost unknown" and are left out of the total;
+  Prism scheme credits shown on their own), **Dues and aging** (as of the To day: 0–30, 31–60, 61–90, 90+ days,
+  oldest dues cleared first by payments; advances listed apart), **Retailer statement** (opening, every entry,
+  closing), **Stock** (now by product and place; opening + bought − sent ± moved ± fixed = closing for the dates),
+  **Cash and online** (cash held per person, online to verify, payments recorded by mode), **Prism statement** and
+  **Staff activity** (orders placed, approvals, dispatches, payments per person).
+- A red "Does not add up" box means a statement or the stock did not reconcile. It should never show; if it does,
+  tell Claude.
+- **More → Activity**: who did what and when, newest first, as short sentences ("Ramesh dispatched 50 bags of ... to
+  Sharma Traders"). Filter by person, type (orders, stock, payments, Prism, masters) and dates; "Older" shows the next 50.
+  Every change (orders, rates, approvals, dispatches, stock, payments, handovers, ledger, Prism, users, retailers,
+  catalogue, godowns) adds one line. Nothing in it can be edited.
+
 ### Try it with demo data (your computer only)
 1. `pnpm dev` (creates the tables and the admin), then in another terminal `pnpm seed:demo`.
 2. Sign in with password `Demo@12345` and one of: `admin@demo.test`, `sales@demo.test`, `accounts@demo.test`,

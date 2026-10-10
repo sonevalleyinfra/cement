@@ -1,6 +1,7 @@
 import {
   BadgeCheck,
   BookOpen,
+  ChartColumn,
   ChevronRight,
   Factory,
   History,
@@ -24,6 +25,7 @@ import { signOut } from "../dashboard/actions";
 type Row = { href: string; label: string; icon: LucideIcon; tone: Tone; permission?: Action };
 
 const rows: Row[] = [
+  { href: "/reports", label: "Reports", icon: ChartColumn, tone: "orange", permission: "viewReports" },
   { href: "/activity", label: "Activity", icon: History, tone: "slate", permission: "viewActivity" },
   { href: "/users", label: "Users", icon: Users, tone: "violet", permission: "manageUsers" },
   { href: "/catalogue", label: "Catalogue", icon: Tags, tone: "blue", permission: "manageCatalogue" },

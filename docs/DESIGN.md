@@ -41,5 +41,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Reduced-motion users get no animation (handled globally).
 
 ## Components (`src/components/app/`)
-`AppShell`, `BottomNav`, `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`).
+`AppShell`, `BottomNav`, `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`),
+`RangeForm` / `FilterSelect` (date range and filters as a plain GET form), `DataTable` (compact numbers table that scrolls
+sideways inside its own box, never the page).
 Build new screens from these. Add a new shared component here (and to `/design`) before using it twice.

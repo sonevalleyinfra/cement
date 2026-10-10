@@ -100,3 +100,26 @@ export function percentOf(paise: Paise, basisPoints: number): Paise {
   const result = Math.sign(raw) * Math.round(Math.abs(raw) / 10_000);
   return result === 0 ? 0 : result; // avoid -0
 }
+
+/**
+ * a × b ÷ c, rounded half away from zero to a whole number, without floating-point maths
+ * (BigInt inside, so big products stay exact). Used for average cost: cost of `bags` at an
+ * average = bags × totalCost ÷ totalBags. `c` must not be 0.
+ */
+export function mulDivRound(a: number, b: number, c: number): number {
+  for (const v of [a, b, c]) {
+    if (!Number.isSafeInteger(v)) throw new TypeError(`mulDivRound needs whole numbers, got ${v}`);
+  }
+  if (c === 0) throw new RangeError("mulDivRound cannot divide by 0");
+  const zero = BigInt(0);
+  const num = BigInt(a) * BigInt(b);
+  const den = BigInt(c);
+  const negative = num < zero !== den < zero;
+  const absNum = num < zero ? -num : num;
+  const absDen = den < zero ? -den : den;
+  let q = absNum / absDen;
+  if ((absNum % absDen) * BigInt(2) >= absDen) q += BigInt(1);
+  const result = Number(negative ? -q : q);
+  if (!Number.isSafeInteger(result)) throw new RangeError("mulDivRound result is too large");
+  return result === 0 ? 0 : result;
+}

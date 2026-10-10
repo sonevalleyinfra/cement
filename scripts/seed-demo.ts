@@ -6,6 +6,7 @@
  * payments waiting / verified / rejected, and one reversed cash payment.
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
  * Safe to run twice: it skips whatever already exists (orders are added only once).
+ * Some orders, dispatches and one payment are back-dated (up to 120 days) so the reports show history and aging.
  * Refuses to run on production or a non-local database (rules in scripts/lib/demo-seed-rules.ts).
  */
 import { eq, inArray, sql } from "drizzle-orm";
@@ -48,6 +49,8 @@ async function ensureUser(email: string, name: string, role: string): Promise<st
 
 /** Days before today, as "YYYY-MM-DD" (India). */
 const daysAgo = (n: number) => toISTDateKey(Date.now() - n * 86_400_000);
+/** The moment `n` days ago (for back-dated demo rows, so reports have history). */
+const at = (n: number) => new Date(Date.now() - n * 86_400_000);
 
 /**
  * The Prism account: we owed Rs 2,00,000 at the start; 200 bags of every product bought at a cost
@@ -83,6 +86,7 @@ async function seedPrism(adminId: string, productRows: { id: string; name: strin
           unitCostPaise: b.costPaise,
           reason: "Demo purchase",
           actorId: adminId,
+          createdAt: at(b.ago),
         })
         .returning({ id: stockMovements.id });
       const owed = purchaseEntry(b.bags, b.costPaise, daysAgo(b.ago), {
@@ -173,6 +177,7 @@ async function main() {
       bags: 500,
       reason: "Demo opening stock",
       actorId: admin.id,
+      createdAt: at(120),
     })),
   );
 
@@ -257,6 +262,124 @@ async function main() {
       if (status === "cancelled") await event("cancelled", admin.id, "Shop closed for repairs");
     });
   }
+
+  // Older, fully dispatched orders, so the reports have history: sales on several days, dues of
+  // different ages (0-30, 31-60, 61-90, 90+), and more than one product.
+  // [shop, product index, bags, rate, loads as [bags, days ago]]
+  const history: [number, number, number, number, [number, number][]][] = [
+    [1, 0, 60, 34_000, [[40, 100], [20, 45]]],
+    [2, 1, 30, 33_000, [[30, 70]]],
+    [5, 2, 50, 36_000, [[50, 20]]],
+    [0, 0, 20, 35_000, [[20, 8]]],
+  ];
+  for (const [shopIdx, productIdx, bags, rate, loads] of history) {
+    const product = productRows[productIdx] ?? prod;
+    await db.transaction(async (tx) => {
+      const placedAt = at(loads[0][1] + 1);
+      const [o] = await tx
+        .insert(orders)
+        .values({
+          retailerId: shopRows[shopIdx].id,
+          productId: product.id,
+          bags,
+          ratePaise: rate,
+          status: "dispatched",
+          placedBy: ids.sales,
+          salesRepId: ids.sales,
+          createdAt: placedAt,
+          updatedAt: placedAt,
+        })
+        .returning();
+      await tx.insert(orderEvents).values([
+        { orderId: o.id, fromStatus: null, toStatus: "placed", actorId: ids.sales, createdAt: placedAt },
+        { orderId: o.id, fromStatus: "placed", toStatus: "approved", actorId: ids.accounts, createdAt: placedAt },
+      ]);
+      let sent = 0;
+      for (const [load, ago] of loads) {
+        sent += load;
+        const when = at(ago);
+        await tx.insert(dispatches).values({
+          orderId: o.id,
+          bags: load,
+          vehicleId: truck.id,
+          driverName: truck.driverName,
+          driverPhone: truck.driverPhone,
+          fromGodownId: godown.id,
+          ratePaise: rate,
+          dispatchedBy: ids.logistics,
+          createdAt: when,
+        });
+        await tx.insert(stockMovements).values({
+          productId: product.id,
+          godownId: godown.id,
+          type: "dispatch",
+          bags: -load,
+          orderId: o.id,
+          reason: `Truck ${truck.number}`,
+          actorId: ids.logistics,
+          createdAt: when,
+        });
+        const debit = dispatchEntry(o, load, rate);
+        if (!debit.ok) throw new Error(debit.error);
+        await tx.insert(ledgerEntries).values({
+          retailerId: o.retailerId,
+          kind: debit.entry.kind,
+          amountPaise: debit.entry.amountPaise,
+          orderId: o.id,
+          note: `${load} bags in ${truck.number}`,
+          actorId: ids.logistics,
+          createdAt: when,
+        });
+        await tx.insert(orderEvents).values({
+          orderId: o.id,
+          fromStatus: sent === load ? "approved" : "partly_dispatched",
+          toStatus: statusAfterDispatch(bags, sent),
+          actorId: ids.logistics,
+          reason: `${load} bags in ${truck.number}`,
+          createdAt: when,
+        });
+      }
+    });
+  }
+  // Gupta paid Rs 10,000 cash 50 days ago (it clears part of their oldest load); sales handed it over the next day.
+  await db.transaction(async (tx) => {
+    const [r] = await tx
+      .insert(receipts)
+      .values({
+        retailerId: shopRows[1].id,
+        mode: "cash",
+        totalPaise: 1_000_000,
+        status: "received",
+        receivedBy: ids.sales,
+        createdAt: at(50),
+        updatedAt: at(50),
+      })
+      .returning();
+    await tx.insert(ledgerEntries).values({
+      retailerId: r.retailerId,
+      kind: "receipt_credit",
+      amountPaise: -r.totalPaise,
+      receiptId: r.id,
+      note: `Payment #${r.receiptNo}`,
+      actorId: ids.sales,
+      createdAt: at(50),
+    });
+    await tx
+      .insert(walletMovements)
+      .values({ collectorId: ids.sales, kind: "collected", amountPaise: r.totalPaise, receiptId: r.id, actorId: ids.sales, createdAt: at(50) });
+    const [req] = await tx
+      .insert(walletMovements)
+      .values({ collectorId: ids.sales, kind: "handover_request", amountPaise: r.totalPaise, actorId: ids.sales, createdAt: at(49) })
+      .returning();
+    await tx.insert(walletMovements).values({
+      collectorId: ids.sales,
+      kind: "handover_confirmed",
+      amountPaise: r.totalPaise,
+      refId: req.id,
+      actorId: ids.accounts,
+      createdAt: at(49),
+    });
+  });
 
   // Payments (spec section 6). Amounts in paise.
   // Cash is "received": the dues go down at once and the person who took it holds the cash.

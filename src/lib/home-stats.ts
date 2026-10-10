@@ -134,7 +134,11 @@ export async function getAdminHome(now = new Date()) {
   const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, prismPaise] = await Promise.all([
     countOrders(gte(orders.createdAt, start)),
     db
-      .select({ b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
+      .select({
+        b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number),
+        // Today's sales = dispatched bags x the rate stored on each dispatch (bigint, so no overflow).
+        v: sql<number>`coalesce(sum(${dispatches.bags}::bigint * ${dispatches.ratePaise}), 0)`.mapWith(Number),
+      })
       .from(dispatches)
       .where(gte(dispatches.createdAt, start)),
     dueRows(),
@@ -150,6 +154,7 @@ export async function getAdminHome(now = new Date()) {
   return {
     todayOrders,
     bagsDispatched: n(bagsRow[0]?.b),
+    salesTodayPaise: n(bagsRow[0]?.v),
     duesPaise: totalDuesPaise(dues),
     stockBags: stock.reduce((s, p) => s + p.bags, 0),
     cashInHandPaise: cashInHandPaise(collected, confirmed, reversed),

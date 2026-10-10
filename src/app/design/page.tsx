@@ -2,10 +2,12 @@ import { BadgeCheck, Banknote, CalendarDays, Package, Receipt, Wallet } from "lu
 import { notFound } from "next/navigation";
 import type { NavItem } from "@/components/app/bottom-nav";
 import { AppShell, AppTitle } from "@/components/app/app-shell";
+import { DataTable } from "@/components/app/data-table";
 import { EmptyState } from "@/components/app/empty-state";
 import { IconTile } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { FilterSelect, RangeForm } from "@/components/app/range-form";
 import { ListSkeleton } from "@/components/app/skeleton";
 import { Stat } from "@/components/app/stat";
 import { StatusChip } from "@/components/app/status-chip";
@@ -106,6 +108,21 @@ export default function DesignPage() {
           <StatusChip status="cancelled" />
         </div>
       </div>
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Filters (reports, activity)</h2>
+      <RangeForm from="2026-10-01" to="2026-10-10">
+        <FilterSelect name="type" label="Type" value="" options={[{ value: "", label: "All" }, { value: "orders", label: "Orders" }]} />
+      </RangeForm>
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Table (reports)</h2>
+      <DataTable
+        columns={[{ label: "Product" }, { label: "Bags" }, { label: "Value" }]}
+        rows={[
+          ["Prism Trade OPC 43", "240", formatINR(8_400_000, { hidePaise: true })],
+          ["Prism Non-trade PPC", "60", formatINR(1_920_000, { hidePaise: true })],
+        ]}
+        total={["Total", "300", formatINR(10_320_000, { hidePaise: true })]}
+      />
 
       <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Loading</h2>
       <ListSkeleton rows={2} />

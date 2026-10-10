@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatINR,
+  mulDivRound,
   formatINRCompact,
   parseRupeesToPaise,
   percentOf,
@@ -99,5 +100,29 @@ describe("percentOf", () => {
     expect(percentOf(50, 100)).toBe(1); // 0.5 → 1
     expect(percentOf(-50, 100)).toBe(-1);
     expect(Object.is(percentOf(-1, 100), 0)).toBe(true); // no -0
+  });
+});
+
+describe("mulDivRound", () => {
+  it("multiplies then divides exactly", () => {
+    expect(mulDivRound(3, 28_000, 1)).toBe(84_000);
+    expect(mulDivRound(10, 57_500, 2)).toBe(287_500);
+  });
+  it("rounds half away from zero", () => {
+    expect(mulDivRound(1, 5, 2)).toBe(3);
+    expect(mulDivRound(1, 7, 3)).toBe(2);
+    expect(mulDivRound(1, 8, 3)).toBe(3);
+    expect(mulDivRound(-1, 5, 2)).toBe(-3);
+    expect(mulDivRound(1, -7, 3)).toBe(-2);
+    expect(mulDivRound(0, 5, 3)).toBe(0);
+    expect(Object.is(mulDivRound(-1, 1, 3), 0)).toBe(true);
+  });
+  it("stays exact when the product is beyond 2^53", () => {
+    // 90,000 bags x ₹1,000 crore total cost / 1,00,000 bags
+    expect(mulDivRound(90_000, 1_000_000_000_000, 100_000)).toBe(900_000_000_000);
+  });
+  it("refuses fractions and divide by zero", () => {
+    expect(() => mulDivRound(1.5, 2, 3)).toThrow();
+    expect(() => mulDivRound(1, 2, 0)).toThrow();
   });
 });

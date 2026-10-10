@@ -2,8 +2,10 @@ import {
   Banknote,
   BadgeCheck,
   CalendarDays,
+  ChartColumn,
   ClipboardList,
   Factory,
+  History,
   Package,
   Receipt,
   Truck,
@@ -23,7 +25,7 @@ import {
   getRetailerHome,
   getSalesHome,
 } from "@/lib/home-stats";
-import { formatDate } from "@/lib/datetime";
+import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { prismBalanceLabel } from "@/lib/prism-rules";
 
@@ -68,11 +70,13 @@ function Card({
         )
       }
       bottom={
-        <div className="flex w-full flex-wrap gap-x-8 gap-y-2">
-          {stats.map((s) => (
-            <Stat key={s.label} label={s.label} value={s.value} />
-          ))}
-        </div>
+        stats.length > 0 ? (
+          <div className="flex w-full flex-wrap gap-x-8 gap-y-2">
+            {stats.map((s) => (
+              <Stat key={s.label} label={s.label} value={s.value} />
+            ))}
+          </div>
+        ) : undefined
       }
     />
   );
@@ -137,9 +141,21 @@ export async function LogisticsHome() {
 export async function AdminHome() {
   const s = await getAdminHome();
   const prism = prismBalanceLabel(s.prismPaise);
+  const today = toISTDateKey(new Date());
   return (
     <Cards>
-      <Card index={0} href="/orders" title="Today" icon={CalendarDays} tone="orange" stats={[{ label: "Orders", value: num(s.todayOrders) }, { label: "Bags sent", value: num(s.bagsDispatched) }]} />
+      <Card
+        index={0}
+        href={`/reports/sales?from=${today}&to=${today}`}
+        title="Today"
+        icon={CalendarDays}
+        tone="orange"
+        stats={[
+          { label: "Sales", value: money(s.salesTodayPaise) },
+          { label: "Bags sent", value: num(s.bagsDispatched) },
+          { label: "Orders", value: num(s.todayOrders) },
+        ]}
+      />
       <Card index={1} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Outstanding", value: money(s.duesPaise) }]} />
       <Card index={2} href="/stock" title="Stock" icon={Package} tone="blue" stats={[{ label: "Bags", value: num(s.stockBags) }]} />
       <Card index={3} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "Held by staff", value: money(s.cashInHandPaise) }]} />
@@ -152,6 +168,8 @@ export async function AdminHome() {
         title="Prism" icon={Factory} tone="amber"
         stats={[{ label: s.prismPaise < 0 ? "Prism owes you" : "You owe", value: money(prism.amountPaise) }]}
       />
+      <Card index={8} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
+      <Card index={9} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
     </Cards>
   );
 }
