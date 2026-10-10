@@ -1,16 +1,18 @@
 "use server";
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { retailers, user } from "@/db/schema";
+import { orders, retailers, user } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { changedFields } from "@/lib/audit-rules";
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { canLinkRetailerUser } from "@/lib/rate-rules";
 import { hasRole } from "@/lib/roles";
+import { ORDER_STATUSES } from "@/lib/order-rules";
 import { checkRetailerPick, validateRetailer } from "@/lib/retailer-rules";
+import { checkSalesRepPick, movesWithSalesRep, salesRepOnAdd } from "@/lib/sales-rep-rules";
 import { requireRole } from "@/lib/session";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
@@ -46,6 +48,7 @@ export async function saveRetailer(
 /**
  * Adds a retailer picked from the logins the admin created (retailer role).
  * Name and phone come from that login, and the shop is linked to it. Admin and sales only.
+ * A sales person adding a shop becomes its sales person (admin can change it later).
  */
 export async function addRetailerFromLogin(userId: string, place: string): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
@@ -75,17 +78,18 @@ export async function addRetailerFromLogin(userId: string, place: string): Promi
 
   const name = login.name.trim();
   const cleanPlace = place.trim();
+  const salesRepId = salesRepOnAdd({ id: session.user.id, role: session.user.role });
   await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(retailers)
-      .values({ name, phone: login.phone, place: cleanPlace, userId: login.id })
+      .values({ name, phone: login.phone, place: cleanPlace, userId: login.id, salesRepId })
       .returning({ id: retailers.id });
     await writeAudit(tx, {
       actorId: session.user.id,
       entity: "retailer",
       entityId: row.id,
       action: "create",
-      details: { name, phone: login.phone, place: cleanPlace, userId: login.id },
+      details: { name, phone: login.phone, place: cleanPlace, userId: login.id, salesRepId },
     });
   });
   revalidatePath("/retailers");
@@ -149,4 +153,54 @@ export async function linkRetailerUser(
   });
   revalidatePath("/retailers");
   return { ok: true };
+}
+
+/**
+ * Admin picks (or changes) the sales person who looks after a retailer; null = nobody.
+ * The shop's unfinished orders move to the new sales person too (sales-rep-rules.ts).
+ */
+export async function setRetailerSalesRep(retailerId: string, salesRepId: string | null): Promise<RetailerResult> {
+  const session = await requireRole(...rolesFor("assignSalesRep"));
+  if (!isUuid(retailerId)) return { ok: false, error: "Retailer not found." };
+  if (salesRepId !== null && typeof salesRepId !== "string") return { ok: false, error: "Pick an active sales person." };
+  const [person] = salesRepId
+    ? await db
+        .select({ id: user.id, role: user.role, banned: user.banned, deletedAt: user.deletedAt })
+        .from(user)
+        .where(eq(user.id, salesRepId))
+        .limit(1)
+    : [];
+  const check = checkSalesRepPick(salesRepId, person);
+  if (!check.ok) return check;
+
+  const res = await db.transaction(async (tx): Promise<RetailerResult> => {
+    // Lock the shop so two quick changes cannot interleave.
+    const [before] = await tx
+      .select({ salesRepId: retailers.salesRepId })
+      .from(retailers)
+      .where(eq(retailers.id, retailerId))
+      .for("no key update");
+    if (!before) return { ok: false, error: "Retailer not found." };
+    if (before.salesRepId === salesRepId) return { ok: true };
+    await tx.update(retailers).set({ salesRepId, updatedAt: new Date() }).where(eq(retailers.id, retailerId));
+    const moved = await tx
+      .update(orders)
+      .set({ salesRepId, updatedAt: new Date() })
+      .where(and(eq(orders.retailerId, retailerId), inArray(orders.status, ORDER_STATUSES.filter(movesWithSalesRep))))
+      .returning({ id: orders.id });
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "retailer",
+      entityId: retailerId,
+      action: "update",
+      details: { salesRepId: { before: before.salesRepId, after: salesRepId }, ordersMoved: moved.length },
+    });
+    return { ok: true };
+  });
+  if (res.ok) {
+    revalidatePath("/retailers");
+    revalidatePath("/orders");
+    revalidatePath("/dashboard");
+  }
+  return res;
 }

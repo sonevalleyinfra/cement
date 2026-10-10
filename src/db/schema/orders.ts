@@ -9,7 +9,7 @@ import { retailers } from "./retailers";
 /**
  * One order = one product for one retailer with one firm.
  * `ratePaise` is the price per bag in paise; empty until sales fills the rate.
- * `salesRepId` is the sales person picked by round robin when the order was placed.
+ * `salesRepId` is the retailer's sales person when the order was placed (see sales-rep-rules.ts).
  * `logisticsId` is the logistics person picked by round robin when the order was approved.
  */
 export const orders = pgTable(

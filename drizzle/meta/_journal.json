@@ -120,6 +120,13 @@
       "when": 1791623185191,
       "tag": "0016_user_deleted_at",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791627986810,
+      "tag": "0017_retailer_sales_rep",
+      "breakpoints": true
     }
   ]
 }
