@@ -23,8 +23,8 @@ type OrderRow = {
   /** Logistics person on the order (shown to admin). */
   assignee: string | null;
 };
-type Vehicle = { id: string; number: string; driverName: string; driverPhone: string };
-type Place = { id: string; name: string };
+/** A stock place; `truck` is its number when the bags are on a truck. */
+type Place = { id: string; name: string; truck: string | null };
 type Balance = { productId: string; locationId: string; bags: number };
 
 const selectClass = "h-11 w-full rounded-xl border bg-background px-3 text-base";
@@ -33,21 +33,19 @@ export function DispatchView({
   isAdmin,
   orders,
   locations,
-  vehicles,
   balances,
 }: {
   firmId: string;
   isAdmin: boolean;
   orders: OrderRow[];
   locations: Place[];
-  vehicles: Vehicle[];
   balances: Balance[];
   userId: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [bags, setBags] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
+  const [truck, setTruck] = useState("");
   const [locationId, setLocationId] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
@@ -59,10 +57,9 @@ export function DispatchView({
   function openSheet(o: OrderRow) {
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
-    setVehicleId("");
     // Start with the place holding the most bags of this product.
     const fullest = [...locations].sort((a, b) => stockHere(o, b.id) - stockHere(o, a.id))[0];
-    setLocationId(fullest?.id ?? "");
+    pickPlace(fullest?.id ?? "");
     setDriverName("");
     setDriverPhone("");
     setRate("");
@@ -70,13 +67,10 @@ export function DispatchView({
     setError("");
   }
 
-  function pickVehicle(id: string) {
-    setVehicleId(id);
-    const v = vehicles.find((x) => x.id === id);
-    if (v) {
-      setDriverName(v.driverName);
-      setDriverPhone(v.driverPhone);
-    }
+  /** Bags already on a truck usually leave on that truck, so its number is filled in. */
+  function pickPlace(id: string) {
+    setLocationId(id);
+    setTruck(locations.find((l) => l.id === id)?.truck ?? "");
   }
 
   function stockHere(o: OrderRow, loc: string) {
@@ -89,7 +83,7 @@ export function DispatchView({
       const res = await dispatchOrder({
         orderId: open.id,
         bags: Number(bags),
-        vehicleId: vehicleId || null,
+        vehicleNumber: truck,
         locationId: locationId || null,
         driverName,
         driverPhone,
@@ -181,7 +175,7 @@ export function DispatchView({
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Take from
-              <select className={selectClass} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <select className={selectClass} value={locationId} onChange={(e) => pickPlace(e.target.value)}>
                 {locations.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name} ({stockHere(open, l.id)} bags)
@@ -190,15 +184,15 @@ export function DispatchView({
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold">
-              Vehicle
-              <select className={selectClass} value={vehicleId} onChange={(e) => pickVehicle(e.target.value)}>
-                <option value="">Pick a vehicle</option>
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.number}
-                  </option>
-                ))}
-              </select>
+              Truck number
+              <Input
+                value={truck}
+                onChange={(e) => setTruck(e.target.value.toUpperCase())}
+                placeholder="BR01AB1234"
+                autoCapitalize="characters"
+                autoComplete="off"
+                maxLength={14}
+              />
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Driver name

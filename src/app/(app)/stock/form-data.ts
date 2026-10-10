@@ -16,7 +16,7 @@ async function loadData(action: "manageStock" | "transferStock") {
   if (selection.mode !== "firm") return null;
   const firmId = selection.firmId;
   const [places, prods, balances] = await Promise.all([
-    getPlaces({ activeOnly: true }),
+    getPlaces({ firmId }),
     getProducts({ activeOnly: true }),
     getBalances(firmId),
   ]);

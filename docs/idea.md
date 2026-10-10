@@ -69,7 +69,8 @@ The product name is built from these (e.g. "Prism Non-trade PPC 43"). Admin can 
 products are switched off, never edited or deleted, because stock and orders point at them. A product with bags
 in stock cannot be switched off. Stock is counted in bags; screens also show tonnes (20 bags = 1 MT).
 
-**Places (admin, More → Godowns; Vehicles).** Godowns and vehicles are one shared list for all firms. Each firm's
+**Places (admin, More → Godowns).** Godowns are one shared list for all firms. Trucks are hired and never saved:
+the truck number, driver and phone are typed on each purchase or dispatch, and a truck is listed only while it holds bags. Each firm's
 bags at a place are kept separately (the firm's stock row there is made automatically). A godown or vehicle cannot
 be switched off while any firm has bags there.
 

@@ -646,22 +646,24 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 - **Admin**: sees every firm, manages users, retailers' logins, stock and opening balances. "All firms" is view only.
 - **Sales**: places orders, fills the rate, cancels own orders before approval.
 - **Accounts**: approves or rejects orders, verifies online payments and cheques, confirms cash handovers.
-- **Logistics**: dispatches (partly or fully), marks delivered, looks after vehicles.
+- **Logistics**: dispatches (partly or fully), marks delivered.
 - **Retailer**: places own orders and sees own orders and dues. Never sees prices on orders.
 
 ### Products and places (admin)
 - **More → Catalogue**: products are made from drop-downs: Brand → Trade / Non-trade → Type (OPC / PPC) → Grade
   (33 / 43 / 53). All 12 Prism products are ready; turn off the ones you don't sell. Add a new grade or type under
   the Types tab.
-- **More → Godowns**: one list for all firms. Each firm's bags in a godown or vehicle stay separate.
-  A godown or vehicle with bags in it cannot be turned off.
+- **More → Godowns**: one list for all firms. Each firm's bags in a godown or truck stay separate.
+  A godown with bags in it cannot be turned off.
+- **Trucks are hired, so none are saved.** In a purchase pick "New truck…" and type the truck number, driver
+  and phone; in a dispatch type the truck number each time. A truck shows in the place lists only while it holds bags.
 - **Stock**: switch between *By product* and *By place*, and filter by Trade / Non-trade and type.
 
 ### The daily flow
 1. Sales (or the retailer) places an order for one firm.
 2. Sales fills the rate per bag and sends it for approval.
 3. Accounts approves it. This bills the retailer in that firm's ledger.
-4. Logistics dispatches from a godown with a vehicle (partly now, the rest later).
+4. Logistics dispatches from a godown, typing the truck number and driver (partly now, the rest later).
 5. Every dispatch takes bags out of that firm's stock.
 6. Logistics marks the order delivered.
 7. Anyone on staff records a receipt (cash, online or cheque) and splits it across firms and orders.
@@ -671,7 +673,7 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 1. `pnpm dev` (creates the tables and the admin), then in another terminal `pnpm seed:demo`.
 2. Sign in with password `Demo@12345` and one of: `admin@demo.test`, `sales@demo.test`, `accounts@demo.test`,
    `logistics@demo.test`, `retailer@demo.test`.
-3. It adds 6 retailers, 2 vehicles, one shared godown with 500 bags of every product for each firm, 6 orders in different
+3. It adds 6 retailers, 2 truck numbers, one shared godown with 500 bags of every product for each firm, 6 orders in different
    statuses and one cash receipt. Running it twice is safe.
 4. It refuses to run on production or on a database that is not on localhost. This password is public: never
    use these accounts anywhere real.

@@ -32,8 +32,6 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   editRetailers:     [Y, Y, N, N, N, N],
   linkRetailerLogin: [Y, N, N, N, N, N],
   assignSalesRep:    [Y, N, N, N, N, N],
-  viewVehicles:      [Y, Y, Y, Y, N, N],
-  editVehicles:      [Y, N, N, Y, N, N],
   manageUsers:       [Y, N, N, N, N, N],
   manageFirms:       [Y, N, N, N, N, N],
   manageCatalogue:   [Y, N, N, N, N, N],

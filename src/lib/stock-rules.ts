@@ -122,6 +122,9 @@ export function transferMovements(
   };
 }
 
+/** The place value for "New truck…" in the purchase form: the truck number and driver are typed in. */
+export const NEW_TRUCK_PLACE = "new-truck";
+
 /** Purchase and opening stock add bags (admin entry; caller checks admin). */
 export function inMovement(
   type: "purchase" | "opening",
@@ -182,13 +185,13 @@ export function canSwitchOffPlace(bagsThere: number): { ok: true } | { ok: false
   return bagsThere > 0 ? { ok: false, error: "Move the bags out first." } : { ok: true };
 }
 
-/** Places for a drop-down, in Godowns / Vehicles sections (empty sections left out). Keeps the given order. */
+/** Places for a drop-down, in Godowns / Trucks sections (empty sections left out). Keeps the given order. */
 export function placeGroups(
   places: readonly { key: string; kind: string; name: string }[],
 ): { label: string; options: { value: string; label: string }[] }[] {
   return [
     { label: "Godowns", kind: "godown" },
-    { label: "Vehicles", kind: "vehicle" },
+    { label: "Trucks", kind: "vehicle" },
   ]
     .map((g) => ({
       label: g.label,

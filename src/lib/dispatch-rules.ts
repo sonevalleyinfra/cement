@@ -27,9 +27,9 @@ import {
   type Assignee,
   type OrderStatus,
 } from "./order-rules";
-import { isValidIndianMobile, normalizePhone } from "./retailer-rules";
 import { hasRole, isAdmin } from "./roles";
 import { canDispatch } from "./stock-rules";
+import { checkTruck } from "./vehicle-rules";
 
 const DISPATCHABLE: readonly OrderStatus[] = ["approved", "assigned", "partly_dispatched"];
 
@@ -144,26 +144,22 @@ export function checkRateEdit(
 
 export type DispatchInput = {
   readOnlyMode: boolean;
-  vehicleId: string | null;
+  /** The truck number as typed; trucks are not saved. */
+  vehicleNumber: string;
   locationId: string | null;
   driverName: string;
   driverPhone: string;
 };
 
-/** Checks the sheet fields. Driver phone is optional, but must be a 10-digit mobile when given. */
+/** Checks the sheet fields: the stock place, then the typed truck (see `checkTruck`). */
 export function checkDispatchFields(
   input: DispatchInput,
-): { ok: true; driverName: string; driverPhone: string } | { ok: false; error: string } {
+): { ok: true; vehicleNumber: string; driverName: string; driverPhone: string } | { ok: false; error: string } {
   if (input.readOnlyMode) return { ok: false, error: "Pick one firm to dispatch." };
-  if (!input.vehicleId) return { ok: false, error: "Pick a vehicle." };
   if (!input.locationId) return { ok: false, error: "Pick where the bags are coming from." };
-  const driverName = input.driverName.trim().replace(/\s+/g, " ").slice(0, 80);
-  if (!driverName) return { ok: false, error: "Enter the driver name." };
-  const driverPhone = normalizePhone(input.driverPhone);
-  if (driverPhone && !isValidIndianMobile(driverPhone)) {
-    return { ok: false, error: "Enter a 10-digit driver mobile." };
-  }
-  return { ok: true, driverName, driverPhone };
+  const truck = checkTruck({ number: input.vehicleNumber, driverName: input.driverName, driverPhone: input.driverPhone });
+  if (!truck.ok) return truck;
+  return { ok: true, vehicleNumber: truck.value.number, driverName: truck.value.driverName, driverPhone: truck.value.driverPhone };
 }
 
 export type DispatchPlan =

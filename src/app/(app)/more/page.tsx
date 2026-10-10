@@ -33,7 +33,6 @@ const rows: Row[] = [
   { href: "/ledger", label: "Ledger", icon: BookOpen, tone: "rose", permission: "viewLedger" },
   { href: "/receipts", label: "Receipts", icon: Receipt, tone: "teal", permission: "viewReceipts" },
   { href: "/wallet", label: "Wallet", icon: Wallet, tone: "green", permission: "useWallet" },
-  { href: "/vehicles", label: "Vehicles", icon: Truck, tone: "amber", permission: "viewVehicles" },
   { href: "/account", label: "Change password", icon: KeyRound, tone: "orange" },
 ];
 

@@ -37,7 +37,7 @@ export function StockView({ products, rows }: { products: StockProduct[]; rows: 
   const [view, setView] = useState<View>("product");
   const [filters, setFilters] = useState<StockFilters>(NO_FILTERS);
   const total = stockTotal(rows, products, filters);
-  const placeLabel = (kind: string, name: string) => (kind === "vehicle" ? `Vehicle ${name}` : name);
+  const placeLabel = (kind: string, name: string) => (kind === "vehicle" ? `Truck ${name}` : name);
 
   const bySection = view === "product" ? stockByProduct(rows, products, filters) : [];
   const byPlace = view === "place" ? stockByPlace(rows, products, filters) : [];

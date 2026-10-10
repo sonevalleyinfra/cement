@@ -52,15 +52,21 @@ describe("checkRateEdit", () => {
 });
 
 describe("checkDispatchFields", () => {
-  const base = { readOnlyMode: false, vehicleId: "v", locationId: "l", driverName: " Ram  Singh ", driverPhone: "" };
+  const base = { readOnlyMode: false, vehicleNumber: "br01 ab 1234", locationId: "l", driverName: " Ram  Singh ", driverPhone: "" };
   it("accepts and tidies", () => {
-    expect(checkDispatchFields(base)).toEqual({ ok: true, driverName: "Ram Singh", driverPhone: "" });
+    expect(checkDispatchFields(base)).toEqual({
+      ok: true,
+      vehicleNumber: "BR01AB1234",
+      driverName: "Ram Singh",
+      driverPhone: "",
+    });
   });
   it("blocks All firms mode", () => {
     expect(checkDispatchFields({ ...base, readOnlyMode: true }).ok).toBe(false);
   });
-  it("needs vehicle, location and driver name", () => {
-    expect(checkDispatchFields({ ...base, vehicleId: null }).ok).toBe(false);
+  it("needs a valid truck number, location and driver name", () => {
+    expect(checkDispatchFields({ ...base, vehicleNumber: "" })).toEqual({ ok: false, error: "Enter the truck number." });
+    expect(checkDispatchFields({ ...base, vehicleNumber: "BR01" }).ok).toBe(false);
     expect(checkDispatchFields({ ...base, locationId: null }).ok).toBe(false);
     expect(checkDispatchFields({ ...base, driverName: " " }).ok).toBe(false);
   });
