@@ -156,11 +156,6 @@ export type ActivityRow = {
   details: Record<string, unknown> | null;
 };
 
-/** Entities whose `entityId` is itself a named record (user, shop, product...). */
-const NAMED_ENTITIES = new Set(["user", "retailer", "godown", "brand", "product", "cement_type", "grade", "vehicle"]);
-const ID_KEYS = ["retailerId", "productId", "collectorId", "userId", "brandId"] as const;
-const PLACE_KEYS = ["place", "from", "to"] as const;
-
 /** The id inside a place key ("godown:<id>" → "<id>"), or null. */
 function placeId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -168,30 +163,10 @@ function placeId(value: unknown): string | null {
   return (kind === "godown" || kind === "vehicle") && id ? id : null;
 }
 
-/** Every id the sentences of these rows need a name for (people, shops, products, places, lists). */
-export function referencedIds(rows: readonly ActivityRow[]): string[] {
-  const ids = new Set<string>();
-  const add = (v: unknown) => {
-    if (typeof v === "string" && v) ids.add(v);
-  };
-  for (const r of rows) {
-    add(r.actorId);
-    if (NAMED_ENTITIES.has(r.entity)) add(r.entityId);
-    const d = r.details ?? {};
-    for (const k of ID_KEYS) add(d[k]);
-    for (const k of PLACE_KEYS) add(placeId(d[k]));
-    const rep = d.salesRepId;
-    if (rep && typeof rep === "object") {
-      add((rep as Record<string, unknown>).before);
-      add((rep as Record<string, unknown>).after);
-    } else add(rep);
-  }
-  return [...ids];
-}
 
 /** Money in a sentence: whole rupees when there are no paise, else rupees and paise. */
 function rs(paise: number): string {
-  return formatINR(paise, { hidePaise: paise % 100 === 0 });
+  return formatINR(paise, { hidePaise: true });
 }
 
 function n(v: unknown): number | null {
@@ -286,7 +261,9 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
         case "reject":
           return say(`rejected ${money} online from ${shop}${reason}`);
         case "reverse":
-          return say(`reversed ${money} ${mode} payment from ${shop}${reason}`);
+          return say(
+            `reversed ${money} ${mode} payment from ${shop}${reason}${s(d.cashWith) === "office" ? " (cash already with office)" : ""}`,
+          );
       }
       break;
     }

@@ -23,7 +23,7 @@ describe("stockFlows", () => {
     expect(totalFlow([])).toMatchObject({ closingBags: 0, reconciles: true });
   });
 
-  it("opening + purchased − dispatched ± moved ± fixed = closing", () => {
+  it("start + opening stock + purchased − dispatched ± moved ± fixed = end", () => {
     const rows = [
       move("opening", 500, "2026-09-01T00:00:00Z"),
       move("dispatch", -50, "2026-09-30T18:29:00Z"), // 23:59 IST on 30 Sep: before the range
@@ -32,6 +32,7 @@ describe("stockFlows", () => {
       move("transfer", -30, "2026-10-03T10:00:00Z"),
       move("transfer", 30, "2026-10-03T10:00:00Z", { godownId: null, vehicleId: "v1" }),
       move("adjustment", -5, "2026-10-04T10:00:00Z"),
+      move("opening", 70, "2026-10-04T11:00:00Z", { godownId: "g2" }), // a new godown counted in the range
       move("purchase", 999, "2026-10-05T18:30:00Z"), // 00:00 IST on 6 Oct: after the range
     ];
     const [f] = stockFlows(rows, range, names);
@@ -39,13 +40,25 @@ describe("stockFlows", () => {
       productId: "p1",
       label: "OPC 43",
       openingBags: 450,
+      openingStockBags: 70,
       purchasedBags: 200,
       dispatchedBags: 40,
       movedBags: 0,
       fixedBags: -5,
-      closingBags: 605,
+      closingBags: 675,
       reconciles: true,
     });
+    expect(totalFlow([f])).toMatchObject({ openingStockBags: 70, fixedBags: -5, reconciles: true });
+  });
+
+  it("opening stock entered in the range is its own line, never counted as a correction", () => {
+    const [f] = stockFlows([move("opening", 100, "2026-10-02T00:00:00Z")], range, names);
+    expect(f).toMatchObject({ openingBags: 0, openingStockBags: 100, fixedBags: 0, closingBags: 100, reconciles: true });
+  });
+
+  it("a dispatch reversal is not a movement kind any more: flagged if one ever shows up", () => {
+    const [f] = stockFlows([move("dispatch_reversal", 10, "2026-10-02T00:00:00Z")], range, names);
+    expect(f.reconciles).toBe(false);
   });
 
   it("flags a movement type it does not know", () => {

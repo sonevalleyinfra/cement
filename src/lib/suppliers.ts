@@ -113,7 +113,7 @@ export async function hasSupplierOpening(brandId: string): Promise<boolean> {
   return Boolean(row);
 }
 
-/** Brands for pickers (statement): every brand that has entries or is switched on, by name. */
+/** Brands for pickers (statement): every brand that has entries or is switched on, by name, with how many entries. */
 export async function supplierOptions() {
-  return (await getSuppliers()).map((s) => ({ id: s.id, name: s.name }));
+  return (await getSuppliers()).map((s) => ({ id: s.id, name: s.name, entries: s.entries }));
 }

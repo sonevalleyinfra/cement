@@ -5,21 +5,18 @@
  *
  * The ledger (`ledger_entries`, signed paise, + = the retailer owes) is the source of truth.
  * - Debit items, oldest first: a positive opening balance (always first), then each dispatch
- *   (an `order_debit` row: bags x rate, billed when the bags leave) as its own item, dated when
- *   it was posted. So a second load sent a month later ages from its own day.
- * - Any other row linked to an order (older data: rate fixes, cancel reversals) belongs to that
- *   order: a plus adds to the order's oldest item, a minus clears the order's items oldest first.
- *   If an order ends up at 0 or less, the rest is a credit.
- * - Credits = minus the sum of every entry WITHOUT an orderId (payment credits, payment
- *   reversals, adjustments, a negative opening), plus what is left of negative orders.
- *   Credits are applied to the items oldest first; what is left of each item is still due.
- * - So an advance pays later dispatches by itself, and an opening balance shows as the oldest due.
+ *   (an `order_debit` row: bags x rate, billed when the bags leave) and each positive adjustment
+ *   (admin: the retailer owes more), each as its own item dated when it was posted. So a second load
+ *   sent a month later, or an adjustment added today, ages from its own day.
+ * - Credits = minus the sum of every other row: payments (minus), payment reversals (plus: they
+ *   cancel a payment, so they bring the old items back rather than starting a new one), a negative
+ *   opening and negative adjustments. Credits are applied to the items oldest first; what is left of
+ *   each item is still due. So an advance pays later dispatches by itself.
  *
  * Choices where the spec is silent:
  * - Ties (same moment) keep the order the entries were given in.
- * - If the entries without an orderId add up to a debit (for example a manual adjustment),
- *   that amount becomes one more item ("other"), dated at its first such entry, so the
- *   promise below always holds.
+ * - If the credits add up to a debit (more reversed than paid, which should not happen), that amount
+ *   becomes one more item ("other"), dated at its first such row, so the promise below always holds.
  * - Aging counts whole calendar days in India from the day an item was posted to the "as of" day:
  *   0-30 days, 31-60, 61-90, over 90.
  *
@@ -37,7 +34,7 @@ export type LedgerRow = {
 };
 
 export type DueItem = {
-  kind: "opening" | "order" | "other";
+  kind: "opening" | "order" | "adjustment" | "other";
   /** The order, for kind "order". */
   orderId: string | null;
   /** When the debit was first posted. */
@@ -68,58 +65,27 @@ export function duesFromLedger(rows: readonly LedgerRow[]): RetailerDues {
     if (!Number.isSafeInteger(e.amountPaise)) throw new RangeError("Ledger amounts must be whole paise");
   }
   const drafts: Draft[] = [];
-  // Per order: its dispatch items (oldest first) and the sum of its other rows.
-  const orders = new Map<string, { items: Draft[]; extra: number; firstAt: number; firstSeq: number }>();
   let balance = 0;
-  let looseSum = 0; // entries without an order, except a positive opening
-  let firstLooseDebitAt: number | null = null;
-  let firstLooseDebitSeq = 0;
+  let credits = 0;
+  let firstLooseDebit: { at: number; seq: number } | null = null;
 
   rows.forEach((e, seq) => {
     balance += e.amountPaise;
     const at = new Date(e.createdAt).getTime();
-    if (e.orderId) {
-      let o = orders.get(e.orderId);
-      if (!o) {
-        o = { items: [], extra: 0, firstAt: at, firstSeq: seq };
-        orders.set(e.orderId, o);
-      }
-      if (at < o.firstAt) [o.firstAt, o.firstSeq] = [at, seq];
-      if (e.kind === "order_debit" && e.amountPaise > 0) {
-        o.items.push({ kind: "order", orderId: e.orderId, at, seq, amount: e.amountPaise });
-      } else {
-        o.extra += e.amountPaise;
-      }
-    } else if (e.kind === "opening" && e.amountPaise > 0) {
-      drafts.push({ kind: "opening", orderId: null, at, seq, amount: e.amountPaise });
+    if (e.amountPaise > 0 && e.kind === "opening") drafts.push({ kind: "opening", orderId: null, at, seq, amount: e.amountPaise });
+    else if (e.amountPaise > 0 && e.kind === "order_debit") {
+      drafts.push({ kind: "order", orderId: e.orderId, at, seq, amount: e.amountPaise });
+    } else if (e.amountPaise > 0 && e.kind === "adjustment") {
+      drafts.push({ kind: "adjustment", orderId: null, at, seq, amount: e.amountPaise });
     } else {
-      looseSum += e.amountPaise;
-      if (e.amountPaise > 0 && (firstLooseDebitAt === null || at < firstLooseDebitAt)) {
-        firstLooseDebitAt = at;
-        firstLooseDebitSeq = seq;
-      }
+      credits -= e.amountPaise;
+      if (e.amountPaise > 0 && (firstLooseDebit === null || at < firstLooseDebit.at)) firstLooseDebit = { at, seq };
     }
   });
 
-  let credits = -looseSum;
-  for (const [orderId, o] of orders) {
-    o.items.sort((a, b) => a.at - b.at || a.seq - b.seq);
-    if (o.extra > 0) {
-      if (o.items.length > 0) o.items[0].amount += o.extra;
-      else o.items.push({ kind: "order", orderId, at: o.firstAt, seq: o.firstSeq, amount: o.extra });
-    } else if (o.extra < 0) {
-      let take = -o.extra;
-      for (const item of o.items) {
-        const used = Math.min(take, item.amount);
-        item.amount -= used;
-        take -= used;
-      }
-      credits += take; // more taken off than this order was billed: the rest is a credit
-    }
-    for (const item of o.items) if (item.amount > 0) drafts.push(item);
-  }
   if (credits < 0) {
-    drafts.push({ kind: "other", orderId: null, at: firstLooseDebitAt ?? 0, seq: firstLooseDebitSeq, amount: -credits });
+    const from: { at: number; seq: number } = firstLooseDebit ?? { at: 0, seq: 0 };
+    drafts.push({ kind: "other", orderId: null, at: from.at, seq: from.seq, amount: -credits });
     credits = 0;
   }
 
@@ -133,11 +99,6 @@ export function duesFromLedger(rows: readonly LedgerRow[]): RetailerDues {
   }
   const due = items.reduce((n, i) => n + i.duePaise, 0);
   return { balancePaise: balance, duePaise: due, items };
-}
-
-/** The oldest item still owed, or null when nothing is due. */
-export function oldestDue(f: RetailerDues): Date | null {
-  return f.items[0]?.dueSince ?? null;
 }
 
 /** Aging buckets in paise. */

@@ -643,13 +643,22 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 ## 17. Phase 1: the cement app
 
 ### Roles
-- **Admin**: sees everything, manages users, retailers' logins, stock, opening balances and ledger adjustments.
-- **Sales**: places orders (typing the rate) and fills the rate on their shops' orders. Records payments.
+- **Admin**: sees everything, manages users, adds and edits shops (each with its sales person) and links their
+  logins, stock, opening balances and ledger adjustments.
+- **Sales**: places orders for any shop (typing the rate), so they can cover for a colleague, and fills the rate on
+  their own shops' orders. Sees every shop's dues. Records payments.
 - **Accounts**: approves or rejects orders (only once the rate is filled), verifies online payments,
   confirms cash handovers, reverses a payment entered by mistake.
 - **Logistics**: dispatches any approved order (partly or fully) and can change the rate, with a reason. Records payments.
 - **Admin**: everything, and is the only one who can cancel an order.
-- **Retailer**: places own orders and sees own orders and dues. Never sees prices on orders.
+- **Retailer**: places own orders and sees own orders, own total dues and own payments. Never sees rates or the
+  amount of a dispatch (their ledger lists what came: date, product and bags).
+
+### Shops (admin)
+- **More → Retailers → Add**: name, phone, place and the **sales person** (required). No login is needed. To let the
+  shop order by itself, create a user with the retailer role and pick it in the shop's login box.
+- A shop with no sales person (older data) shows on the admin home ("Shops: without sales person"); its new orders
+  also notify every admin, so nothing waits on nobody.
 
 ### Products and places (admin)
 - **More → Catalogue**: products are made from drop-downs: Brand → Trade / Non-trade → Type (OPC / PPC) → Grade
@@ -660,13 +669,18 @@ Commands that change things (ship, release, launch...) only run when **you** typ
   While only one brand is on, no screen asks for the brand; once there are two, the brand is the first pick in the
   purchase, opening, adjust and move forms and in **Add product**, and lists group products by brand.
 - **More → Godowns**: the list of godowns. A godown with bags in it cannot be turned off.
-- **Trucks are hired, so none are saved.** In a purchase pick "New truck…" and type the truck number, driver
-  and phone; in a dispatch type the truck number each time. A truck shows in the place lists only while it holds bags.
+- **Trucks are hired, so none are saved.** In a purchase or a move (Stock → Move bags, "To") pick "New truck…" and
+  type the truck number, driver and phone; in a dispatch type the truck number each time. A truck shows in the place
+  lists only while it holds bags. The logistics home shows each loaded truck with its bags per product.
+- **Stock correction** (Stock → Adjust, admin): add or remove bags with a reason (damage, burst bags, shortage,
+  count) and an optional note.
 - **Stock**: switch between *By product* and *By place*, and filter by brand (when more than one has bags),
   Trade / Non-trade and type.
 - **Purchase** (Stock → Purchase, admin): pick the brand (if there are several), the product and the place, type the
   bags and the **cost per bag** (required, in rupees), and an invoice number if you have one. One save adds the bags to
   stock and adds bags x cost to what you owe **that brand's supplier** ("Owed to UltraTech" shows before you save).
+  The pickers only offer products that exist; picking another brand starts at that brand's first product. Add a new
+  product in Catalogue first.
   The cost per bag is kept so the reports can show the average purchase cost. A purchase typed wrongly is fixed with a
   stock correction and an adjustment on the supplier account, not by editing it.
 
@@ -681,7 +695,7 @@ Commands that change things (ship, release, launch...) only run when **you** typ
   **Credit** is a scheme or discount from that supplier (reason required). **Adjust** adds or removes an amount, with
   a reason. Each has a date: today unless you pick an earlier day.
 - Entries are never edited or deleted. If one is wrong, add an adjustment with the reason. Every entry also
-  appears in the activity log, with the brand's name. Old links to the Prism account open Suppliers.
+  appears in the activity log, with the brand's name.
 
 ### The daily flow
 1. Sales places an order and types the rate per bag. Or the retailer places it (no rate); then the shop's sales
@@ -700,10 +714,12 @@ Commands that change things (ship, release, launch...) only run when **you** typ
   amount if less arrived (the rest stays with that person), or **Reject** with a reason.
 - **Online** needs the UTR / reference. It waits as *Not verified* and does not change the dues. Accounts check the
   bank statement and tap **Verified** (the dues go down then) or **Reject** with a reason. The same UTR cannot be
-  recorded twice.
+  recorded twice while that payment stands (a rejected or reversed one frees it).
 - **Reverse** (accounts or admin, with a reason) undoes a received cash or verified online payment: the dues go back
-  up. Cash can be reversed only while that person still holds it; after it was handed over, admin adds a ledger
-  **Adjustment** on the retailer's ledger page instead (owes more / owes less, with a reason).
+  up and the payment shows *Reversed*. For cash, pick where the money is: **Cash is still with <name>** (it comes off
+  their cash held; they must still hold that much) or **Cash already handed to office** (nobody's cash changes).
+- Tapping Save twice never saves twice: each form saves once.
+- A staff member who still holds cash cannot be deactivated, deleted or lose every staff role until they hand it over.
 
 ### Reports and activity (admin)
 - **More → Reports** (also on the admin home). Pick the dates (From / To, India days; this month by default) and open:
@@ -711,9 +727,12 @@ Commands that change things (ship, release, launch...) only run when **you** typ
   bags x average purchase cost; products with no purchase cost show "Cost unknown" and are left out of the total;
   supplier scheme credits shown on their own), **Dues and aging** (as of the To day: 0–30, 31–60, 61–90, 90+ days,
   oldest dues cleared first by payments; advances listed apart), **Retailer statement** (opening, every entry,
-  closing), **Stock** (now by product and place; opening + bought − sent ± moved ± fixed = closing for the dates),
+  closing), **Stock** (now by product and place; start + opening stock + bought − sent ± moved ± fixed = end for the
+  dates),
   **Cash and online** (cash held per person, online to verify, payments recorded by mode), **Supplier statement** (pick the brand when there are several) and
-  **Staff activity** (orders placed, approvals, dispatches, payments per person).
+  **Staff activity** (orders placed, approvals, dispatches, payments per person). Sales by sales person use the
+  sales person at the time of each dispatch, so moving a shop to someone else does not change old sales. All money in
+  reports and statements shows rupees and paise exactly.
 - A red "Does not add up" box means a statement or the stock did not reconcile. It should never show; if it does,
   tell Claude.
 - **More → Activity**: who did what and when, newest first, as short sentences ("Ramesh dispatched 50 bags of ... to

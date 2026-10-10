@@ -11,11 +11,11 @@ import {
   paymentEntry,
   purchaseAmountPaise,
   purchaseEntry,
-  supplierBalance,
   supplierBalanceLabel,
   supplierKindLabel,
   supplierHomeLines,
   suppliersToShow,
+  startSupplier,
 } from "./supplier-rules";
 
 const D = "2026-10-10";
@@ -218,22 +218,20 @@ describe("balance", () => {
   ].map((r) => (r.ok ? r.entry : { brandId: "?", amountPaise: Number.NaN }));
 
   it("is the sum of one brand's signed amounts", () => {
-    expect(supplierBalance([], P)).toBe(0);
-    expect(supplierBalance(entries, P)).toBe(5_000_000 + 3_000_000 - 2_000_000 - 100_000 - 50_000);
-    expect(supplierBalance(entries, U)).toBe(1_000_000 + 400_000 - 300_000);
-    expect(supplierBalance(entries, "nobody")).toBe(0);
+    expect(balancesByBrand([]).size).toBe(0);
+    expect(balancesByBrand(entries).get(P)).toBe(5_000_000 + 3_000_000 - 2_000_000 - 100_000 - 50_000);
+    expect(balancesByBrand(entries).get(U)).toBe(1_000_000 + 400_000 - 300_000);
+    expect(balancesByBrand(entries).get("nobody")).toBeUndefined();
   });
   it("a payment to one brand never changes another brand's balance", () => {
-    const before = supplierBalance(entries, P);
+    const before = balancesByBrand(entries);
     const pay = paymentEntry(U, 50_000, "cash", "", D);
-    const after = [...entries, ...(pay.ok ? [pay.entry] : [])];
-    expect(supplierBalance(after, P)).toBe(before);
-    expect(supplierBalance(after, U)).toBe(supplierBalance(entries, U) - 50_000);
+    const after = balancesByBrand([...entries, ...(pay.ok ? [pay.entry] : [])]);
+    expect(after.get(P)).toBe(before.get(P));
+    expect(after.get(U)).toBe((before.get(U) ?? 0) - 50_000);
   });
-  it("balancesByBrand adds up every brand at once, and they total the whole ledger", () => {
+  it("balancesByBrand totals the whole ledger", () => {
     const map = balancesByBrand(entries);
-    expect(map.get(P)).toBe(supplierBalance(entries, P));
-    expect(map.get(U)).toBe(supplierBalance(entries, U));
     expect([...map.values()].reduce((a, b) => a + b, 0)).toBe(entries.reduce((a, e) => a + e.amountPaise, 0));
   });
   it("is worded for the page with the brand name", () => {
@@ -299,5 +297,25 @@ describe("signs", () => {
     expect(p.ok && p.entry.amountPaise).toBeGreaterThan(0);
     expect(pay.ok && pay.entry.amountPaise).toBeLessThan(0);
     expect(cr.ok && cr.entry.amountPaise).toBeLessThan(0);
+  });
+});
+
+describe("startSupplier", () => {
+  const list = [
+    { id: "acc", entries: 0 },
+    { id: "prism", entries: 12 },
+    { id: "ultra", entries: 3 },
+  ];
+  it("opens on the first supplier with entries, never an empty one", () => {
+    expect(startSupplier(list)).toBe("prism");
+    expect(startSupplier(list, "nope")).toBe("prism");
+  });
+  it("keeps a supplier that was picked", () => {
+    expect(startSupplier(list, "acc")).toBe("acc");
+    expect(startSupplier(list, "ultra")).toBe("ultra");
+  });
+  it("falls back to the first when none has entries, and to nothing when there are none", () => {
+    expect(startSupplier([{ id: "a", entries: 0 }, { id: "b", entries: 0 }])).toBe("a");
+    expect(startSupplier([])).toBe("");
   });
 });

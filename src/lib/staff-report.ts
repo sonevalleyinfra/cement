@@ -11,7 +11,9 @@
  *   are not in the total.
  * - Online waiting "age" = whole days in India since the oldest one was recorded.
  * - Staff activity counts what each person did in the range: orders they placed, orders they
- *   approved / rejected, dispatches (loads and bags) and payments they recorded that still stand.
+ *   approved / rejected (only history rows where the status really changed, so a rate edit on an
+ *   approved order is not another approval), dispatches (loads and bags) and payments they
+ *   recorded that still stand.
  */
 import { toISTDateKey } from "./datetime";
 import { daysBetween } from "./report-range";
@@ -107,7 +109,8 @@ export type StaffLine = {
 export function staffActivity(
   input: {
     orders: readonly { placedBy: string }[];
-    decisions: readonly { actorId: string; toStatus: string }[];
+    /** Order history rows; only real status changes to approved / rejected count. */
+    decisions: readonly { actorId: string; fromStatus: string | null; toStatus: string }[];
     dispatches: readonly { dispatchedBy: string; bags: number }[];
     payments: readonly Pick<PaymentRow, "receivedBy" | "status" | "totalPaise">[];
     cash: readonly CashHolder[];
@@ -136,6 +139,7 @@ export function staffActivity(
   };
   for (const o of input.orders) line(o.placedBy).ordersPlaced += 1;
   for (const d of input.decisions) {
+    if (d.fromStatus === d.toStatus) continue;
     if (d.toStatus === "approved") line(d.actorId).approved += 1;
     else if (d.toStatus === "rejected") line(d.actorId).rejected += 1;
   }

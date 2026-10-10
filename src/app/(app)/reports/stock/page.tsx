@@ -49,12 +49,13 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
         <DataTable
           columns={[
             { label: "Product" },
+            { label: "Start" },
             { label: "Opening" },
             { label: "Bought" },
             { label: "Sent" },
             { label: "Moved" },
             { label: "Fixed" },
-            { label: "Closing" },
+            { label: "End" },
           ]}
           rows={flows.map((f) => [
             <span key="n" className={f.reconciles ? "" : "text-rose-700"}>
@@ -62,6 +63,7 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
               {f.reconciles ? "" : " ⚠"}
             </span>,
             num(f.openingBags),
+            signedNum(f.openingStockBags),
             signedNum(f.purchasedBags),
             signedNum(-f.dispatchedBags),
             signedNum(f.movedBags),
@@ -71,6 +73,7 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
           total={[
             "Total",
             num(total.openingBags),
+            signedNum(total.openingStockBags),
             signedNum(total.purchasedBags),
             signedNum(-total.dispatchedBags),
             signedNum(total.movedBags),

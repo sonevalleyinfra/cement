@@ -82,9 +82,9 @@ describe("staffActivity", () => {
       {
         orders: [{ placedBy: "s" }, { placedBy: "s" }],
         decisions: [
-          { actorId: "a", toStatus: "approved" },
-          { actorId: "a", toStatus: "rejected" },
-          { actorId: "a", toStatus: "cancelled" },
+          { actorId: "a", fromStatus: "placed", toStatus: "approved" },
+          { actorId: "a", fromStatus: "placed", toStatus: "rejected" },
+          { actorId: "a", fromStatus: "approved", toStatus: "cancelled" },
         ],
         dispatches: [
           { dispatchedBy: "l", bags: 30 },
@@ -104,6 +104,25 @@ describe("staffActivity", () => {
       ["Mohan", 0, 0, 0, 2, 50, 1, 700, 0],
       ["Ravi", 2, 0, 0, 0, 0, 1, 1000, 1000],
     ]);
+  });
+
+  it("a rate edit on an approved order (approved → approved) is not another approval", () => {
+    const lines = staffActivity(
+      {
+        orders: [],
+        decisions: [
+          { actorId: "a", fromStatus: "placed", toStatus: "approved" },
+          { actorId: "l", fromStatus: "approved", toStatus: "approved" },
+          { actorId: "a", fromStatus: "approved", toStatus: "approved" },
+          { actorId: "a", fromStatus: "rejected", toStatus: "rejected" },
+        ],
+        dispatches: [],
+        payments: [],
+        cash: [],
+      },
+      names,
+    );
+    expect(lines.map((l) => [l.personId, l.approved, l.rejected])).toEqual([["a", 1, 0]]);
   });
 
   it("no data", () => {

@@ -6,7 +6,8 @@
  * Choices where the spec is silent:
  * - A sale is a DISPATCH (that is when bags are billed): value = bags × the rate stored on that
  *   dispatch. Orders that were never dispatched are not sales.
- * - The sales person is the shop's sales person recorded on the order ("No sales person" if empty).
+ * - The sales person is the one saved on each dispatch when the bags left ("No sales person" if
+ *   empty), so the report does not change when admin later gives the shop to someone else.
  * - The day is the calendar day in India when the bags left.
  * - Cost per bag = weighted average purchase cost of that product: (Σ bags × cost) ÷ Σ bags, over
  *   purchases with a known cost up to the end of the range (older purchases without a cost are

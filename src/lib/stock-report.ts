@@ -4,16 +4,17 @@
  * "Stock: by product and by place (godowns + trucks)").
  *
  * For a date range, per product:
- *   opening (every movement before the range)
- *   + purchased − dispatched ± moved ± fixed  (movements in the range)
- *   = closing (every movement up to the end of the range, summed separately).
+ *   opening (every movement before the range: the "Start" column)
+ *   + opening stock entered + purchased − dispatched ± moved ± fixed  (movements in the range)
+ *   = closing (every movement up to the end of the range, summed separately: the "End" column).
  * `reconciles` is false when the two ways disagree (for example a movement type this report
  * does not know); the screen flags it.
  *
  * Choices where the spec is silent:
  * - "Moved" = transfers between places; for one product they normally add up to 0.
- * - "Fixed" = admin corrections, plus opening stock entered during the range.
- * - "Dispatched" = bags sent to shops (minus any dispatch reversal), shown as a plus number.
+ * - "Opening" = opening stock entered during the range (a first count of a place), shown apart
+ *   from "Fixed" = admin corrections (damage, burst, shortage, count).
+ * - "Dispatched" = bags sent to shops, shown as a plus number.
  */
 import { placeKey } from "./stock-rules";
 
@@ -31,6 +32,8 @@ export type StockFlow = {
   productId: string;
   label: string;
   openingBags: number;
+  /** Opening stock entered during the range (not a correction). */
+  openingStockBags: number;
   purchasedBags: number;
   dispatchedBags: number;
   movedBags: number;
@@ -55,6 +58,7 @@ export function stockFlows(rows: readonly StockMoveRow[], range: { start: Date; 
         productId: r.productId,
         label: productNames.get(r.productId) ?? "Product",
         openingBags: 0,
+        openingStockBags: 0,
         purchasedBags: 0,
         dispatchedBags: 0,
         movedBags: 0,
@@ -70,23 +74,35 @@ export function stockFlows(rows: readonly StockMoveRow[], range: { start: Date; 
       continue;
     }
     if (r.type === "purchase") f.purchasedBags += r.bags;
-    else if (r.type === "dispatch" || r.type === "dispatch_reversal") f.dispatchedBags -= r.bags;
+    else if (r.type === "dispatch") f.dispatchedBags -= r.bags;
     else if (r.type === "transfer") f.movedBags += r.bags;
-    else if (r.type === "adjustment" || r.type === "opening") f.fixedBags += r.bags;
+    else if (r.type === "opening") f.openingStockBags += r.bags;
+    else if (r.type === "adjustment") f.fixedBags += r.bags;
     // Any other type is counted in closing only, so the row will not reconcile (and is flagged).
   }
   const out = [...flows.values()];
   for (const f of out) {
-    f.reconciles = f.openingBags + f.purchasedBags - f.dispatchedBags + f.movedBags + f.fixedBags === f.closingBags;
+    f.reconciles =
+      f.openingBags + f.openingStockBags + f.purchasedBags - f.dispatchedBags + f.movedBags + f.fixedBags === f.closingBags;
   }
   return out.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** Adds the flows of every product together (for the totals row). */
 export function totalFlow(flows: readonly StockFlow[]): Omit<StockFlow, "productId" | "label"> {
-  const t = { openingBags: 0, purchasedBags: 0, dispatchedBags: 0, movedBags: 0, fixedBags: 0, closingBags: 0, reconciles: true };
+  const t = {
+    openingBags: 0,
+    openingStockBags: 0,
+    purchasedBags: 0,
+    dispatchedBags: 0,
+    movedBags: 0,
+    fixedBags: 0,
+    closingBags: 0,
+    reconciles: true,
+  };
   for (const f of flows) {
     t.openingBags += f.openingBags;
+    t.openingStockBags += f.openingStockBags;
     t.purchasedBags += f.purchasedBags;
     t.dispatchedBags += f.dispatchedBags;
     t.movedBags += f.movedBags;

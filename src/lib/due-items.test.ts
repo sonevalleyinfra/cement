@@ -7,7 +7,6 @@ import {
   duesAging,
   duesFromLedger,
   emptyBuckets,
-  oldestDue,
   type LedgerRow,
 } from "./due-items";
 
@@ -60,7 +59,7 @@ describe("duesFromLedger", () => {
       ["opening", 200],
       ["order", 1000],
     ]);
-    expect(oldestDue(f)).toEqual(day(5));
+    expect(f.items[0].dueSince).toEqual(day(5));
   });
 
   it("a negative opening is a credit", () => {
@@ -68,41 +67,39 @@ describe("duesFromLedger", () => {
     expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(1), duePaise: 700 }]);
   });
 
-  it("a cancelled order nets to zero, so money paid on it stays as credit for later orders", () => {
-    const f = one([
-      order("o1", 1000, 1),
-      pay(1000, 2),
-      row("adjustment", -1000, "o1", 3), // cancel
-      order("o2", 600, 4),
-    ]);
-    expect(f.balancePaise).toBe(-400);
-    expect(f.duePaise).toBe(0);
-  });
-
-  it("an order with a negative net adds to the credits", () => {
-    const f = one([order("o1", 100, 1), row("adjustment", -300, "o1", 2), order("o2", 500, 3)]);
-    expect(f.items).toEqual([{ kind: "order", orderId: "o2", dueSince: day(3), duePaise: 300 }]);
-  });
-
-  it("rate changes are part of the order's net, dated by its first entry", () => {
-    const f = one([order("o1", 1000, 2), row("adjustment", 200, "o1", 5), order("o2", 100, 3)]);
-    expect(f.items.map((i) => [i.orderId, i.duePaise, i.dueSince])).toEqual([
-      ["o1", 1200, day(2)],
-      ["o2", 100, day(3)],
-    ]);
-  });
-
   it("a reversed payment brings the dues back", () => {
     const f = one([order("o1", 1000, 1), pay(1000, 2), row("receipt_credit", 1000, null, 3)]);
     expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(1), duePaise: 1000 }]);
   });
 
-  it("a debit with no order (manual adjustment) becomes an 'other' item", () => {
-    const f = one([row("adjustment", 250, null, 4), order("o1", 100, 1)]);
+  it("a plus adjustment is its own item, aged from its own day", () => {
+    const f = one([order("o1", 100, 1), row("adjustment", 250, null, 40), pay(50, 41)]);
+    expect(f.duePaise).toBe(300);
+    expect(f.items).toEqual([
+      { kind: "order", orderId: "o1", dueSince: day(1), duePaise: 50 },
+      { kind: "adjustment", orderId: null, dueSince: day(40), duePaise: 250 },
+    ]);
+  });
+
+  it("a later plus adjustment does not make old dues look older (or newer) than they are", () => {
+    const f = one([row("adjustment", -100, null, 0), order("o1", 1000, 10), row("adjustment", 500, null, 90)]);
+    expect(f.items.map((i) => [i.kind, i.dueSince, i.duePaise])).toEqual([
+      ["order", day(10), 900],
+      ["adjustment", day(90), 500],
+    ]);
+  });
+
+  it("a minus adjustment is a credit", () => {
+    const f = one([order("o1", 1000, 1), row("adjustment", -300, null, 2)]);
+    expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(1), duePaise: 700 }]);
+  });
+
+  it("reversed more than paid (should not happen): the rest is an 'other' item, so the promise holds", () => {
+    const f = one([order("o1", 100, 1), row("receipt_credit", 250, null, 4)]);
     expect(f.duePaise).toBe(350);
-    expect(f.items.map((i) => [i.kind, i.duePaise])).toEqual([
-      ["order", 100],
-      ["other", 250],
+    expect(f.items.map((i) => [i.kind, i.duePaise, i.dueSince])).toEqual([
+      ["order", 100, day(1)],
+      ["other", 250, day(4)],
     ]);
   });
 
@@ -117,10 +114,9 @@ describe("duesFromLedger", () => {
 
   it("promise: due === max(0, balance) and items are whole and positive (seeded random)", () => {
     const rand = rng(7);
-    const kinds = ["order", "pay", "adjust", "reverse", "cancel", "rate", "opening", "advance"] as const;
+    const kinds = ["order", "pay", "adjust", "reverse", "opening", "advance"] as const;
     for (let n = 0; n < 2000; n++) {
       const rows: LedgerRow[] = [];
-      const orderIds: string[] = [];
       let hasOpening = false;
       const count = Math.floor(rand() * 15);
       for (let i = 0; i < count; i++) {
@@ -128,20 +124,13 @@ describe("duesFromLedger", () => {
         const amount = 1 + Math.floor(rand() * 1_000_000);
         const k = kinds[Math.floor(rand() * kinds.length)];
         if (k === "order") {
-          const id = `o${i}`;
-          orderIds.push(id);
-          rows.push(order(id, amount, d));
+          rows.push(order(`o${i}`, amount, d));
         } else if (k === "pay" || k === "advance") rows.push(pay(amount, d));
         else if (k === "reverse") rows.push(row("receipt_credit", amount, null, d));
         else if (k === "adjust") rows.push(row("adjustment", d % 2 ? amount : -amount, null, d));
         else if (k === "opening" && !hasOpening) {
           hasOpening = true;
           rows.push(opening(rand() < 0.5 ? amount : -amount, d));
-        } else if ((k === "cancel" || k === "rate") && orderIds.length > 0) {
-          const id = orderIds[Math.floor(rand() * orderIds.length)];
-          const net = rows.filter((r) => r.orderId === id).reduce((s, r) => s + r.amountPaise, 0);
-          const adj = k === "cancel" ? -net : rand() < 0.5 ? amount : -Math.floor(amount / 3);
-          if (adj !== 0) rows.push(row("adjustment", adj, id, d));
         }
       }
       // Sort by date the way the database returns them.
@@ -165,11 +154,6 @@ describe("each dispatch is its own item", () => {
   it("two loads of one order age from their own days", () => {
     const f = one([order("o1", 1000, 1), order("o1", 500, 40), pay(1200, 41)]);
     expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(40), duePaise: 300 }]);
-  });
-
-  it("a minus row on an order clears that order's loads oldest first", () => {
-    const f = one([order("o1", 1000, 1), order("o1", 500, 5), row("adjustment", -1200, "o1", 6)]);
-    expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(5), duePaise: 300 }]);
   });
 });
 

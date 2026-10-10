@@ -6,8 +6,8 @@ import { Stat } from "@/components/app/stat";
 import { formatINR } from "@/lib/money";
 import { rangeQuery, type ReportRange } from "@/lib/report-range";
 
-/** Money in report lists: whole rupees (paise are kept in every sum, only hidden here). */
-export const money = (paise: number) => formatINR(paise, { hidePaise: true });
+/** Money in reports and statements: exact, always with paise, so every row and total adds up on screen. */
+export const money = (paise: number) => formatINR(paise);
 export const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 /** "+12" / "−5" / "0" for bag changes. */
 export const signedNum = (v: number) => (v > 0 ? `+${num(v)}` : v < 0 ? `−${num(-v)}` : "0");

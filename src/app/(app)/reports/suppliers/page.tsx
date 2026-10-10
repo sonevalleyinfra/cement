@@ -2,7 +2,7 @@ import { Factory } from "lucide-react";
 import { DataTable } from "@/components/app/data-table";
 import { EmptyState } from "@/components/app/empty-state";
 import { FilterSelect } from "@/components/app/range-form";
-import { hasManyBrands, startBrand } from "@/lib/catalogue-rules";
+import { hasManyBrands } from "@/lib/catalogue-rules";
 import { formatDate } from "@/lib/datetime";
 import { rolesFor } from "@/lib/permissions";
 import { param, reportRange } from "@/lib/report-range";
@@ -12,6 +12,7 @@ import {
   SUPPLIER_MODE_LABELS,
   supplierBalanceLabel,
   supplierKindLabel,
+  startSupplier,
   type SupplierPaymentMode,
 } from "@/lib/supplier-rules";
 import { supplierOptions } from "@/lib/suppliers";
@@ -23,7 +24,8 @@ export default async function SupplierStatementPage({ searchParams }: { searchPa
   const sp = await searchParams;
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
   const suppliers = await supplierOptions();
-  const brandId = startBrand(suppliers, param(sp.brand));
+  // Opens on the supplier with entries (Prism today), not an empty brand.
+  const brandId = startSupplier(suppliers, param(sp.brand));
   const brand = suppliers.find((s) => s.id === brandId);
   const s = brand ? await getSupplierStatement(brand.id, range) : null;
   /** "You owe Prism ₹X" style, short. */

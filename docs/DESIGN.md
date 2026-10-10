@@ -19,19 +19,21 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Icons: sections and menu rows get an `IconTile` with a fixed `tone` (orders orange, dues rose, stock/dispatch blue,
   cash green, approvals violet, receipts teal). Keep the same tone for the same thing everywhere.
 - Font: Manrope. Three sizes of text matter: big number (`Stat`, 24px bold), body (16px), caption (12px muted).
-- Numbers: bold, large, `tabular`. Money in paise with `formatINR(p, { hidePaise: true })` in lists.
+- Numbers: bold, large, `tabular`. Money in paise with `formatINR(p, { hidePaise: true })` in lists (drops ".00" on
+  whole rupees only; real paise always show). Statements, ledgers, supplier accounts and reports use `formatINR(p)`.
 - Cards: white, 16px radius, hairline ring plus soft `shadow-card`; tappable cards lift slightly on hover (`shadow-card-hover`).
 - Selected toggles (product, payment mode) use the primary orange.
 - Product pickers start with **Brand**, then Trade-type, Type, Grade. With only one switched-on brand the Brand drop-down is
   hidden (that brand is used) and lists are not grouped by brand; with more, lists group by brand ("Prism · Trade").
-  In purchase, admins get a pencil next to Type and Grade to add, rename or remove items; a new combination becomes a new
-  product on save.
+  Stock forms (purchase, opening, adjust) offer only existing products, narrowed step by step; picking a brand starts at
+  its first product. New products are added in Catalogue.
 
 ## Words
 - Labels, numbers and actions only. Titles are one or two words ("Orders", "New order").
 - No helper sentences, no hero copy, no emoji, no exclamation marks. Gradients only where listed under Look.
 - Empty state is a few words plus the action. Errors say what to fix in a few words.
 - Confirm dialogs only for destructive actions (reject, cancel, handover).
+- Save buttons ignore taps after the first until the save answers (`useSubmit` in `src/lib/use-submit.ts`).
 
 ## Motion
 - 150-300ms, ease-out. Nothing loops, pulses or blinks, except the loading shimmer.

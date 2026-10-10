@@ -74,10 +74,6 @@ export type SupplierEntry = {
 
 export type SupplierResult = { ok: true; entry: SupplierEntry } | { ok: false; error: string };
 
-/** Balance of one brand = what we owe its supplier (negative = the supplier owes us). */
-export function supplierBalance(entries: readonly { brandId: string; amountPaise: number }[], brandId: string): number {
-  return entries.reduce((n, e) => (e.brandId === brandId ? n + e.amountPaise : n), 0);
-}
 
 /** Every brand's balance at once: brand id → signed paise. Brands with no entries are left out. */
 export function balancesByBrand(entries: readonly { brandId: string; amountPaise: number }[]): Map<string, number> {
@@ -116,6 +112,15 @@ export type SupplierRow = { id: string; name: string; active: boolean; balancePa
  * The suppliers list: every switched-on brand, plus a switched-off brand that still has entries
  * (its balance must stay visible). By name.
  */
+/**
+ * The supplier a statement opens on: the one picked before if it is still listed, else the first
+ * with entries (Prism today), else the first. An empty brand's account is never the default.
+ */
+export function startSupplier(suppliers: readonly { id: string; entries: number }[], picked?: string | null): string {
+  if (suppliers.some((s) => s.id === picked)) return picked as string;
+  return (suppliers.find((s) => s.entries > 0) ?? suppliers[0])?.id ?? "";
+}
+
 export function suppliersToShow(
   brands: readonly { id: string; name: string; active: boolean }[],
   totals: readonly { brandId: string; balancePaise: number; entries: number }[],

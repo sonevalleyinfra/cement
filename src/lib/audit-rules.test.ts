@@ -8,7 +8,6 @@ import {
   groupOf,
   isActivityGroup,
   isAllowedAudit,
-  referencedIds,
   type ActivityRow,
 } from "./audit-rules";
 
@@ -161,6 +160,9 @@ describe("activitySentence", () => {
     expect(say(row("payment", "reverse", { amountPaise: 200_000, mode: "cash", retailerId: "r1", reason: "Wrong shop" }))).toBe(
       "Ramesh reversed ₹2,000 cash payment from Sharma Traders: Wrong shop",
     );
+    expect(
+      say(row("payment", "reverse", { amountPaise: 200_000, mode: "cash", retailerId: "r1", reason: "Typo", cashWith: "office" })),
+    ).toBe("Ramesh reversed ₹2,000 cash payment from Sharma Traders: Typo (cash already with office)");
     expect(say(row("handover", "confirm", { amountPaise: 400_000, requestedPaise: 500_000, collectorId: "u2" }))).toBe(
       "Ramesh received ₹4,000 cash from Suresh (₹5,000 asked)",
     );
@@ -218,15 +220,3 @@ describe("activitySentence", () => {
   });
 });
 
-describe("referencedIds", () => {
-  it("collects actors, named records, ids in details and places", () => {
-    const ids = referencedIds([
-      { actorId: "u1", entity: "retailer", entityId: "r1", action: "assign_sales_rep", details: { salesRepId: { before: "u2", after: "u3" } } },
-      { actorId: "u1", entity: "stock", entityId: "m1", action: "transfer", details: { productId: "p1", from: "godown:g1", to: "vehicle:v1" } },
-      { actorId: "u4", entity: "dispatch", entityId: "d1", action: "create", details: null },
-      { actorId: "u4", entity: "supplier_entry", entityId: "s1", action: "payment", details: { brandId: "b2" } },
-      { actorId: "u4", entity: "brand", entityId: "b3", action: "create", details: {} },
-    ]);
-    expect(ids.sort()).toEqual(["b2", "b3", "g1", "p1", "r1", "u1", "u2", "u3", "u4", "v1"]);
-  });
-});

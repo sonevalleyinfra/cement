@@ -56,6 +56,20 @@ describe("salesReport", () => {
     }
   });
 
+  it("each dispatch counts for the sales person saved on it: a shop moved to someone else keeps its old sales", () => {
+    // The same shop: two loads under Ravi, then admin gave the shop to Asha before the third load.
+    const r = salesReport([
+      sale({ bags: 10 }),
+      sale({ bags: 10 }),
+      sale({ bags: 5, salesRepId: "s2", salesRepName: "Asha" }),
+    ]);
+    expect(r.bySalesPerson.map((l) => [l.label, l.bags])).toEqual([
+      ["Ravi", 20],
+      ["Asha", 5],
+    ]);
+    expect(r.byRetailer.map((l) => [l.label, l.bags])).toEqual([["Sharma", 25]]);
+  });
+
   it("days are India days: 23:59 IST and 00:00 IST fall on different days", () => {
     const r = salesReport([sale({ createdAt: "2026-10-02T18:29:00Z" }), sale({ createdAt: "2026-10-02T18:30:00Z" })]);
     expect(r.byDay.map((d) => d.key)).toEqual(["2026-10-02", "2026-10-03"]);

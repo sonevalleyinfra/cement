@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lt, lte, type Column } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, lte, sql, type Column } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
@@ -39,14 +39,16 @@ async function salesRows(range: ReportRange): Promise<SaleRow[]> {
       productName: products.name,
       retailerId: orders.retailerId,
       retailerName: retailers.name,
-      salesRepId: orders.salesRepId,
+      // The sales person saved on the dispatch (when the bags left), so a later change of the shop's
+      // sales person does not move old sales.
+      salesRepId: dispatches.salesRepId,
       salesRepName: user.name,
     })
     .from(dispatches)
     .innerJoin(orders, eq(orders.id, dispatches.orderId))
     .innerJoin(products, eq(products.id, orders.productId))
     .innerJoin(retailers, eq(retailers.id, orders.retailerId))
-    .leftJoin(user, eq(user.id, orders.salesRepId))
+    .leftJoin(user, eq(user.id, dispatches.salesRepId))
     .where(and(gte(dispatches.createdAt, range.start), lt(dispatches.createdAt, range.end)))
     .orderBy(asc(dispatches.createdAt));
   return rows;
@@ -227,9 +229,16 @@ export async function getStaffReport(range: ReportRange) {
   const [placed, decisions, loads, payments, holders, names] = await Promise.all([
     db.select({ placedBy: orders.placedBy }).from(orders).where(inside(orders.createdAt)),
     db
-      .select({ actorId: orderEvents.actorId, toStatus: orderEvents.toStatus })
+      .select({ actorId: orderEvents.actorId, fromStatus: orderEvents.fromStatus, toStatus: orderEvents.toStatus })
       .from(orderEvents)
-      .where(and(inside(orderEvents.createdAt), inArray(orderEvents.toStatus, ["approved", "rejected"]))),
+      .where(
+        and(
+          inside(orderEvents.createdAt),
+          inArray(orderEvents.toStatus, ["approved", "rejected"]),
+          // Only real status changes (a rate edit keeps the status).
+          sql`${orderEvents.fromStatus} is distinct from ${orderEvents.toStatus}`,
+        ),
+      ),
     db.select({ dispatchedBy: dispatches.dispatchedBy, bags: dispatches.bags }).from(dispatches).where(inside(dispatches.createdAt)),
     db
       .select({ receivedBy: receipts.receivedBy, status: receipts.status, totalPaise: receipts.totalPaise })
