@@ -1,5 +1,7 @@
 /** Rules for the retailers master. Plain functions: no database, no request. */
 
+import { hasRole } from "./roles";
+
 /** Keeps digits only, and drops a leading 91 or 0 country/trunk prefix. */
 export function normalizePhone(input: string): string {
   let digits = input.replace(/\D/g, "");
@@ -42,4 +44,53 @@ export function isDuplicatePhone(
   selfId?: string,
 ): boolean {
   return existing.some((r) => r.id !== selfId && r.phone === phone);
+}
+
+/** A login (user) the admin created with the retailer role. */
+export type RetailerLogin = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string | null;
+  banned: boolean | null;
+  deletedAt: Date | null;
+};
+
+/**
+ * Logins sales may pick when adding a retailer: retailer role, not deactivated or
+ * deleted, and not already linked to a shop.
+ */
+export function pickableRetailerLogins<T extends RetailerLogin>(
+  logins: readonly T[],
+  linkedUserIds: readonly (string | null)[],
+): T[] {
+  const taken = new Set(linkedUserIds.filter((id): id is string => id !== null));
+  return logins.filter((l) => hasRole(l.role, "retailer") && !l.banned && !l.deletedAt && !taken.has(l.id));
+}
+
+/** True if the search text matches the login's name, email or phone (any part, any case). */
+export function matchesRetailerSearch(login: { name: string; email: string; phone: string }, search: string): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  if (login.name.toLowerCase().includes(q) || login.email.toLowerCase().includes(q)) return true;
+  const digits = q.replace(/\D/g, "");
+  // Ignore a typed +91 / 0 prefix, but only when the rest is a full number.
+  const phoneQuery = digits.length > 10 ? normalizePhone(digits) : digits;
+  return phoneQuery.length > 0 && login.phone.includes(phoneQuery);
+}
+
+/** Server check before a picked login becomes a retailer. */
+export function checkRetailerPick(
+  login: RetailerLogin | undefined,
+  linkedUserIds: readonly (string | null)[],
+): { ok: true } | { ok: false; error: string } {
+  if (!login || pickableRetailerLogins([login], []).length === 0) {
+    return { ok: false, error: "Pick a retailer from the list." };
+  }
+  if (linkedUserIds.includes(login.id)) return { ok: false, error: "This retailer is already added." };
+  if (!isValidIndianMobile(login.phone)) {
+    return { ok: false, error: "This retailer has no valid phone. Ask admin to add one." };
+  }
+  return { ok: true };
 }

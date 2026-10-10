@@ -10,18 +10,18 @@ import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { canLinkRetailerUser } from "@/lib/rate-rules";
 import { hasRole } from "@/lib/roles";
-import { validateRetailer } from "@/lib/retailer-rules";
+import { checkRetailerPick, validateRetailer } from "@/lib/retailer-rules";
 import { requireRole } from "@/lib/session";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
-/** Adds a retailer (id empty) or edits one. Admin and sales only. */
+/** Edits a retailer's name, phone and place. Admin and sales only. */
 export async function saveRetailer(
-  id: string | null,
+  id: string,
   form: { name: string; phone: string; place: string },
 ): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
-  if (id !== null && !isUuid(id)) return { ok: false, error: "Retailer not found." };
+  if (!isUuid(id)) return { ok: false, error: "Retailer not found." };
   const check = validateRetailer(form);
   if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
   const { name, phone, place } = check.value;
@@ -29,30 +29,65 @@ export async function saveRetailer(
   const clash = await db
     .select({ id: retailers.id })
     .from(retailers)
-    .where(id ? and(eq(retailers.phone, phone), ne(retailers.id, id)) : eq(retailers.phone, phone))
+    .where(and(eq(retailers.phone, phone), ne(retailers.id, id)))
     .limit(1);
   if (clash.length > 0) return { ok: false, error: "Phone already used" };
 
-  const actorId = session.user.id;
-  if (id) {
-    await db.transaction(async (tx) => {
-      const [before] = await tx.select().from(retailers).where(eq(retailers.id, id)).limit(1);
-      await tx.update(retailers).set({ name, phone, place, updatedAt: new Date() }).where(eq(retailers.id, id));
-      const diff = changedFields(before, { name, phone, place });
-      if (diff) await writeAudit(tx, { actorId, entity: "retailer", entityId: id, action: "update", details: diff });
+  await db.transaction(async (tx) => {
+    const [before] = await tx.select().from(retailers).where(eq(retailers.id, id)).limit(1);
+    await tx.update(retailers).set({ name, phone, place, updatedAt: new Date() }).where(eq(retailers.id, id));
+    const diff = changedFields(before, { name, phone, place });
+    if (diff) await writeAudit(tx, { actorId: session.user.id, entity: "retailer", entityId: id, action: "update", details: diff });
+  });
+  revalidatePath("/retailers");
+  return { ok: true };
+}
+
+/**
+ * Adds a retailer picked from the logins the admin created (retailer role).
+ * Name and phone come from that login, and the shop is linked to it. Admin and sales only.
+ */
+export async function addRetailerFromLogin(userId: string, place: string): Promise<RetailerResult> {
+  const session = await requireRole(...rolesFor("editRetailers"));
+  if (typeof userId !== "string" || typeof place !== "string") return { ok: false, error: "Check the form" };
+  const [login] = await db
+    .select({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      banned: user.banned,
+      deletedAt: user.deletedAt,
+    })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  const linked = await db
+    .select({ userId: retailers.userId })
+    .from(retailers)
+    .where(eq(retailers.userId, userId));
+  const check = checkRetailerPick(login, linked.map((l) => l.userId));
+  if (!check.ok) return check;
+
+  const clash = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.phone, login.phone)).limit(1);
+  if (clash.length > 0) return { ok: false, error: "A retailer with this phone already exists." };
+
+  const name = login.name.trim();
+  const cleanPlace = place.trim();
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(retailers)
+      .values({ name, phone: login.phone, place: cleanPlace, userId: login.id })
+      .returning({ id: retailers.id });
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "retailer",
+      entityId: row.id,
+      action: "create",
+      details: { name, phone: login.phone, place: cleanPlace, userId: login.id },
     });
-  } else {
-    await db.transaction(async (tx) => {
-      const [row] = await tx.insert(retailers).values({ name, phone, place }).returning({ id: retailers.id });
-      await writeAudit(tx, {
-        actorId,
-        entity: "retailer",
-        entityId: row.id,
-        action: "create",
-        details: { name, phone, place },
-      });
-    });
-  }
+  });
   revalidatePath("/retailers");
   return { ok: true };
 }
