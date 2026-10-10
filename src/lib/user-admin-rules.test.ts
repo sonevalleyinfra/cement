@@ -3,6 +3,7 @@ import {
   checkRolesAndFirms,
   checkSelfDeactivate,
   checkSelfRoleChange,
+  cleanUserPhone,
   passwordFromBytes,
   validateNewUser,
 } from "./user-admin-rules";
@@ -45,6 +46,19 @@ describe("validateNewUser", () => {
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "12345", roles: ["admin"] }).ok).toBe(false);
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "5876543210", roles: ["admin"] }).ok).toBe(false);
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "09876543210", roles: ["admin"] }).ok).toBe(true);
+  });
+});
+
+describe("cleanUserPhone", () => {
+  it("keeps 10 digits of a valid mobile", () => {
+    expect(cleanUserPhone("+91 98765 43210")).toBe("9876543210");
+    expect(cleanUserPhone(" 9876543210 ")).toBe("9876543210");
+  });
+  it("rejects empty and bad numbers", () => {
+    expect(cleanUserPhone("")).toBeNull();
+    expect(cleanUserPhone(undefined)).toBeNull();
+    expect(cleanUserPhone("12345")).toBeNull();
+    expect(cleanUserPhone("5876543210")).toBeNull();
   });
 });
 

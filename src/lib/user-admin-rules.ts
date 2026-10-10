@@ -22,6 +22,12 @@ export function checkRolesAndFirms(roles: readonly string[], firmIds: readonly s
   return null;
 }
 
+/** Cleans a user's phone. Returns the 10-digit mobile, or null if it is not valid. */
+export function cleanUserPhone(raw: string | null | undefined): string | null {
+  const phone = normalizePhone(raw ?? "");
+  return isValidIndianMobile(phone) ? phone : null;
+}
+
 /** Trims and checks the create-user form. The phone is a required 10-digit mobile. */
 export function validateNewUser(raw: {
   name?: string | null;
@@ -34,8 +40,8 @@ export function validateNewUser(raw: {
   const email = (raw.email ?? "").trim().toLowerCase();
   if (!name) return { ok: false, error: "Enter a name" };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email" };
-  const phone = normalizePhone(raw.phone ?? "");
-  if (!isValidIndianMobile(phone)) return { ok: false, error: "Enter a 10-digit mobile" };
+  const phone = cleanUserPhone(raw.phone);
+  if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const roles = [...new Set(raw.roles ?? [])];
   const firmIds = [...new Set(raw.firmIds ?? [])];
   const problem = checkRolesAndFirms(roles, firmIds);

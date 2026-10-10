@@ -56,7 +56,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
     const formData = new FormData(e.currentTarget);
     start(async () => {
       const res = editing
-        ? await updateUserAccess(editing.id, { roles, firmIds })
+        ? await updateUserAccess(editing.id, { phone: String(formData.get("phone") ?? ""), roles, firmIds })
         : await createUser({
             name: String(formData.get("name") ?? ""),
             email: String(formData.get("email") ?? ""),
@@ -138,12 +138,19 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" autoComplete="off" />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" name="phone" type="tel" inputMode="numeric" autoComplete="off" />
-              </div>
             </>
           )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="phone">Phone</Label>
+            <Input
+              id="phone"
+              name="phone"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="off"
+              defaultValue={editing?.phone ?? ""}
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label>Roles</Label>
             <Checks options={ROLES.map((x) => ({ id: x, label: x }))} value={roles} onChange={setRoles} />
