@@ -23,12 +23,28 @@ describe("checkRolesAndFirms", () => {
 
 describe("validateNewUser", () => {
   it("cleans the input", () => {
-    const r = validateNewUser({ name: "  Ram  Singh ", email: " Ram@X.com ", roles: ["sales", "sales"], firmIds: ["a"] });
-    expect(r).toEqual({ ok: true, value: { name: "Ram Singh", email: "ram@x.com", roles: ["sales"], firmIds: ["a"] } });
+    const r = validateNewUser({
+      name: "  Ram  Singh ",
+      email: " Ram@X.com ",
+      phone: "+91 98765 43210",
+      roles: ["sales", "sales"],
+      firmIds: ["a"],
+    });
+    expect(r).toEqual({
+      ok: true,
+      value: { name: "Ram Singh", email: "ram@x.com", phone: "9876543210", roles: ["sales"], firmIds: ["a"] },
+    });
   });
   it("rejects bad name and email", () => {
-    expect(validateNewUser({ name: "", email: "a@b.co", roles: ["admin"] }).ok).toBe(false);
-    expect(validateNewUser({ name: "A", email: "nope", roles: ["admin"] }).ok).toBe(false);
+    expect(validateNewUser({ name: "", email: "a@b.co", phone: "9876543210", roles: ["admin"] }).ok).toBe(false);
+    expect(validateNewUser({ name: "A", email: "nope", phone: "9876543210", roles: ["admin"] }).ok).toBe(false);
+  });
+  it("needs a valid 10-digit mobile", () => {
+    const missing = validateNewUser({ name: "A", email: "a@b.co", roles: ["admin"] });
+    expect(missing).toEqual({ ok: false, error: "Enter a 10-digit mobile" });
+    expect(validateNewUser({ name: "A", email: "a@b.co", phone: "12345", roles: ["admin"] }).ok).toBe(false);
+    expect(validateNewUser({ name: "A", email: "a@b.co", phone: "5876543210", roles: ["admin"] }).ok).toBe(false);
+    expect(validateNewUser({ name: "A", email: "a@b.co", phone: "09876543210", roles: ["admin"] }).ok).toBe(true);
   });
 });
 

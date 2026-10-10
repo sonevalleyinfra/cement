@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { parseRoles, ROLES } from "@/lib/roles";
 import { createUser, setUserActive, updateUserAccess } from "./actions";
 
-type Row = { id: string; name: string; email: string; role: string; active: boolean; firmIds: string[] };
+type Row = { id: string; name: string; email: string; phone: string; role: string; active: boolean; firmIds: string[] };
 type Firm = { id: string; name: string };
 
 const chip = "rounded-full bg-muted px-2 py-0.5 text-xs font-medium";
@@ -60,6 +60,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
         : await createUser({
             name: String(formData.get("name") ?? ""),
             email: String(formData.get("email") ?? ""),
+            phone: String(formData.get("phone") ?? ""),
             roles,
             firmIds,
           });
@@ -82,7 +83,10 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
                 className={r.active ? undefined : "opacity-60"}
                 top={
                   <>
-                    <span className="text-xs text-muted-foreground">{r.email}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {r.email}
+                      {r.phone && <span className="tabular"> · {r.phone}</span>}
+                    </span>
                     <span className="text-xs text-muted-foreground">{r.active ? "Active" : "Blocked"}</span>
                   </>
                 }
@@ -133,6 +137,10 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" autoComplete="off" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="phone">Phone</Label>
+                <Input id="phone" name="phone" type="tel" inputMode="numeric" autoComplete="off" />
               </div>
             </>
           )}

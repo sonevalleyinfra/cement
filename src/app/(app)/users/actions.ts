@@ -49,13 +49,14 @@ async function firmsExist(firmIds: string[]): Promise<boolean> {
 export async function createUser(form: {
   name: string;
   email: string;
+  phone: string;
   roles: string[];
   firmIds: string[];
 }): Promise<UserResult> {
   const session = await requireRole(...rolesFor("manageUsers"));
   const check = validateNewUser(form);
   if (!check.ok) return { ok: false, error: check.error };
-  const { name, email, roles, firmIds } = check.value;
+  const { name, email, phone, roles, firmIds } = check.value;
   if (!(await firmsExist(firmIds))) return { ok: false, error: "Pick firms from the list." };
 
   try {
@@ -68,17 +69,17 @@ export async function createUser(form: {
         data: { emailVerified: true },
       },
     });
-    // Roles, firm access and the audit row are saved together.
+    // Roles, phone, firm access and the audit row are saved together.
     const keepFirms = roles.includes("admin") ? [] : firmIds;
     await db.transaction(async (tx) => {
-      await tx.update(user).set({ role: joinRoles(roles) }).where(eq(user.id, created.user.id));
+      await tx.update(user).set({ role: joinRoles(roles), phone }).where(eq(user.id, created.user.id));
       await replaceFirms(tx, created.user.id, keepFirms);
       await writeAudit(tx, {
         actorId: session.user.id,
         entity: "user",
         entityId: created.user.id,
         action: "create",
-        details: { name, email, roles, firmIds: keepFirms },
+        details: { name, email, phone, roles, firmIds: keepFirms },
       });
     });
     await auth.api.requestPasswordReset({ body: { email, redirectTo: "/reset-password" } });
