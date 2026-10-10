@@ -12,6 +12,7 @@ import { auth } from "@/lib/auth";
 import { sendEmailInBackground } from "@/lib/email";
 import { accountCreatedMessage } from "@/lib/email/templates";
 import { isUuid } from "@/lib/ids";
+import { checkTempPassword } from "@/lib/password-rules";
 import { rolesFor } from "@/lib/permissions";
 import { joinRoles, parseRoles, type Role } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
@@ -46,8 +47,9 @@ async function firmsExist(firmIds: string[]): Promise<boolean> {
 }
 
 /**
- * Creates a user with a random temporary password nobody sees, marks the email
- * as verified (the admin vouches for it) and emails a link to choose a password.
+ * Creates a user and marks the email as verified (the admin vouches for it).
+ * If the admin typed a temporary password, the user signs in with it and can change it
+ * under Account. Otherwise they get a random password nobody sees and an email link to choose one.
  */
 export async function createUser(form: {
   name: string;
@@ -55,11 +57,12 @@ export async function createUser(form: {
   phone: string;
   roles: string[];
   firmIds: string[];
+  password?: string;
 }): Promise<UserResult> {
   const session = await requireRole(...rolesFor("manageUsers"));
   const check = validateNewUser(form);
   if (!check.ok) return { ok: false, error: check.error };
-  const { name, email, phone, roles, firmIds } = check.value;
+  const { name, email, phone, roles, firmIds, password } = check.value;
   if (!(await firmsExist(firmIds))) return { ok: false, error: "Pick firms from the list." };
 
   try {
@@ -68,7 +71,7 @@ export async function createUser(form: {
       body: {
         name,
         email,
-        password: passwordFromBytes(randomBytes(16)),
+        password: password ?? passwordFromBytes(randomBytes(16)),
         data: { emailVerified: true },
       },
     });
@@ -82,11 +85,13 @@ export async function createUser(form: {
         entity: "user",
         entityId: created.user.id,
         action: "create",
-        details: { name, email, phone, roles, firmIds: keepFirms },
+        details: { name, email, phone, roles, firmIds: keepFirms, tempPassword: password !== null },
       });
     });
-    await auth.api.requestPasswordReset({ body: { email, redirectTo: "/reset-password" } });
-    sendEmailInBackground(accountCreatedMessage(email, name, `${env.APP_URL}/sign-in`));
+    if (password === null) {
+      await auth.api.requestPasswordReset({ body: { email, redirectTo: "/reset-password" } });
+    }
+    sendEmailInBackground(accountCreatedMessage(email, name, `${env.APP_URL}/sign-in`, password !== null));
   } catch {
     return { ok: false, error: "Could not create the user. Is the email already used?" };
   }
@@ -97,10 +102,11 @@ export async function createUser(form: {
 /**
  * Changes a user's email, phone, roles and firm access. A new email counts as
  * verified (the admin vouches for it, as when creating the user). They sign in with it from now on.
+ * If the admin typed a new temporary password, it replaces theirs and signs them out everywhere.
  */
 export async function updateUserAccess(
   userId: string,
-  form: { email: string; phone: string; roles: string[]; firmIds: string[] },
+  form: { email: string; phone: string; roles: string[]; firmIds: string[]; password?: string },
 ): Promise<UserResult> {
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
   if (!Array.isArray(form.roles) || !Array.isArray(form.firmIds)) return { ok: false, error: "Check the form" };
@@ -112,6 +118,9 @@ export async function updateUserAccess(
   if (self) return { ok: false, error: self };
   const problem = checkRolesAndFirms(form.roles, form.firmIds);
   if (problem) return { ok: false, error: problem };
+  const passwordCheck = checkTempPassword(typeof form.password === "string" ? form.password : "");
+  if (!passwordCheck.ok) return { ok: false, error: passwordCheck.error };
+  const password = passwordCheck.value;
 
   const firmIds = [...new Set(form.firmIds)];
   if (!(await firmsExist(firmIds))) return { ok: false, error: "Pick firms from the list." };
@@ -128,6 +137,18 @@ export async function updateUserAccess(
     .where(and(eq(user.email, email), ne(user.id, userId)))
     .limit(1);
   if (taken) return { ok: false, error: "Email already used" };
+
+  // The new password goes first: if it fails, nothing else is saved.
+  if (password !== null) {
+    try {
+      const requestHeaders = await headers();
+      await auth.api.setUserPassword({ headers: requestHeaders, body: { userId, newPassword: password } });
+      // Setting a password does not end their sessions, so sign them out (but not the admin themself).
+      if (userId !== me.id) await auth.api.revokeUserSessions({ headers: requestHeaders, body: { userId } });
+    } catch {
+      return { ok: false, error: "Could not change the password. Try again." };
+    }
+  }
 
   const roles = form.roles as Role[];
   // Email, phone, role, firm access and the audit row change together, or not at all.
@@ -157,6 +178,7 @@ export async function updateUserAccess(
           firmIds: beforeFirms.map((r) => r.firmId).sort(),
         },
         after: { email, phone, roles, firmIds: [...keep].sort() },
+        passwordReset: password !== null,
       },
     });
   });

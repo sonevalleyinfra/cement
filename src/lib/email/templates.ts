@@ -60,11 +60,19 @@ export function existingAccountMessage(to: string, signInUrl: string): EmailMess
   };
 }
 
-export function accountCreatedMessage(to: string, name: string, signInUrl: string): EmailMessage {
+/**
+ * Sent when an admin creates an account. With `withPassword` the admin set a temporary password
+ * and tells it to the user themselves: it is never put in an email.
+ */
+export function accountCreatedMessage(to: string, name: string, signInUrl: string, withPassword = false): EmailMessage {
+  const next = withPassword
+    ? "Your admin will give you a temporary password. Sign in with it, then change it under Account → Change password."
+    : "You will get a separate email with a link to choose your password.";
+  const signIn = withPassword ? "Sign in here" : "Sign in here once that is done";
   return {
     to,
     subject: "Your account is ready",
-    text: `Hi ${name},\n\nAn account was created for you. You will get a separate email with a link to choose your password.\n\nSign in here once that is done: ${signInUrl}`,
-    html: `<p>Hi ${escapeHtml(name)},</p><p>An account was created for you. You will get a separate email with a link to choose your password.</p><p><a href="${escapeHtml(signInUrl)}">Sign in</a> once that is done.</p>`,
+    text: `Hi ${name},\n\nAn account was created for you. ${next}\n\n${signIn}: ${signInUrl}`,
+    html: `<p>Hi ${escapeHtml(name)},</p><p>An account was created for you. ${escapeHtml(next)}</p><p><a href="${escapeHtml(signInUrl)}">Sign in</a>${withPassword ? "" : " once that is done"}.</p>`,
   };
 }

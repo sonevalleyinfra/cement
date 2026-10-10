@@ -13,3 +13,21 @@ export function checkNewPassword(input: { current: string; next: string; confirm
   if (input.next === input.current) return "The new password must be different from the current one.";
   return null;
 }
+
+/** Better Auth's default longest password (we do not change it in src/lib/auth.ts). */
+export const MAX_PASSWORD_LENGTH = 128;
+
+export type TempPasswordCheck = { ok: true; value: string | null } | { ok: false; error: string };
+
+/**
+ * Checks a temporary password an admin types for a user. Blank means "not set" (value null).
+ * Spaces at the ends are refused rather than trimmed, so the admin and the user see the same password.
+ */
+export function checkTempPassword(raw: string | null | undefined): TempPasswordCheck {
+  const value = raw ?? "";
+  if (value.trim() === "") return { ok: true, value: null };
+  if (value !== value.trim()) return { ok: false, error: "Remove spaces at the ends of the password" };
+  if (value.length < MIN_PASSWORD_LENGTH) return { ok: false, error: `Password: at least ${MIN_PASSWORD_LENGTH} characters` };
+  if (value.length > MAX_PASSWORD_LENGTH) return { ok: false, error: `Password: at most ${MAX_PASSWORD_LENGTH} characters` };
+  return { ok: true, value };
+}

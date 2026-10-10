@@ -1,10 +1,19 @@
 /** Rules for the users page. Plain functions: no database, no request. */
+import { checkTempPassword } from "@/lib/password-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/retailer-rules";
 import { isRole, parseRoles, type Role } from "@/lib/roles";
 
 const STAFF_ROLES: readonly Role[] = ["admin", "sales", "accounts", "logistics"];
 
-export type UserInput = { name: string; email: string; phone: string; roles: Role[]; firmIds: string[] };
+/** `password` is the admin's temporary password, or null to email a "choose your password" link. */
+export type UserInput = {
+  name: string;
+  email: string;
+  phone: string;
+  roles: Role[];
+  firmIds: string[];
+  password: string | null;
+};
 
 export type UserCheck =
   | { ok: true; value: UserInput }
@@ -34,13 +43,17 @@ export function cleanEmail(raw: string | null | undefined): string | null {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
 
-/** Trims and checks the create-user form. The phone is a required 10-digit mobile. */
+/**
+ * Trims and checks the create-user form. The phone is a required 10-digit mobile.
+ * The temporary password is optional (blank gives null).
+ */
 export function validateNewUser(raw: {
   name?: string | null;
   email?: string | null;
   phone?: string | null;
   roles?: readonly string[];
   firmIds?: readonly string[];
+  password?: string | null;
 }): UserCheck {
   const name = (raw.name ?? "").trim().replace(/\s+/g, " ");
   const email = cleanEmail(raw.email);
@@ -52,7 +65,9 @@ export function validateNewUser(raw: {
   const firmIds = [...new Set(raw.firmIds ?? [])];
   const problem = checkRolesAndFirms(roles, firmIds);
   if (problem) return { ok: false, error: problem };
-  return { ok: true, value: { name, email, phone, roles: roles as Role[], firmIds } };
+  const password = checkTempPassword(raw.password);
+  if (!password.ok) return password;
+  return { ok: true, value: { name, email, phone, roles: roles as Role[], firmIds, password: password.value } };
 }
 
 /** An admin must not remove their own admin role. Returns an error or null. */
