@@ -28,5 +28,5 @@ export async function updateName(_prev: UpdateNameState, formData: FormData): Pr
 export async function signOut() {
   await requireUser();
   await auth.api.signOut({ headers: await headers() });
-  redirect("/");
+  redirect("/sign-in");
 }

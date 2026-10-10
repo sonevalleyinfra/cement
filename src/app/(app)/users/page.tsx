@@ -9,7 +9,7 @@ export default async function UsersPage() {
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
   const [users, firmList, links] = await Promise.all([
     db
-      .select({ id: user.id, name: user.name, email: user.email, role: user.role, banned: user.banned })
+      .select({ id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role, banned: user.banned })
       .from(user)
       .orderBy(asc(user.name)),
     db.select({ id: firms.id, name: firms.name }).from(firms).where(eq(firms.active, true)).orderBy(asc(firms.createdAt), asc(firms.slot)),
@@ -19,6 +19,7 @@ export default async function UsersPage() {
     id: u.id,
     name: u.name,
     email: u.email,
+    phone: u.phone,
     role: u.role ?? "",
     active: !u.banned,
     firmIds: links.filter((l) => l.userId === u.id).map((l) => l.firmId),

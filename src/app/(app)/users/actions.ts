@@ -19,6 +19,7 @@ import {
   checkRolesAndFirms,
   checkSelfDeactivate,
   checkSelfRoleChange,
+  cleanUserPhone,
   passwordFromBytes,
   validateNewUser,
 } from "@/lib/user-admin-rules";
@@ -49,13 +50,14 @@ async function firmsExist(firmIds: string[]): Promise<boolean> {
 export async function createUser(form: {
   name: string;
   email: string;
+  phone: string;
   roles: string[];
   firmIds: string[];
 }): Promise<UserResult> {
   const session = await requireRole(...rolesFor("manageUsers"));
   const check = validateNewUser(form);
   if (!check.ok) return { ok: false, error: check.error };
-  const { name, email, roles, firmIds } = check.value;
+  const { name, email, phone, roles, firmIds } = check.value;
   if (!(await firmsExist(firmIds))) return { ok: false, error: "Pick firms from the list." };
 
   try {
@@ -68,17 +70,17 @@ export async function createUser(form: {
         data: { emailVerified: true },
       },
     });
-    // Roles, firm access and the audit row are saved together.
+    // Roles, phone, firm access and the audit row are saved together.
     const keepFirms = roles.includes("admin") ? [] : firmIds;
     await db.transaction(async (tx) => {
-      await tx.update(user).set({ role: joinRoles(roles) }).where(eq(user.id, created.user.id));
+      await tx.update(user).set({ role: joinRoles(roles), phone }).where(eq(user.id, created.user.id));
       await replaceFirms(tx, created.user.id, keepFirms);
       await writeAudit(tx, {
         actorId: session.user.id,
         entity: "user",
         entityId: created.user.id,
         action: "create",
-        details: { name, email, roles, firmIds: keepFirms },
+        details: { name, email, phone, roles, firmIds: keepFirms },
       });
     });
     await auth.api.requestPasswordReset({ body: { email, redirectTo: "/reset-password" } });
@@ -90,13 +92,15 @@ export async function createUser(form: {
   return { ok: true };
 }
 
-/** Changes a user's roles and firm access. */
+/** Changes a user's phone, roles and firm access. */
 export async function updateUserAccess(
   userId: string,
-  form: { roles: string[]; firmIds: string[] },
+  form: { phone: string; roles: string[]; firmIds: string[] },
 ): Promise<UserResult> {
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
   if (!Array.isArray(form.roles) || !Array.isArray(form.firmIds)) return { ok: false, error: "Check the form" };
+  const phone = cleanUserPhone(typeof form.phone === "string" ? form.phone : "");
+  if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const self = checkSelfRoleChange(me.id === userId, form.roles);
   if (self) return { ok: false, error: self };
   const problem = checkRolesAndFirms(form.roles, form.firmIds);
@@ -108,11 +112,11 @@ export async function updateUserAccess(
   if (!target) return { ok: false, error: "User not found." };
 
   const roles = form.roles as Role[];
-  // Role, firm access and the audit row change together, or not at all.
+  // Phone, role, firm access and the audit row change together, or not at all.
   await db.transaction(async (tx) => {
-    const [before] = await tx.select({ role: user.role }).from(user).where(eq(user.id, userId)).limit(1);
+    const [before] = await tx.select({ role: user.role, phone: user.phone }).from(user).where(eq(user.id, userId)).limit(1);
     const beforeFirms = await tx.select({ firmId: userFirms.firmId }).from(userFirms).where(eq(userFirms.userId, userId));
-    await tx.update(user).set({ role: joinRoles(roles), updatedAt: new Date() }).where(eq(user.id, userId));
+    await tx.update(user).set({ role: joinRoles(roles), phone, updatedAt: new Date() }).where(eq(user.id, userId));
     const keep = roles.includes("admin") ? [] : firmIds;
     await replaceFirms(tx, userId, keep);
     await writeAudit(tx, {
@@ -121,8 +125,8 @@ export async function updateUserAccess(
       entityId: userId,
       action: "update",
       details: {
-        before: { roles: parseRoles(before?.role), firmIds: beforeFirms.map((r) => r.firmId).sort() },
-        after: { roles, firmIds: [...keep].sort() },
+        before: { phone: before?.phone ?? "", roles: parseRoles(before?.role), firmIds: beforeFirms.map((r) => r.firmId).sort() },
+        after: { phone, roles, firmIds: [...keep].sort() },
       },
     });
   });
