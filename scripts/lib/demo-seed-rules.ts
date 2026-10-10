@@ -29,9 +29,9 @@ export function demoSeedBlocker(opts: { nodeEnv: string; databaseUrl: string; fo
 }
 
 export const DEMO_USERS = [
-  { email: "admin@demo.test", name: "Demo Admin", role: "admin" },
-  { email: "sales@demo.test", name: "Demo Sales", role: "sales" },
-  { email: "accounts@demo.test", name: "Demo Accounts", role: "accounts" },
-  { email: "logistics@demo.test", name: "Demo Logistics", role: "logistics" },
-  { email: "retailer@demo.test", name: "Demo Retailer", role: "retailer" },
+  { email: "admin@demo.test", name: "Demo Admin", role: "admin", phone: "9100000001" },
+  { email: "sales@demo.test", name: "Demo Sales", role: "sales", phone: "9100000002" },
+  { email: "accounts@demo.test", name: "Demo Accounts", role: "accounts", phone: "9100000003" },
+  { email: "logistics@demo.test", name: "Demo Logistics", role: "logistics", phone: "9100000004" },
+  { email: "retailer@demo.test", name: "Demo Retailer", role: "retailer", phone: "9100000005" },
 ] as const;

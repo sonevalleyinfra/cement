@@ -19,11 +19,11 @@ import { walletBalance } from "@/lib/wallet-rules";
 import {
   checkCashHeld,
   checkDelete,
+  checkEditedPhone,
   checkRoles,
   checkSelfDeactivate,
   checkSelfRoleChange,
   cleanEmail,
-  cleanUserPhone,
   dropsAllStaffRoles,
   passwordFromBytes,
   validateNewUser,
@@ -102,8 +102,6 @@ export async function updateUserAccess(
   if (!Array.isArray(form.roles)) return { ok: false, error: "Check the form" };
   const email = cleanEmail(typeof form.email === "string" ? form.email : "");
   if (!email) return { ok: false, error: "Enter a valid email" };
-  const phone = cleanUserPhone(typeof form.phone === "string" ? form.phone : "");
-  if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const self = checkSelfRoleChange(me.id === userId, form.roles);
   if (self) return { ok: false, error: self };
   const problem = checkRoles(form.roles);
@@ -113,11 +111,14 @@ export async function updateUserAccess(
   const password = passwordCheck.value;
 
   const [target] = await db
-    .select({ id: user.id })
+    .select({ id: user.id, phone: user.phone })
     .from(user)
     .where(and(eq(user.id, userId), isNull(user.deletedAt)))
     .limit(1);
   if (!target) return { ok: false, error: "User not found." };
+  const phoneCheck = checkEditedPhone(typeof form.phone === "string" ? form.phone : "", target.phone);
+  if (!phoneCheck.ok) return phoneCheck;
+  const phone = phoneCheck.phone;
   // Someone left with no staff role could not hand over the cash they hold.
   if (dropsAllStaffRoles(form.roles)) {
     const held = checkCashHeld(await cashHeldBy(userId));

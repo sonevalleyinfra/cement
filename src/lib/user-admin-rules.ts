@@ -36,6 +36,21 @@ export function cleanUserPhone(raw: string | null | undefined): string | null {
   return isValidIndianMobile(phone) ? phone : null;
 }
 
+/**
+ * The phone when admin edits a user. A phone that is typed must be a 10-digit mobile. Left empty
+ * is fine only for someone who never had one (users made before phones were asked for), so their
+ * roles or password can still be changed; a phone that was saved cannot be wiped.
+ * (Creating a user always needs a phone: validateNewUser.)
+ */
+export function checkEditedPhone(
+  raw: string | null | undefined,
+  savedPhone: string | null | undefined,
+): { ok: true; phone: string } | { ok: false; error: string } {
+  if ((raw ?? "").trim() === "" && !savedPhone) return { ok: true, phone: "" };
+  const phone = cleanUserPhone(raw);
+  return phone ? { ok: true, phone } : { ok: false, error: "Enter a 10-digit mobile" };
+}
+
 /** Cleans an email (trimmed, lower case). Returns it, or null if it does not look like an email. */
 export function cleanEmail(raw: string | null | undefined): string | null {
   const email = (raw ?? "").trim().toLowerCase();

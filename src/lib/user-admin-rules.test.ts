@@ -3,6 +3,7 @@ import {
   checkCashHeld,
   dropsAllStaffRoles,
   checkDelete,
+  checkEditedPhone,
   checkRoles,
   checkSelfDeactivate,
   checkSelfRoleChange,
@@ -164,5 +165,26 @@ describe("cash held blocks leaving", () => {
     expect(dropsAllStaffRoles(["sales"])).toBe(false);
     expect(dropsAllStaffRoles(["accounts", "logistics"])).toBe(false);
     expect(dropsAllStaffRoles(["admin"])).toBe(false);
+  });
+});
+
+describe("checkEditedPhone (editing a user)", () => {
+  it("a typed phone must be a 10-digit mobile", () => {
+    expect(checkEditedPhone("+91 98765 43210", "")).toEqual({ ok: true, phone: "9876543210" });
+    expect(checkEditedPhone("12345", "")).toEqual({ ok: false, error: "Enter a 10-digit mobile" });
+    expect(checkEditedPhone("12345", "9876543210")).toEqual({ ok: false, error: "Enter a 10-digit mobile" });
+  });
+  it("empty is fine for someone who never had a phone (roles and password can still change)", () => {
+    expect(checkEditedPhone("", "")).toEqual({ ok: true, phone: "" });
+    expect(checkEditedPhone("  ", null)).toEqual({ ok: true, phone: "" });
+  });
+  it("a saved phone cannot be wiped", () => {
+    expect(checkEditedPhone("", "9876543210")).toEqual({ ok: false, error: "Enter a 10-digit mobile" });
+  });
+  it("creating a user still needs a phone", () => {
+    expect(validateNewUser({ name: "A", email: "a@b.co", phone: "", roles: ["sales"] })).toEqual({
+      ok: false,
+      error: "Enter a 10-digit mobile",
+    });
   });
 });

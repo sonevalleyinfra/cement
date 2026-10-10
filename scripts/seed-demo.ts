@@ -43,13 +43,18 @@ import { planReceipt, planVerify } from "@/lib/receipt-rules";
 import { statusAfterDispatch, type OrderStatus } from "@/lib/order-rules";
 import { DEMO_PASSWORD, DEMO_USERS, demoSeedBlocker } from "./lib/demo-seed-rules";
 
-async function ensureUser(email: string, name: string, role: string): Promise<string> {
+/** A demo user (with a phone, like users added on the Users page). */
+async function ensureUser(email: string, name: string, role: string, phone: string): Promise<string> {
   const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
-  if (existing) return existing.id;
-  const created = await auth.api.createUser({
-    body: { email, password: DEMO_PASSWORD, name, role: role as "admin", data: { emailVerified: true } },
-  });
-  return created.user.id;
+  const id =
+    existing?.id ??
+    (
+      await auth.api.createUser({
+        body: { email, password: DEMO_PASSWORD, name, role: role as "admin", data: { emailVerified: true } },
+      })
+    ).user.id;
+  await db.update(user).set({ phone }).where(and(eq(user.id, id), eq(user.phone, "")));
+  return id;
 }
 
 /** Days before today, as "YYYY-MM-DD" (India). */
@@ -194,7 +199,7 @@ async function main() {
   if (productRows.length < 1) throw new Error("Products missing. Run migrations first.");
 
   const ids: Record<string, string> = {};
-  for (const u of DEMO_USERS) ids[u.role] = await ensureUser(u.email, u.name, u.role);
+  for (const u of DEMO_USERS) ids[u.role] = await ensureUser(u.email, u.name, u.role, u.phone);
   console.log("[seed-demo] Users ready.");
 
   // Shops, trucks and the godown are found again if they already exist.
