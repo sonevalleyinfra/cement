@@ -23,12 +23,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const { user } = await requireUser();
   const nav = navFor(user.role);
   return (
-    <AppShell title="Cement" headerRight={
-        <div className="flex items-center gap-1">
-          <NotificationBell />
-          <FirmSwitcher />
-        </div>
-      } nav={nav}>
+    <AppShell headerLeft={<FirmSwitcher />} headerRight={<NotificationBell />} nav={nav}>
       {children}
     </AppShell>
   );

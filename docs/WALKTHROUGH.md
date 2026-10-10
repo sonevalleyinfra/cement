@@ -8,7 +8,7 @@ Checked in the browser pane at a 375px phone width, using `pnpm seed:demo` accou
 - Logistics: over-dispatch refused ("Only 16 bags are left"); partial dispatch 20 then 16; driver auto-fills from the vehicle; stock fell 500 -> 464.
 - Receipt: Rs 15,000 cash auto-split Firm A 12,600 + Firm B 2,400; ledger Firm A 0, Firm B 4,600 as expected.
 - Cancel a partly dispatched order (40 bags out): stock rose back 410 -> 450, ledger got a compensating entry.
-- Firm switcher changes the order list; header chip follows.
+- Firm switcher changes the order list; the firm name in the header follows.
 - Retailer: sees only own orders, no price on the list or the detail page (HTML checked), dues shown on home.
 - Home screens for sales, accounts, logistics, retailer and admin show numbers that match the data.
 

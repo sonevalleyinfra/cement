@@ -4,12 +4,17 @@ import {
   canSwitchOffProduct,
   cleanListName,
   cleanTypeCode,
+  findProductByParts,
   formatTonnes,
   isDuplicateName,
   productGroups,
   productName,
+  listsUsedBy,
+  renamedProducts,
+  resolveProduct,
   validateNewProduct,
   type CatalogueLookups,
+  type ProductLookups,
 } from "./catalogue-rules";
 
 describe("productName", () => {
@@ -139,5 +144,114 @@ describe("canSwitchOffProduct", () => {
   it("refuses while bags are in stock", () => {
     expect(canSwitchOffProduct(5)).toEqual({ ok: false, error: "Bags still in stock." });
     expect(canSwitchOffProduct(0)).toEqual({ ok: true });
+  });
+});
+
+describe("findProductByParts", () => {
+  const products = [
+    { id: "p1", brandId: "b1", channel: "trade", gradeId: "g1", bagKg: 50 },
+    { id: "p2", brandId: "b1", channel: "non_trade", gradeId: "g1", bagKg: 50 },
+  ];
+  it("matches all four parts", () => {
+    expect(findProductByParts(products, { brandId: "b1", channel: "non_trade", gradeId: "g1", bagKg: 50 })?.id).toBe("p2");
+    expect(findProductByParts(products, { brandId: "b2", channel: "trade", gradeId: "g1", bagKg: 50 })).toBeUndefined();
+  });
+});
+
+describe("resolveProduct", () => {
+  const lookups: ProductLookups = {
+    brands: [
+      { id: "b1", name: "Prism", active: true },
+      { id: "b2", name: "Old", active: false },
+    ],
+    types: [
+      { id: "opc", code: "OPC", active: true },
+      { id: "ppc", code: "PPC", active: true },
+    ],
+    grades: [
+      { id: "opc53", typeId: "opc", name: "53", active: true },
+      { id: "ppc43", typeId: "ppc", name: "43", active: true },
+    ],
+    products: [
+      { id: "p1", brandId: "b1", channel: "trade", gradeId: "opc53", bagKg: 50, active: true },
+      { id: "p2", brandId: "b1", channel: "non_trade", gradeId: "opc53", bagKg: 50, active: false },
+      { id: "p3", brandId: "b2", channel: "trade", gradeId: "ppc43", bagKg: 50, active: true },
+    ],
+  };
+  const pick = (over: Partial<{ brandId: string; channel: string; typeId: string; gradeId: string }>) => ({
+    brandId: "b1",
+    channel: "trade",
+    typeId: "opc",
+    gradeId: "opc53",
+    bagKg: 50,
+    ...over,
+  });
+
+  it("uses an active product as it is", () => {
+    expect(resolveProduct(pick({}), lookups, false)).toEqual({ ok: true, kind: "existing", id: "p1" });
+    expect(resolveProduct(pick({}), lookups, true)).toEqual({ ok: true, kind: "existing", id: "p1" });
+  });
+  it("keeps using an active product even when its brand was removed", () => {
+    expect(resolveProduct(pick({ brandId: "b2", typeId: "ppc", gradeId: "ppc43" }), lookups, false)).toEqual({
+      ok: true,
+      kind: "existing",
+      id: "p3",
+    });
+  });
+  it("makes a missing product only when allowed", () => {
+    const input = pick({ channel: "non_trade", typeId: "ppc", gradeId: "ppc43" });
+    expect(resolveProduct(input, lookups, false)).toEqual({ ok: false, error: "Not in catalogue." });
+    expect(resolveProduct(input, lookups, true)).toEqual({
+      ok: true,
+      kind: "create",
+      value: { brandId: "b1", channel: "non_trade", gradeId: "ppc43", bagKg: 50, name: "Prism Non-trade PPC 43" },
+    });
+  });
+  it("switches a switched-off product back on only when allowed", () => {
+    const input = pick({ channel: "non_trade" });
+    expect(resolveProduct(input, lookups, false)).toEqual({ ok: false, error: "Pick an active product." });
+    expect(resolveProduct(input, lookups, true)).toEqual({ ok: true, kind: "reactivate", id: "p2" });
+  });
+  it("refuses a grade from another type", () => {
+    expect(resolveProduct(pick({ typeId: "ppc" }), lookups, true)).toEqual({ ok: false, error: "Pick a grade." });
+    expect(resolveProduct(pick({ gradeId: "nope" }), lookups, true)).toEqual({ ok: false, error: "Pick a grade." });
+  });
+  it("will not make a product from a removed brand", () => {
+    expect(resolveProduct(pick({ brandId: "b2" }), lookups, true)).toEqual({ ok: false, error: "Pick a brand." });
+  });
+  it("refuses an unknown trade-type", () => {
+    expect(resolveProduct(pick({ channel: "retail" }), lookups, true)).toEqual({
+      ok: false,
+      error: "Pick trade or non-trade.",
+    });
+  });
+});
+
+describe("listsUsedBy", () => {
+  it("keeps only the brands, types and grades the products use", () => {
+    const lists = {
+      brands: [{ id: "b1" }, { id: "b2" }],
+      types: [{ id: "opc" }, { id: "ppc" }],
+      grades: [
+        { id: "opc53", typeId: "opc" },
+        { id: "opc43", typeId: "opc" },
+        { id: "ppc43", typeId: "ppc" },
+      ],
+    };
+    expect(listsUsedBy(lists, [{ brandId: "b1", gradeId: "opc53" }])).toEqual({
+      brands: [{ id: "b1" }],
+      types: [{ id: "opc" }],
+      grades: [{ id: "opc53", typeId: "opc" }],
+    });
+  });
+});
+
+describe("renamedProducts", () => {
+  it("rebuilds names and returns only the ones that changed", () => {
+    const rows = [
+      { id: "p1", name: "Prism Trade OPC 53", brand: "Prisma", channel: "trade", typeCode: "OPC", grade: "53", bagKg: 50 },
+      { id: "p2", name: "Other Trade OPC 53", brand: "Other", channel: "trade", typeCode: "OPC", grade: "53", bagKg: 50 },
+    ];
+    expect(renamedProducts(rows)).toEqual([{ id: "p1", name: "Prisma Trade OPC 53" }]);
   });
 });

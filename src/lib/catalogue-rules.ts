@@ -137,3 +137,75 @@ export function productGroups(
 export function canSwitchOffProduct(bagsInStock: number): { ok: true } | { ok: false; error: string } {
   return bagsInStock > 0 ? { ok: false, error: "Bags still in stock." } : { ok: true };
 }
+
+type PartsKey = { brandId: string; channel: string; gradeId: string; bagKg: number };
+
+/** The product made from these drop-down choices, if there is one. */
+export function findProductByParts<P extends PartsKey>(products: readonly P[], parts: PartsKey): P | undefined {
+  return products.find(
+    (p) =>
+      p.brandId === parts.brandId && p.channel === parts.channel && p.gradeId === parts.gradeId && p.bagKg === parts.bagKg,
+  );
+}
+
+export type ProductLookups = Omit<CatalogueLookups, "products"> & {
+  products: readonly (PartsKey & { id: string; active: boolean })[];
+};
+
+export type ResolvedProduct =
+  | { ok: true; kind: "existing"; id: string }
+  | { ok: true; kind: "reactivate"; id: string }
+  | { ok: true; kind: "create"; value: NewProduct }
+  | { ok: false; error: string };
+
+/**
+ * Which product the four stock drop-downs (brand, trade-type, type, grade) point to.
+ * An active product is used as it is. A missing or switched-off one is made / switched back on,
+ * but only when `allowCreate` (a purchase by someone who may manage the catalogue);
+ * then its brand, type and grade must all be switched on.
+ */
+export function resolveProduct(input: NewProductInput, lookups: ProductLookups, allowCreate: boolean): ResolvedProduct {
+  const grade = lookups.grades.find((g) => g.id === input.gradeId);
+  if (!grade || grade.typeId !== input.typeId) return { ok: false, error: "Pick a grade." };
+  const found = findProductByParts(lookups.products, input);
+  if (found?.active) return { ok: true, kind: "existing", id: found.id };
+  if (!allowCreate) return { ok: false, error: found ? "Pick an active product." : "Not in catalogue." };
+  const check = validateNewProduct(input, { ...lookups, products: [] });
+  if (!check.ok) return check;
+  return found ? { ok: true, kind: "reactivate", id: found.id } : { ok: true, kind: "create", value: check.value };
+}
+
+type ListItems<B, T, G> = { brands: readonly B[]; types: readonly T[]; grades: readonly G[] };
+
+/** Only the brands, types and grades some of these products are made from (for forms that never add products). */
+export function listsUsedBy<B extends { id: string }, T extends { id: string }, G extends { id: string; typeId: string }>(
+  lists: ListItems<B, T, G>,
+  products: readonly { brandId: string; gradeId: string }[],
+): { brands: B[]; types: T[]; grades: G[] } {
+  const brandIds = new Set(products.map((p) => p.brandId));
+  const grades = lists.grades.filter((g) => products.some((p) => p.gradeId === g.id));
+  const typeIds = new Set(grades.map((g) => g.typeId));
+  return {
+    brands: lists.brands.filter((b) => brandIds.has(b.id)),
+    types: lists.types.filter((t) => typeIds.has(t.id)),
+    grades,
+  };
+}
+
+/**
+ * The names to change after a brand, type or grade was renamed. Each row is a product with its
+ * current parts; only products whose built name differs are returned.
+ */
+export function renamedProducts(
+  rows: readonly { id: string; name: string; brand: string; channel: string; typeCode: string; grade: string; bagKg: number }[],
+): { id: string; name: string }[] {
+  return rows
+    .filter((r) => isProductChannel(r.channel))
+    .map((r) => ({
+      id: r.id,
+      old: r.name,
+      name: productName({ ...r, channel: r.channel as ProductChannel }),
+    }))
+    .filter((r) => r.name !== r.old)
+    .map(({ id, name }) => ({ id, name }));
+}

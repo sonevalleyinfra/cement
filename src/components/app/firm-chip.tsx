@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 /** Firms are told apart by a fixed accent slot (a to f), never by free colour choice. */
 export type { FirmSlot };
 
-const dot: Record<FirmSlot, string> = {
+/** The firm's colour dot class, e.g. `bg-firm-a`. */
+export const firmDot: Record<FirmSlot, string> = {
   a: "bg-firm-a",
   b: "bg-firm-b",
   c: "bg-firm-c",
@@ -40,7 +41,7 @@ export function FirmChip({
         className,
       )}
     >
-      <span className={cn("size-2 rounded-full", dot[slot])} />
+      <span className={cn("size-2 rounded-full", firmDot[slot])} />
       {name}
     </span>
   );
