@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { brands, cementTypes, grades, products, stockMovements } from "@/db/schema";
@@ -10,20 +10,23 @@ import {
   cleanListName,
   cleanTypeCode,
   isDuplicateName,
+  renamedProducts,
   validateNewProduct,
   type NewProductInput,
 } from "@/lib/catalogue-rules";
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
+import type { Tx } from "@/lib/stock-places";
 
-export type CatalogueResult = { ok: true } | { ok: false; error: string };
+/** `id` is the new row's id after an add. */
+export type CatalogueResult = { ok: true; id?: string } | { ok: false; error: string };
 
-function done(): CatalogueResult {
+function done(res: CatalogueResult = { ok: true }): CatalogueResult {
   revalidatePath("/catalogue");
-  revalidatePath("/stock");
+  revalidatePath("/stock", "layout");
   revalidatePath("/orders/new");
-  return { ok: true };
+  return res;
 }
 
 /** Adds a product from the drop-downs. Its name is built, never typed. Admin only. */
@@ -58,7 +61,7 @@ export async function addProduct(input: NewProductInput): Promise<CatalogueResul
     });
     return { ok: true };
   });
-  return res.ok ? done() : res;
+  return res.ok ? done(res) : res;
 }
 
 /** Switches a product on or off. Off is refused while any firm still holds its bags. */
@@ -86,7 +89,7 @@ export async function setProductActive(id: string, active: boolean): Promise<Cat
     });
     return { ok: true };
   });
-  return res.ok ? done() : res;
+  return res.ok ? done(res) : res;
 }
 
 /** Adds a brand, e.g. "Prism". */
@@ -100,9 +103,9 @@ export async function addBrand(name: string): Promise<CatalogueResult> {
     if (isDuplicateName(clean, existing.map((e) => e.name))) return { ok: false, error: "Brand already added." };
     const [row] = await tx.insert(brands).values({ name: clean }).returning({ id: brands.id });
     await writeAudit(tx, { actorId: session.user.id, entity: "brand", entityId: row.id, action: "create", details: { name: clean } });
-    return { ok: true };
+    return { ok: true, id: row.id };
   });
-  return res.ok ? done() : res;
+  return res.ok ? done(res) : res;
 }
 
 /** Adds a cement type, e.g. code "PSC", name "Portland Slag Cement". */
@@ -118,9 +121,9 @@ export async function addCementType(form: { code: string; name: string }): Promi
     const sortOrder = Math.max(0, ...existing.map((e) => e.sortOrder)) + 1;
     const [row] = await tx.insert(cementTypes).values({ code, name, sortOrder }).returning({ id: cementTypes.id });
     await writeAudit(tx, { actorId: session.user.id, entity: "cement_type", entityId: row.id, action: "create", details: { code, name } });
-    return { ok: true };
+    return { ok: true, id: row.id };
   });
-  return res.ok ? done() : res;
+  return res.ok ? done(res) : res;
 }
 
 /** Adds a grade under one type, e.g. "53" under OPC. */
@@ -147,9 +150,9 @@ export async function addGrade(form: { typeId: string; name: string }): Promise<
       action: "create",
       details: { type: type.code, name },
     });
-    return { ok: true };
+    return { ok: true, id: row.id };
   });
-  return res.ok ? done() : res;
+  return res.ok ? done(res) : res;
 }
 
 export type CatalogueList = "brand" | "cement_type" | "grade";
@@ -176,5 +179,93 @@ export async function setListItemActive(list: CatalogueList, id: string, active:
     await writeAudit(tx, { actorId: session.user.id, entity: list, entityId: id, action: active ? "activate" : "deactivate" });
     return { ok: true };
   });
-  return res.ok ? done() : res;
+  return res.ok ? done(res) : res;
+}
+
+/** Products made from a brand, type or grade, with their parts, to rebuild their names. */
+async function productsWithParts(tx: Tx, list: CatalogueList, id: string) {
+  const where =
+    list === "brand" ? eq(products.brandId, id) : list === "grade" ? eq(products.gradeId, id) : eq(grades.typeId, id);
+  return tx
+    .select({
+      id: products.id,
+      name: products.name,
+      brand: brands.name,
+      channel: products.channel,
+      typeCode: cementTypes.code,
+      grade: grades.name,
+      bagKg: products.bagKg,
+    })
+    .from(products)
+    .innerJoin(brands, eq(brands.id, products.brandId))
+    .innerJoin(grades, eq(grades.id, products.gradeId))
+    .innerJoin(cementTypes, eq(cementTypes.id, grades.typeId))
+    .where(where);
+}
+
+/**
+ * Renames a brand, type (code and full name) or grade. Product names are built from these,
+ * so every product made from it gets its new name in the same transaction.
+ */
+export async function renameListItem(
+  list: CatalogueList,
+  id: string,
+  form: { name: string; code?: string },
+): Promise<CatalogueResult> {
+  const session = await requireRole(...rolesFor("manageCatalogue"));
+  if (!isUuid(id)) return { ok: false, error: "Not found." };
+  const res = await db.transaction(async (tx): Promise<CatalogueResult> => {
+    await tx.execute(sql`lock table ${products} in share row exclusive mode`);
+    let from: string;
+    let to: string;
+    if (list === "brand") {
+      const name = cleanListName(form.name);
+      if (!name) return { ok: false, error: "Enter a brand name." };
+      await tx.execute(sql`lock table ${brands} in share row exclusive mode`);
+      const [row] = await tx.select().from(brands).where(eq(brands.id, id));
+      if (!row) return { ok: false, error: "Not found." };
+      const others = await tx.select({ name: brands.name }).from(brands).where(ne(brands.id, id));
+      if (isDuplicateName(name, others.map((o) => o.name))) return { ok: false, error: "Brand already added." };
+      await tx.update(brands).set({ name, updatedAt: new Date() }).where(eq(brands.id, id));
+      [from, to] = [row.name, name];
+    } else if (list === "cement_type") {
+      const code = cleanTypeCode(form.code ?? "");
+      if (!code) return { ok: false, error: "Enter a short code, e.g. PSC." };
+      const name = cleanListName(form.name, 60) ?? "";
+      await tx.execute(sql`lock table ${cementTypes} in share row exclusive mode`);
+      const [row] = await tx.select().from(cementTypes).where(eq(cementTypes.id, id));
+      if (!row) return { ok: false, error: "Not found." };
+      const [taken] = await tx
+        .select({ id: cementTypes.id })
+        .from(cementTypes)
+        .where(and(eq(cementTypes.code, code), ne(cementTypes.id, id)));
+      if (taken) return { ok: false, error: "Type already added." };
+      await tx.update(cementTypes).set({ code, name }).where(eq(cementTypes.id, id));
+      [from, to] = [`${row.code} ${row.name}`.trim(), `${code} ${name}`.trim()];
+    } else if (list === "grade") {
+      const name = cleanListName(form.name, 20);
+      if (!name) return { ok: false, error: "Enter a grade." };
+      await tx.execute(sql`lock table ${grades} in share row exclusive mode`);
+      const [row] = await tx.select().from(grades).where(eq(grades.id, id));
+      if (!row) return { ok: false, error: "Not found." };
+      const others = await tx
+        .select({ name: grades.name })
+        .from(grades)
+        .where(and(eq(grades.typeId, row.typeId), ne(grades.id, id)));
+      if (isDuplicateName(name, others.map((o) => o.name))) return { ok: false, error: "Grade already added." };
+      await tx.update(grades).set({ name }).where(eq(grades.id, id));
+      [from, to] = [row.name, name];
+    } else {
+      return { ok: false, error: "Not found." };
+    }
+    for (const p of renamedProducts(await productsWithParts(tx, list, id))) {
+      await tx.update(products).set({ name: p.name, updatedAt: new Date() }).where(eq(products.id, p.id));
+    }
+    await writeAudit(tx, { actorId: session.user.id, entity: list, entityId: id, action: "rename", details: { from, to } });
+    return { ok: true };
+  });
+  if (!res.ok) return res;
+  // Product names show on many screens (orders, dispatch, stock, home).
+  revalidatePath("/", "layout");
+  return done(res);
 }

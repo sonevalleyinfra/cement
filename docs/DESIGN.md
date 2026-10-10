@@ -13,7 +13,8 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Warm light neutrals with one brand colour: burnt orange (`--primary` / `--brand`), fading into amber
   (`--brand-2`) in `bg-brand-gradient`. Light only. Tokens are in `src/app/globals.css`.
 - A soft warm glow sits at the top of every screen (body background). Header and bottom nav are frosted glass.
-- Brand gradient is used only for: the logo mark, the one `featured` `ListCard` at the top of Home, and primary buttons' glow.
+- The app header shows only the firm name (large, firm colour dot, tap to switch firm) and the notification bell. No app name or logo.
+- Brand gradient is used only for: the logo mark (sign-in screens), the one `featured` `ListCard` at the top of Home, and primary buttons' glow.
 - Each firm has one fixed accent (`firm-a` to `firm-f`, picked automatically when the firm is added), shown as the dot
   and a light wash in `FirmChip`.
 - Status colours appear only in `StatusChip` (soft tinted pill + dot).
@@ -23,6 +24,8 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Numbers: bold, large, `tabular`. Money in paise with `formatINR(p, { hidePaise: true })` in lists.
 - Cards: white, 16px radius, hairline ring plus soft `shadow-card`; tappable cards lift slightly on hover (`shadow-card-hover`).
 - Selected toggles (product, payment mode, firm in the switcher) use the primary orange.
+- Stock forms pick a product with four small drop-downs (Brand, Trade-type, Type, Grade). In purchase, admins get a pencil
+  next to Brand, Type and Grade to add, rename or remove items; a new combination becomes a new product on save.
 
 ## Words
 - Labels, numbers and actions only. Titles are one or two words ("Orders", "New order").

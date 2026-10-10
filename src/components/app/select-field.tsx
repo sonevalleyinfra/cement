@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import { cn } from "@/lib/utils";
 
 export type SelectOption = { value: string; label: string };
@@ -7,6 +7,7 @@ export type SelectGroup = { label: string; options: SelectOption[] };
 /**
  * The one drop-down for the whole app: a native select (best on phones), 48px tall, 16px text.
  * Pass `options` for a flat list or `groups` for headed sections (e.g. Trade / Non-trade).
+ * `action` sits at the right of the label, e.g. a small edit button.
  */
 export function SelectField({
   label,
@@ -16,6 +17,7 @@ export function SelectField({
   groups,
   placeholder,
   disabled,
+  action,
   className,
 }: {
   label: string;
@@ -26,6 +28,7 @@ export function SelectField({
   /** Shown first with an empty value, e.g. "Pick a grade". */
   placeholder?: string;
   disabled?: boolean;
+  action?: ReactNode;
   className?: string;
 }) {
   const option = (o: SelectOption) => (
@@ -36,9 +39,12 @@ export function SelectField({
   const id = useId();
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
+      <div className="flex h-5 items-center justify-between gap-2">
+        <label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </label>
+        {action}
+      </div>
       <select
         id={id}
         className="h-12 w-full rounded-xl border bg-background px-3 text-base font-normal disabled:opacity-60"

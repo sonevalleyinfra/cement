@@ -26,7 +26,7 @@ export default function DesignPage() {
   if (process.env.NODE_ENV === "production") notFound();
 
   return (
-    <AppShell title="Orders" nav={nav} headerRight={<FirmChip name="Firm A" slot="a" />}>
+    <AppShell nav={nav} headerLeft={<FirmChip name="Firm A" slot="a" />}>
       <div className="grid grid-cols-2 gap-4 py-2">
         <Stat label="Today" value="240 bags" />
         <Stat label="Sales" value={formatINRCompact(18_450_000_00)} />

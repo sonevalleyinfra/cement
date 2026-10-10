@@ -13,7 +13,7 @@ export async function getFirmSelection() {
   return { firms, selection: resolveFirmSelection(cookieValue, firms.map((f) => f.id), isAdmin(user.role)), admin: isAdmin(user.role) };
 }
 
-/** Put this in `AppShell`'s `headerRight`. Hidden when the user has no firms. */
+/** Put this in `AppShell`'s `headerLeft`. Hidden when the user has no firms. */
 export async function FirmSwitcher() {
   const { firms, selection, admin } = await getFirmSelection();
   if (firms.length === 0) return null;
