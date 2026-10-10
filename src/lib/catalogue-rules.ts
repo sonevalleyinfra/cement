@@ -191,31 +191,53 @@ export function findProductByParts<P extends PartsKey>(products: readonly P[], p
   );
 }
 
-export type ProductLookups = Omit<CatalogueLookups, "products"> & {
-  products: readonly (PartsKey & { id: string; active: boolean })[];
-};
-
-export type ResolvedProduct =
-  | { ok: true; kind: "existing"; id: string }
-  | { ok: true; kind: "reactivate"; id: string }
-  | { ok: true; kind: "create"; value: NewProduct }
-  | { ok: false; error: string };
-
 /**
- * Which product the stock drop-downs (brand, trade-type, type, grade) point to.
- * An active product is used as it is. A missing or switched-off one is made / switched back on,
- * but only when `allowCreate` (a purchase by someone who may manage the catalogue);
- * then its brand, type and grade must all be switched on.
+ * The product the stock drop-downs (brand, trade-type, type, grade) point to. Only an existing,
+ * switched-on product is used: stock forms never make products (that is done in Catalogue).
  */
-export function resolveProduct(input: NewProductInput, lookups: ProductLookups, allowCreate: boolean): ResolvedProduct {
+export function resolveProduct(
+  input: NewProductInput,
+  lookups: {
+    grades: readonly { id: string; typeId: string }[];
+    products: readonly (PartsKey & { id: string; active: boolean })[];
+  },
+): { ok: true; id: string } | { ok: false; error: string } {
   const grade = lookups.grades.find((g) => g.id === input.gradeId);
   if (!grade || grade.typeId !== input.typeId) return { ok: false, error: "Pick a grade." };
   const found = findProductByParts(lookups.products, input);
-  if (found?.active) return { ok: true, kind: "existing", id: found.id };
-  if (!allowCreate) return { ok: false, error: found ? "Pick an active product." : "Not in catalogue." };
-  const check = validateNewProduct(input, { ...lookups, products: [] });
-  if (!check.ok) return check;
-  return found ? { ok: true, kind: "reactivate", id: found.id } : { ok: true, kind: "create", value: check.value };
+  if (!found) return { ok: false, error: "Not in catalogue. Add the product in Catalogue first." };
+  if (!found.active) return { ok: false, error: "Pick an active product." };
+  return { ok: true, id: found.id };
+}
+
+export type ProductPick = { brandId: string; channel: string; typeId: string; gradeId: string };
+
+/**
+ * The stock forms' product drop-downs, narrowed step by step to products that exist:
+ * the brand's trade-types, then the types made in that trade-type, then their grades.
+ * A pick that is not offered (for example after switching brand) falls back to the first offered
+ * one, so the drop-downs always point at an existing product (or nothing, when the brand has none).
+ * `types` / `grades` give the order of the lists.
+ */
+export function pickProductParts<P extends PartsKey & { id: string }>(
+  products: readonly P[],
+  types: readonly { id: string }[],
+  grades: readonly { id: string; typeId: string }[],
+  pick: ProductPick,
+): ProductPick & { channels: ProductChannel[]; typeIds: string[]; gradeIds: string[]; product: P | null } {
+  const typeOf = new Map(grades.map((g) => [g.id, g.typeId]));
+  const mine = products.filter((p) => p.brandId === pick.brandId && p.bagKg === DEFAULT_BAG_KG);
+  const channels = PRODUCT_CHANNELS.filter((c) => mine.some((p) => p.channel === c));
+  const channel = (channels as readonly string[]).includes(pick.channel) ? pick.channel : (channels[0] ?? "");
+  const inChannel = mine.filter((p) => p.channel === channel);
+  const typeIds = types.map((t) => t.id).filter((id) => inChannel.some((p) => typeOf.get(p.gradeId) === id));
+  const typeId = typeIds.includes(pick.typeId) ? pick.typeId : (typeIds[0] ?? "");
+  const gradeIds = grades
+    .filter((g) => g.typeId === typeId && inChannel.some((p) => p.gradeId === g.id))
+    .map((g) => g.id);
+  const gradeId = gradeIds.includes(pick.gradeId) ? pick.gradeId : (gradeIds[0] ?? "");
+  const product = inChannel.find((p) => p.gradeId === gradeId) ?? null;
+  return { brandId: pick.brandId, channel, typeId, gradeId, channels, typeIds, gradeIds, product };
 }
 
 type ListItems<B, T, G> = { brands: readonly B[]; types: readonly T[]; grades: readonly G[] };

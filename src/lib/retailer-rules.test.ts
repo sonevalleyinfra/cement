@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  checkRetailerPick,
-  isDuplicatePhone,
   isValidIndianMobile,
-  matchesRetailerSearch,
   normalizePhone,
   pickableRetailerLogins,
   type RetailerLogin,
@@ -47,13 +44,6 @@ describe("validateRetailer", () => {
   });
 });
 
-describe("isDuplicatePhone", () => {
-  const list = [{ id: "1", phone: "9876543210" }];
-  it("finds a duplicate", () => expect(isDuplicatePhone("9876543210", list)).toBe(true));
-  it("ignores itself when editing", () => expect(isDuplicatePhone("9876543210", list, "1")).toBe(false));
-  it("passes a new number", () => expect(isDuplicatePhone("9876543211", list)).toBe(false));
-});
-
 const login = (over: Partial<RetailerLogin> = {}): RetailerLogin => ({
   id: "u1",
   name: "Sharma Traders",
@@ -73,26 +63,4 @@ describe("pickableRetailerLogins", () => {
     expect(pickableRetailerLogins([login({ deletedAt: new Date() })], [])).toEqual([]));
   it("drops logins already linked to a shop", () =>
     expect(pickableRetailerLogins([login()], [null, "u1"])).toEqual([]));
-});
-
-describe("matchesRetailerSearch", () => {
-  const l = login();
-  it("matches everything when empty", () => expect(matchesRetailerSearch(l, "  ")).toBe(true));
-  it("matches name, any case", () => expect(matchesRetailerSearch(l, "sharma t")).toBe(true));
-  it("matches email", () => expect(matchesRetailerSearch(l, "@EXAMPLE")).toBe(true));
-  it("matches part of the phone", () => expect(matchesRetailerSearch(l, "54321")).toBe(true));
-  it("matches a phone typed with +91 and spaces", () =>
-    expect(matchesRetailerSearch(l, "+91 98765 43210")).toBe(true));
-  it("rejects a non-match", () => expect(matchesRetailerSearch(l, "gupta")).toBe(false));
-  it("rejects wrong digits", () => expect(matchesRetailerSearch(l, "1111")).toBe(false));
-});
-
-describe("checkRetailerPick", () => {
-  it("accepts a free retailer login", () => expect(checkRetailerPick(login(), [])).toEqual({ ok: true }));
-  it("rejects a missing login", () => expect(checkRetailerPick(undefined, []).ok).toBe(false));
-  it("rejects a non-retailer", () => expect(checkRetailerPick(login({ role: "accounts" }), []).ok).toBe(false));
-  it("rejects a deactivated login", () => expect(checkRetailerPick(login({ banned: true }), []).ok).toBe(false));
-  it("rejects a login already added", () =>
-    expect(checkRetailerPick(login(), ["u1"])).toEqual({ ok: false, error: "This retailer is already added." }));
-  it("rejects a login with no phone", () => expect(checkRetailerPick(login({ phone: "" }), []).ok).toBe(false));
 });

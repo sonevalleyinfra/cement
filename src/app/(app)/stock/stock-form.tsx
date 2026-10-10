@@ -1,28 +1,26 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { CatalogueList } from "../catalogue/actions";
-import {
-  CHANNEL_LABELS,
-  DEFAULT_BAG_KG,
-  findProductByParts,
-  hasManyBrands,
-  listsUsedBy,
-  PRODUCT_CHANNELS,
-  startBrand,
-} from "@/lib/catalogue-rules";
+import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
 import { purchaseAmountPaise } from "@/lib/supplier-rules";
-import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
+import {
+  NEW_TRUCK_PLACE,
+  placeGroups,
+  STOCK_FIX_LABELS,
+  STOCK_FIX_REASONS,
+  type StockFixReason,
+} from "@/lib/stock-rules";
+import { useSubmit } from "@/lib/use-submit";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
-import { ListEditorSheet } from "./list-editor-sheet";
+import { TruckFields, type TruckInput } from "./truck-fields";
 
 type ProductOption = { id: string; name: string; channel: string; brandId: string; gradeId: string; bagKg: number };
 type Lists = {
@@ -36,60 +34,54 @@ type Balance = { productId: string; placeKey: string; bags: number };
 const copy = {
   purchase: { button: "Add purchase", note: "Supplier / note (optional)", done: "Purchase added." },
   opening: { button: "Set opening stock", note: "", done: "Opening stock set." },
-  adjust: { button: "Save adjustment", note: "Reason (required)", done: "Adjustment saved." },
+  adjust: { button: "Save adjustment", note: "Note (optional)", done: "Adjustment saved." },
 } as const;
 
+const chip = (on: boolean) =>
+  `h-11 rounded-full px-4 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
+
+const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
+
+/**
+ * Purchase, opening stock and stock correction. The product is picked with drop-downs that only offer
+ * existing products (brand → trade-type → type → grade); picking a brand starts again at that brand's
+ * first product, so nothing new is ever made here (products are added in Catalogue).
+ */
 export function StockForm({
   mode,
   places,
   products,
   balances,
   lists,
-  canManageCatalogue,
 }: {
   mode: keyof typeof copy;
   places: PlaceOption[];
   products: ProductOption[];
   balances: Balance[];
-  /** Brands, types and grades for the product drop-downs. */
+  /** Brands, types and grades the products are made from. */
   lists: Lists;
-  /** Shows the edit buttons next to the drop-downs (purchase, admin only). */
-  canManageCatalogue: boolean;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
-  const first = products[0];
-  const [brandPick, setBrandPick] = useState(first?.brandId ?? "");
-  const [channel, setChannel] = useState(first?.channel ?? PRODUCT_CHANNELS[0]);
-  const [typePick, setTypePick] = useState(lists.grades.find((g) => g.id === first?.gradeId)?.typeId ?? "");
-  const [gradePick, setGradePick] = useState(first?.gradeId ?? "");
-  const [editing, setEditing] = useState<CatalogueList | null>(null);
+  const { pending, run } = useSubmit();
+  const [pick, setPick] = useState({ brandId: products[0]?.brandId ?? "", channel: "", typeId: "", gradeId: "" });
   const [place, setPlace] = useState(places[0]?.key ?? (mode === "purchase" ? NEW_TRUCK_PLACE : ""));
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
+  const [reason, setReason] = useState<StockFixReason | null>(null);
   // Purchase only: what one bag cost (typed in rupees) and the optional supplier invoice number.
   const [costText, setCostText] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   // The quick truck form (purchase into a hired truck): nothing about the truck is saved for next time.
-  const [truck, setTruck] = useState({ number: "", driverName: "", driverPhone: "" });
+  const [truck, setTruck] = useState(NO_TRUCK);
   const newTruck = mode === "purchase" && place === NEW_TRUCK_PLACE;
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Brand first. With one brand there is no Brand drop-down: that brand is used.
-  // A pick that left the list (removed, or a grade of another type) falls back to the first one.
-  const brandId = startBrand(lists.brands, brandPick);
+  const brandId = startBrand(lists.brands, pick.brandId);
   const brandName = lists.brands.find((b) => b.id === brandId)?.name ?? "";
-  // A purchase may make a new product from any type and grade; opening and adjust offer only
-  // the types and grades this brand's products are made from.
-  const shown = mode === "purchase" ? lists : listsUsedBy(lists, products.filter((p) => p.brandId === brandId));
-  const typeId = shown.types.some((t) => t.id === typePick) ? typePick : (shown.types[0]?.id ?? "");
-  const typeGrades = shown.grades.filter((g) => g.typeId === typeId);
-  const gradeId = typeGrades.some((g) => g.id === gradePick) ? gradePick : (typeGrades[0]?.id ?? "");
-  const typeCode = shown.types.find((t) => t.id === typeId)?.code ?? "";
-  const picked = Boolean(brandId && typeId && gradeId);
-  const product = findProductByParts(products, { brandId, channel, gradeId, bagKg: DEFAULT_BAG_KG });
-  const missing = picked && !product;
+  const parts = pickProductParts(products, lists.types, lists.grades, { ...pick, brandId });
+  const product = parts.product;
 
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
@@ -100,57 +92,44 @@ export function StockForm({
     setMessage(null);
     const input = {
       brandId,
-      channel,
-      typeId,
-      gradeId,
+      channel: parts.channel,
+      typeId: parts.typeId,
+      gradeId: parts.gradeId,
       place,
       truck: newTruck ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
       note,
+      ...(mode === "adjust" ? { reason: reason ?? "" } : {}),
       ...(mode === "purchase" ? { costPerBagPaise: costPaise ?? undefined, invoiceNo } : {}),
     };
-    start(async () => {
-      const action = mode === "purchase" ? recordPurchase : mode === "opening" ? recordOpening : recordAdjustment;
-      const res = await action(input);
-      if (res.ok) {
-        setMessage({ ok: true, text: copy[mode].done });
-        setDigits("");
-        setNote("");
-        setCostText("");
-        setInvoiceNo("");
-        setTruck({ number: "", driverName: "", driverPhone: "" });
-        router.refresh();
-      } else setMessage({ ok: false, text: res.error });
-    });
-  }
-
-  if (
-    (places.length === 0 && mode !== "purchase") ||
-    (products.length === 0 && !canManageCatalogue) ||
-    lists.brands.length === 0
-  ) {
-    return (
-      <p className="rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
-        {places.length === 0 && mode !== "purchase"
-          ? "Add a godown or vehicle first."
-          : lists.brands.length === 0
-            ? "Add a brand first (Catalogue)."
-            : "Add a product first."}
-      </p>
+    const action = mode === "purchase" ? recordPurchase : mode === "opening" ? recordOpening : recordAdjustment;
+    run(
+      (requestId) => action({ ...input, requestId }),
+      (res) => {
+        if (res.ok) {
+          setMessage({ ok: true, text: copy[mode].done });
+          setDigits("");
+          setNote("");
+          setReason(null);
+          setCostText("");
+          setInvoiceNo("");
+          setTruck(NO_TRUCK);
+          router.refresh();
+        } else setMessage({ ok: false, text: res.error });
+      },
     );
   }
 
-  const edit = (list: CatalogueList, label: string) =>
-    canManageCatalogue ? (
-      <button
-        type="button"
-        onClick={() => setEditing(list)}
-        aria-label={`Edit ${label}`}
-        className="-my-3.5 -mr-3 flex size-12 items-center justify-center rounded-xl text-muted-foreground transition-[background-color,transform] duration-150 ease-out hover:bg-muted active:scale-[0.95]"
-      >
-        <Pencil className="size-4" />
-      </button>
-    ) : undefined;
+  if ((places.length === 0 && mode !== "purchase") || products.length === 0) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
+        <span>{products.length === 0 ? "No products yet" : "No godown yet"}</span>
+        <Link href={products.length === 0 ? "/catalogue" : "/godowns"} className="font-semibold underline">
+          {products.length === 0 ? "Catalogue" : "Godowns"}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -158,76 +137,42 @@ export function StockForm({
         <SelectField
           label="Brand"
           value={brandId}
-          onChange={setBrandPick}
+          // A new brand starts at its own first product (nothing from the old brand is kept).
+          onChange={(id) => setPick({ brandId: id, channel: "", typeId: "", gradeId: "" })}
           options={lists.brands.map((b) => ({ value: b.id, label: b.name }))}
         />
       )}
       <SelectField
         label="Trade-type"
-        value={channel}
-        onChange={setChannel}
-        options={PRODUCT_CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
+        value={parts.channel}
+        onChange={(channel) => setPick({ ...pick, brandId, channel })}
+        options={parts.channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
       />
       <div className="grid grid-cols-2 gap-3">
         <SelectField
           label="Type"
-          value={typeId}
-          onChange={setTypePick}
-          options={shown.types.map((t) => ({ value: t.id, label: t.code }))}
-          placeholder={shown.types.length === 0 ? "Add one" : undefined}
-          action={edit("cement_type", "types")}
+          value={parts.typeId}
+          onChange={(typeId) => setPick({ ...pick, brandId, channel: parts.channel, typeId })}
+          options={parts.typeIds.map((id) => ({ value: id, label: lists.types.find((t) => t.id === id)?.code ?? "" }))}
         />
         <SelectField
           label="Grade"
-          value={gradeId}
-          onChange={setGradePick}
-          options={typeGrades.map((g) => ({ value: g.id, label: g.name }))}
-          placeholder={typeGrades.length === 0 ? "Add one" : undefined}
-          action={typeId ? edit("grade", "grades") : undefined}
+          value={parts.gradeId}
+          onChange={(gradeId) => setPick({ ...pick, brandId, channel: parts.channel, typeId: parts.typeId, gradeId })}
+          options={parts.gradeIds.map((id) => ({ value: id, label: lists.grades.find((g) => g.id === id)?.name ?? "" }))}
         />
       </div>
-      {missing && (
-        <p className={mode === "purchase" ? "text-sm font-medium text-primary" : "text-sm text-destructive"}>
-          {mode === "purchase" ? "New product" : "Not in catalogue"}
-        </p>
-      )}
       <SelectField
         label="Place"
         value={place}
         onChange={setPlace}
-        placeholder={places.length === 0 && mode !== "purchase" ? "Add a godown first" : undefined}
         groups={[
           ...placeGroups(places),
           ...(mode === "purchase" ? [{ label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] }] : []),
         ]}
       />
       {newTruck ? (
-        <div className="animate-in-up flex flex-col gap-2 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
-          <Input
-            value={truck.number}
-            onChange={(e) => setTruck({ ...truck, number: e.target.value.toUpperCase() })}
-            placeholder="Truck number, e.g. BR01AB1234"
-            aria-label="Truck number"
-            autoCapitalize="characters"
-            autoComplete="off"
-            maxLength={14}
-          />
-          <Input
-            value={truck.driverName}
-            onChange={(e) => setTruck({ ...truck, driverName: e.target.value })}
-            placeholder="Driver name"
-            aria-label="Driver name"
-            maxLength={80}
-          />
-          <Input
-            value={truck.driverPhone}
-            onChange={(e) => setTruck({ ...truck, driverPhone: e.target.value })}
-            placeholder="Driver phone (optional)"
-            aria-label="Driver phone"
-            inputMode="tel"
-            maxLength={14}
-          />
-        </div>
+        <TruckFields value={truck} onChange={setTruck} />
       ) : (
         <p className="text-sm text-muted-foreground">In stock here now: {current} bags</p>
       )}
@@ -246,6 +191,22 @@ export function StockForm({
         {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
+      {mode === "adjust" && (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">
+          {STOCK_FIX_REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              aria-checked={reason === r}
+              className={chip(reason === r)}
+              onClick={() => setReason(r)}
+            >
+              {STOCK_FIX_LABELS[r]}
+            </button>
+          ))}
+        </div>
+      )}
       {mode === "purchase" && (
         <>
           <Input
@@ -292,38 +253,16 @@ export function StockForm({
           disabled={
             pending ||
             bags === 0 ||
-            !picked ||
+            !product ||
             !place ||
             (newTruck && (!truck.number.trim() || !truck.driverName.trim())) ||
             (mode === "purchase" && (costPaise === null || costPaise < 1)) ||
-            (missing && mode !== "purchase") ||
-            (mode === "adjust" && !note.trim())
+            (mode === "adjust" && reason === null)
           }
         >
           {copy[mode].button}
         </Button>
       </PinnedAction>
-      {canManageCatalogue && (
-        <>
-          <ListEditorSheet
-            kind="cement_type"
-            title="Types"
-            items={lists.types}
-            open={editing === "cement_type"}
-            onOpenChange={(o) => setEditing(o ? "cement_type" : null)}
-            onAdded={setTypePick}
-          />
-          <ListEditorSheet
-            kind="grade"
-            title={`Grades (${typeCode})`}
-            items={typeGrades}
-            typeId={typeId}
-            open={editing === "grade"}
-            onOpenChange={(o) => setEditing(o ? "grade" : null)}
-            onAdded={setGradePick}
-          />
-        </>
-      )}
     </div>
   );
 }

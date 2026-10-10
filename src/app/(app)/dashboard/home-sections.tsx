@@ -8,6 +8,7 @@ import {
   History,
   Package,
   Receipt,
+  Store,
   Truck,
   Wallet,
   type LucideIcon,
@@ -124,15 +125,20 @@ export async function LogisticsHome() {
   return (
     <Cards>
       <Card index={0} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} />
-      {s.stock.length === 0 ? (
-        <EmptyState title="No stock" />
+      {s.trucks.length === 0 ? (
+        <Card index={1} href="/stock" title="Truck stock" icon={Package} tone="blue" stats={[{ label: "Loaded trucks", value: "0" }]} />
       ) : (
-        <Card
-          index={1}
-          href="/stock"
-          title="Stock" icon={Package} tone="blue"
-          stats={s.stock.map((p) => ({ label: p.name, value: `${num(p.bags)} bags` }))}
-        />
+        s.trucks.map((t, i) => (
+          <Card
+            key={t.truck}
+            index={i + 1}
+            href="/stock"
+            title={`Truck ${t.truck}`}
+            icon={Truck}
+            tone="blue"
+            stats={t.products.map((p) => ({ label: p.name, value: `${num(p.bags)} bags` }))}
+          />
+        ))
       )}
     </Cards>
   );
@@ -167,8 +173,18 @@ export async function AdminHome() {
         title="Suppliers" icon={Factory} tone="amber"
         stats={supplierHomeLines(s.suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) }))}
       />
-      <Card index={8} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
-      <Card index={9} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
+      {s.shopsWithoutSalesRep > 0 && (
+        <Card
+          index={8}
+          href="/retailers"
+          title="Shops"
+          icon={Store}
+          tone="rose"
+          stats={[{ label: "Without sales person", value: num(s.shopsWithoutSalesRep) }]}
+        />
+      )}
+      <Card index={9} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
+      <Card index={10} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
     </Cards>
   );
 }

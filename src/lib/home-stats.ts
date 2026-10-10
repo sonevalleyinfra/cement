@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, ne, notExists, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, notExists, notInArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
@@ -14,11 +14,15 @@ import {
   cashInHandPaise,
   isOpenOrderStatus,
   istDayStart,
+  LAST_PAYMENT_SKIPS,
   logisticsCounts,
   retailersWithDues,
+  shopsWithoutSalesRep,
   totalDuesPaise,
+  truckLoads,
 } from "@/lib/home-rules";
 import { ORDER_STATUSES } from "@/lib/order-rules";
+import { getBalances } from "@/lib/stock";
 import { getSuppliers } from "@/lib/suppliers";
 import { walletBalance } from "@/lib/wallet-rules";
 
@@ -120,18 +124,21 @@ export async function stockByProduct() {
     .orderBy(products.name);
 }
 
-/** Orders waiting for logistics: the same ones the dispatch list shows. */
+/** Orders waiting for logistics (the same ones the dispatch list shows) and the bags on each truck now. */
 export async function getLogisticsHome() {
-  const [open, stock] = await Promise.all([
+  const [open, balances, names] = await Promise.all([
     db.select({ status: orders.status }).from(orders).where(toDispatch),
-    stockByProduct(),
+    getBalances(),
+    db.select({ id: products.id, name: products.name }).from(products),
   ]);
-  return { ...logisticsCounts(open), stock };
+  const productName = new Map(names.map((p) => [p.id, p.name]));
+  const trucks = truckLoads(balances.map((b) => ({ ...b, productName: productName.get(b.productId) ?? "Product" })));
+  return { ...logisticsCounts(open), trucks };
 }
 
 export async function getAdminHome(now = new Date()) {
   const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, suppliers] = await Promise.all([
+  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, suppliers, shops] = await Promise.all([
     countOrders(gte(orders.createdAt, start)),
     db
       .select({
@@ -150,6 +157,7 @@ export async function getAdminHome(now = new Date()) {
     countOrders(toDispatch),
     countUnverifiedOnline(),
     getSuppliers(),
+    db.select({ active: retailers.active, salesRepId: retailers.salesRepId }).from(retailers),
   ]);
   return {
     todayOrders,
@@ -163,6 +171,8 @@ export async function getAdminHome(now = new Date()) {
     unverifiedOnline,
     /** Each supplier (one per brand) with what we owe it. */
     suppliers,
+    /** Switched-on shops with no sales person (admin should give them one). */
+    shopsWithoutSalesRep: shopsWithoutSalesRep(shops),
   };
 }
 
@@ -190,11 +200,11 @@ export async function getRetailerHome(userId: string) {
     .select({ p: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
     .from(ledgerEntries)
     .where(eq(ledgerEntries.retailerId, shop.id));
-  // Own payments only: the newest one that was not rejected.
+  // Own payments only: the newest one that still stands (not rejected or reversed).
   const [last] = await db
     .select({ totalPaise: receipts.totalPaise, createdAt: receipts.createdAt })
     .from(receipts)
-    .where(and(eq(receipts.retailerId, shop.id), ne(receipts.status, "rejected")))
+    .where(and(eq(receipts.retailerId, shop.id), notInArray(receipts.status, [...LAST_PAYMENT_SKIPS])))
     .orderBy(desc(receipts.createdAt))
     .limit(1);
   return { openOrders: n(open?.c), balancePaise: n(bal?.p), lastPayment: last ?? null };

@@ -3,7 +3,7 @@ import { loadFormData } from "../form-data";
 import { StockForm } from "../stock-form";
 
 export default async function Page() {
-  const data = await loadFormData("opening");
+  const data = await loadFormData();
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">

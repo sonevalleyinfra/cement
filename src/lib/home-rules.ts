@@ -13,7 +13,9 @@
  *   cancel what another retailer owes).
  * - Cash held = cash collected - reversed - handovers confirmed (requests still waiting count as held).
  * - Logistics "Ready" = approved orders; "Partly sent" = partly dispatched ones. Any logistics
- *   person may dispatch any of them (same list as the dispatch screen).
+ *   person may dispatch any of them (same list as the dispatch screen). Below that, each truck
+ *   holding bags now (truck stock), not the stock of every place.
+ * - Retailer "My payments: Last" = the newest payment that still stands (not rejected or reversed).
  */
 import { toISTDateKey } from "./datetime";
 import { duesFrom, type LedgerEntry } from "./ledger-rules";
@@ -80,3 +82,36 @@ export function logisticsCounts(orders: readonly { status: string }[]): { ready:
   }
   return { ready, partly };
 }
+
+export type TruckLoad = { truck: string; bags: number; products: { name: string; bags: number }[] };
+
+/**
+ * Logistics home "truck stock" (spec section 10): every truck holding bags now, by number, with its
+ * bags per product (biggest first). Rows are bags per product per place; godowns and empty lines are left out.
+ */
+export function truckLoads(
+  rows: readonly { kind: string; placeKey: string; placeName: string; productName: string; bags: number }[],
+): TruckLoad[] {
+  const trucks = new Map<string, TruckLoad>();
+  for (const r of rows) {
+    if (r.kind !== "vehicle" || r.bags === 0) continue;
+    const t = trucks.get(r.placeKey) ?? { truck: r.placeName, bags: 0, products: [] };
+    t.bags += r.bags;
+    const line = t.products.find((p) => p.name === r.productName);
+    if (line) line.bags += r.bags;
+    else t.products.push({ name: r.productName, bags: r.bags });
+    trucks.set(r.placeKey, t);
+  }
+  return [...trucks.values()]
+    .filter((t) => t.bags > 0)
+    .map((t) => ({ ...t, products: t.products.filter((p) => p.bags !== 0).sort((a, b) => b.bags - a.bags || a.name.localeCompare(b.name)) }))
+    .sort((a, b) => a.truck.localeCompare(b.truck));
+}
+
+/** Admin home: switched-on shops that have no sales person (their orders would otherwise wait on nobody). */
+export function shopsWithoutSalesRep(shops: readonly { active: boolean; salesRepId: string | null }[]): number {
+  return shops.filter((s) => s.active && !s.salesRepId).length;
+}
+
+/** Payments that still stand: a rejected or reversed one is not a payment the shop made. */
+export const LAST_PAYMENT_SKIPS = ["rejected", "reversed"] as const;

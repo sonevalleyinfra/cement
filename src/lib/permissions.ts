@@ -58,8 +58,10 @@ export const ACTION_ROLES = {
   /** Move bags between two places (godown / vehicle). */
   transferStock: ["logistics"],
   // Masters
+  /** See the shops list (any staff member; sales may order for, and see the dues of, any shop). */
   viewRetailers: STAFF,
-  editRetailers: ["sales"],
+  /** Add, edit and turn off shops (a shop's sales person is picked when it is added). Admin only. */
+  editRetailers: ["admin"],
   linkRetailerLogin: ["admin"],
   /** Pick (or change) the sales person who looks after a retailer. */
   assignSalesRep: ["admin"],

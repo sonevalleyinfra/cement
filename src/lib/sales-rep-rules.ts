@@ -5,16 +5,18 @@
  * Owner's rule: every retailer is tied to one sales person. All of that shop's orders go
  * to them (they fill the rate and get the shop's order notifications). Only admin changes it.
  *
+ * Owner's decisions: only admin adds a shop, and must pick its sales person then (any sales person may
+ * still place orders for, and see the dues of, any shop, to cover for a colleague).
  * Choices where the owner was silent (simplest option taken):
- * - A sales person who adds a shop becomes its sales person. Admin adding a shop leaves it empty.
- * - A shop with no sales person yet: the order goes to the person who placed it if they are
- *   sales, otherwise to nobody (admin can still fill the rate).
+ * - An older shop with no sales person: the order goes to the person who placed it if they are
+ *   sales, otherwise to nobody; then every admin is told about the new order (notification-rules)
+ *   and admin home counts such shops, so nothing gets stuck.
  * - When admin changes a shop's sales person, its unfinished orders move to the new one too,
  *   so nothing gets stuck with someone who no longer looks after the shop. Finished orders
  *   (dispatched, rejected, cancelled) keep the old name for the record.
  */
 import { isFinalStatus, isOrderStatus } from "./order-rules";
-import { hasRole, isAdmin } from "./roles";
+import { hasRole } from "./roles";
 
 /** The sales person a new order goes to. */
 export function orderSalesRep(
@@ -23,11 +25,6 @@ export function orderSalesRep(
 ): string | null {
   if (retailerSalesRepId) return retailerSalesRepId;
   return hasRole(placer.role, "sales") ? placer.id : null;
-}
-
-/** The sales person a newly added shop gets: the sales person adding it, or nobody when admin adds it. */
-export function salesRepOnAdd(adder: { id: string; role: string | null | undefined }): string | null {
-  return !isAdmin(adder.role) && hasRole(adder.role, "sales") ? adder.id : null;
 }
 
 /** Someone admin might pick as a shop's sales person. */
@@ -43,12 +40,12 @@ export function pickableSalesReps<T extends SalesRepCandidate>(people: readonly 
   return people.filter((p) => hasRole(p.role, "sales") && !p.banned && !p.deletedAt);
 }
 
-/** Server check before saving a shop's sales person. `null` (nobody) is always allowed. */
+/** Server check before saving a shop's sales person (adding a shop or changing it): one is required. */
 export function checkSalesRepPick(
   pickedId: string | null,
   person: SalesRepCandidate | undefined,
 ): { ok: true } | { ok: false; error: string } {
-  if (pickedId === null) return { ok: true };
+  if (!pickedId) return { ok: false, error: "Pick a sales person." };
   if (!person || person.id !== pickedId || pickableSalesReps([person]).length === 0) {
     return { ok: false, error: "Pick an active sales person." };
   }

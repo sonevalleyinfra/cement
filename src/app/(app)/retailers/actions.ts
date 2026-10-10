@@ -6,18 +6,19 @@ import { db } from "@/db";
 import { orders, retailers, user } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { changedFields } from "@/lib/audit-rules";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { canLinkRetailerUser } from "@/lib/rate-rules";
 import { hasRole } from "@/lib/roles";
 import { ORDER_STATUSES } from "@/lib/order-rules";
-import { checkRetailerPick, validateRetailer } from "@/lib/retailer-rules";
-import { checkSalesRepPick, movesWithSalesRep, salesRepOnAdd } from "@/lib/sales-rep-rules";
+import { validateRetailer } from "@/lib/retailer-rules";
+import { checkSalesRepPick, movesWithSalesRep } from "@/lib/sales-rep-rules";
 import { requireRole } from "@/lib/session";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
-/** Edits a retailer's name, phone and place. Admin and sales only. */
+/** Edits a retailer's name, phone and place. Admin only. */
 export async function saveRetailer(
   id: string,
   form: { name: string; phone: string; place: string },
@@ -45,58 +46,64 @@ export async function saveRetailer(
   return { ok: true };
 }
 
+/** The sales person admin picked, checked: an active sales person (required). */
+async function checkPickedSalesRep(salesRepId: unknown): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const id = typeof salesRepId === "string" && salesRepId ? salesRepId : null;
+  const [person] = id
+    ? await db
+        .select({ id: user.id, role: user.role, banned: user.banned, deletedAt: user.deletedAt })
+        .from(user)
+        .where(eq(user.id, id))
+        .limit(1)
+    : [];
+  const check = checkSalesRepPick(id, person);
+  return check.ok && id ? { ok: true, id } : { ok: false, error: check.ok ? "Pick a sales person." : check.error };
+}
+
 /**
- * Adds a retailer picked from the logins the admin created (retailer role).
- * Name and phone come from that login, and the shop is linked to it. Admin and sales only.
- * A sales person adding a shop becomes its sales person (admin can change it later).
+ * Admin adds a shop: name, phone, place and its sales person (required). No login is needed;
+ * linking a retailer login is a separate, optional step (linkRetailerUser).
  */
-export async function addRetailerFromLogin(userId: string, place: string): Promise<RetailerResult> {
+export async function addRetailer(form: {
+  name: string;
+  phone: string;
+  place: string;
+  salesRepId: string;
+}): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
-  if (typeof userId !== "string" || typeof place !== "string") return { ok: false, error: "Check the form" };
-  const [login] = await db
-    .select({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      banned: user.banned,
-      deletedAt: user.deletedAt,
-    })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
-  const linked = await db
-    .select({ userId: retailers.userId })
-    .from(retailers)
-    .where(eq(retailers.userId, userId));
-  const check = checkRetailerPick(login, linked.map((l) => l.userId));
-  if (!check.ok) return check;
+  const check = validateRetailer(form ?? {});
+  if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
+  const rep = await checkPickedSalesRep(form?.salesRepId);
+  if (!rep.ok) return rep;
+  const { name, phone, place } = check.value;
+  const clash = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.phone, phone)).limit(1);
+  if (clash.length > 0) return { ok: false, error: "Phone already used" };
 
-  const clash = await db.select({ id: retailers.id }).from(retailers).where(eq(retailers.phone, login.phone)).limit(1);
-  if (clash.length > 0) return { ok: false, error: "A retailer with this phone already exists." };
-
-  const name = login.name.trim();
-  const cleanPlace = place.trim();
-  const salesRepId = salesRepOnAdd({ id: session.user.id, role: session.user.role });
-  await db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(retailers)
-      .values({ name, phone: login.phone, place: cleanPlace, userId: login.id, salesRepId })
-      .returning({ id: retailers.id });
-    await writeAudit(tx, {
-      actorId: session.user.id,
-      entity: "retailer",
-      entityId: row.id,
-      action: "create",
-      details: { name, phone: login.phone, place: cleanPlace, userId: login.id, salesRepId },
+  try {
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(retailers)
+        .values({ name, phone, place, salesRepId: rep.id })
+        .returning({ id: retailers.id });
+      await writeAudit(tx, {
+        actorId: session.user.id,
+        entity: "retailer",
+        entityId: row.id,
+        action: "create",
+        details: { name, phone, place, salesRepId: rep.id },
+      });
     });
-  });
+  } catch (e) {
+    // Two adds of the same phone at the same moment: the database keeps phones unique.
+    if (isUniqueViolation(e, "retailers_phone_unique")) return { ok: false, error: "Phone already used" };
+    throw e;
+  }
   revalidatePath("/retailers");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
-/** Switches a retailer on or off. Admin and sales only. */
+/** Switches a retailer on or off. Admin only. */
 export async function setRetailerActive(id: string, active: boolean): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
   if (!isUuid(id)) return { ok: false, error: "Retailer not found." };
@@ -156,22 +163,15 @@ export async function linkRetailerUser(
 }
 
 /**
- * Admin picks (or changes) the sales person who looks after a retailer; null = nobody.
+ * Admin picks (or changes) the sales person who looks after a retailer (one is required).
  * The shop's unfinished orders move to the new sales person too (sales-rep-rules.ts).
  */
-export async function setRetailerSalesRep(retailerId: string, salesRepId: string | null): Promise<RetailerResult> {
+export async function setRetailerSalesRep(retailerId: string, pickedId: string): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("assignSalesRep"));
   if (!isUuid(retailerId)) return { ok: false, error: "Retailer not found." };
-  if (salesRepId !== null && typeof salesRepId !== "string") return { ok: false, error: "Pick an active sales person." };
-  const [person] = salesRepId
-    ? await db
-        .select({ id: user.id, role: user.role, banned: user.banned, deletedAt: user.deletedAt })
-        .from(user)
-        .where(eq(user.id, salesRepId))
-        .limit(1)
-    : [];
-  const check = checkSalesRepPick(salesRepId, person);
-  if (!check.ok) return check;
+  const rep = await checkPickedSalesRep(pickedId);
+  if (!rep.ok) return rep;
+  const salesRepId = rep.id;
 
   const res = await db.transaction(async (tx): Promise<RetailerResult> => {
     // Lock the shop so two quick changes cannot interleave.

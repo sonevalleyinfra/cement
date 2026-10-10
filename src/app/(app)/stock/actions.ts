@@ -1,18 +1,21 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { brands, cementTypes, grades, products, stockMovements } from "@/db/schema";
+import { grades, products, stockMovements } from "@/db/schema";
 import { toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { postSupplierEntry } from "@/lib/suppliers";
 import { checkCostPerBag, purchaseEntry } from "@/lib/supplier-rules";
 import { writeAudit } from "@/lib/audit";
 import { DEFAULT_BAG_KG, isProductChannel, resolveProduct } from "@/lib/catalogue-rules";
+import { claimRequest } from "@/lib/form-submissions";
+import { checkRequestId, type RequestKind } from "@/lib/request-rules";
 import {
   adjustmentMovement,
   canSetOpening,
+  checkTransferPlaces,
   inMovement,
   NEW_TRUCK_PLACE,
   parsePlaceKey,
@@ -24,7 +27,7 @@ import {
   type StockKey,
 } from "@/lib/stock-rules";
 import { isUuid } from "@/lib/ids";
-import { can, rolesFor } from "@/lib/permissions";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { atPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
 import { checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
@@ -45,12 +48,16 @@ export type StockInput = {
   /** The quick truck form, used when `place` is `NEW_TRUCK_PLACE`. */
   truck?: { number: string; driverName: string; driverPhone: string };
   bags: number;
-  /** Supplier / note for a purchase, or the reason for an adjustment. */
+  /** Supplier / note for a purchase, or the optional note with an adjustment. */
   note: string;
+  /** Adjustment only: why (damage, burst, shortage, count; STOCK_FIX_REASONS). */
+  reason?: string;
   /** Purchase only (required): what one bag cost, in paise. */
   costPerBagPaise?: number;
   /** Purchase only (optional): the supplier's invoice number. */
   invoiceNo?: string;
+  /** The form's one-time id: a second tap saves nothing more (request-rules.ts). */
+  requestId: string;
 };
 
 /** Thrown inside a transaction to undo everything in it (e.g. a product or truck made a moment ago). */
@@ -77,31 +84,34 @@ async function inTransaction(fn: (tx: Tx) => Promise<StockResult>): Promise<Stoc
 /** Admin only. Only a purchase may use a typed-in truck. */
 async function prepare(input: StockInput, allowNewTruck = false) {
   const session = await requireRole(...rolesFor("manageStock"));
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return { error: request.error, session: null, place: null, requestId: null } as const;
   const place = allowNewTruck && input.place === NEW_TRUCK_PLACE ? NEW_TRUCK_PLACE : parsePlaceKey(input.place);
   const partsOk =
     isUuid(input.brandId) && isProductChannel(input.channel) && isUuid(input.typeId) && isUuid(input.gradeId);
   if (!partsOk || !place) {
-    return { error: "Pick a product and a place.", session: null, place: null } as const;
+    return { error: "Pick a product and a place.", session: null, place: null, requestId: null } as const;
   }
-  return { error: null, session, place } as const;
+  return { error: null, session, place, requestId: request.id } as const;
 }
 
 /**
- * The product the drop-downs (brand, trade-type, type, grade) point to. With `allowCreate` (a purchase by someone who may manage
- * the catalogue) a missing product is added, or a switched-off one switched back on, in the same transaction.
+ * Records the form's one-time id in the transaction. Null = go on; otherwise the answer to give
+ * (the same form was already saved: nothing more is saved).
  */
-async function pickProduct(
-  tx: Tx,
-  input: StockInput,
-  actorId: string,
-  allowCreate: boolean,
-): Promise<{ ok: true; productId: string } | { ok: false; error: string }> {
-  // Locked so two purchases cannot add the same product at once.
-  if (allowCreate) await tx.execute(sql`lock table ${products} in share row exclusive mode`);
-  const [b, t, g, p] = await Promise.all([
-    tx.select({ id: brands.id, name: brands.name, active: brands.active }).from(brands),
-    tx.select({ id: cementTypes.id, code: cementTypes.code, active: cementTypes.active }).from(cementTypes),
-    tx.select({ id: grades.id, typeId: grades.typeId, name: grades.name, active: grades.active }).from(grades),
+async function firstTime(tx: Tx, requestId: string, kind: RequestKind, actorId: string): Promise<StockResult | null> {
+  const claim = await claimRequest(tx, requestId, kind, actorId);
+  if (claim.fresh) return null;
+  return claim.result.ok ? { ok: true } : claim.result;
+}
+
+/**
+ * The product the drop-downs (brand, trade-type, type, grade) point to. It must already exist
+ * (products are added in Catalogue), so a switched brand never makes a new product by mistake.
+ */
+async function pickProduct(tx: Tx, input: StockInput): Promise<{ ok: true; productId: string } | { ok: false; error: string }> {
+  const [g, p] = await Promise.all([
+    tx.select({ id: grades.id, typeId: grades.typeId }).from(grades),
     tx
       .select({
         id: products.id,
@@ -120,17 +130,8 @@ async function pickProduct(
     gradeId: input.gradeId,
     bagKg: DEFAULT_BAG_KG,
   };
-  const r = resolveProduct(parts, { brands: b, types: t, grades: g, products: p }, allowCreate);
-  if (!r.ok) return r;
-  if (r.kind === "existing") return { ok: true, productId: r.id };
-  if (r.kind === "reactivate") {
-    await tx.update(products).set({ active: true, updatedAt: new Date() }).where(eq(products.id, r.id));
-    await writeAudit(tx, { actorId, entity: "product", entityId: r.id, action: "activate", details: { from: "purchase" } });
-    return { ok: true, productId: r.id };
-  }
-  const [row] = await tx.insert(products).values(r.value).returning({ id: products.id });
-  await writeAudit(tx, { actorId, entity: "product", entityId: row.id, action: "create", details: { ...r.value, from: "purchase" } });
-  return { ok: true, productId: row.id };
+  const r = resolveProduct(parts, { grades: g, products: p });
+  return r.ok ? { ok: true, productId: r.id } : r;
 }
 
 /** Locks the place (it must be active), and the product must be active. Returns the stock key. */
@@ -175,9 +176,7 @@ function movementFacts(m: Movement) {
 function done(): StockResult {
   revalidatePath("/stock");
   revalidatePath("/dispatch");
-  // A purchase may have added a product.
-  revalidatePath("/catalogue");
-  revalidatePath("/orders/new");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -199,9 +198,11 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     note = truckNote(note, truck);
   }
   const chosen = p.place;
-  const allowCreate = can(p.session.user.role, "manageCatalogue");
+  const requestId = p.requestId;
   const res = await inTransaction(async (tx) => {
-    const picked = await pickProduct(tx, input, p.session.user.id, allowCreate);
+    const again = await firstTime(tx, requestId, "purchase", p.session.user.id);
+    if (again) return again;
+    const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     // A typed-in truck is found (or made) by its number, so the same truck always has the same stock.
     const place: PlaceRef =
@@ -254,9 +255,12 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
   const p = await prepare(input);
   if (p.error !== null) return { ok: false, error: p.error };
   const place = p.place;
+  const requestId = p.requestId;
   if (place === NEW_TRUCK_PLACE) return { ok: false, error: "Pick a product and a place." };
   const res = await inTransaction(async (tx) => {
-    const picked = await pickProduct(tx, input, p.session.user.id, false);
+    const again = await firstTime(tx, requestId, "opening_stock", p.session.user.id);
+    if (again) return again;
+    const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     const loc = await locate(tx, picked.productId, place);
     if (!loc.ok) return loc;
@@ -280,14 +284,17 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
   return res.ok ? done() : res;
 }
 
-/** `bags` is signed here: negative removes bags. */
+/** A stock correction. `bags` is signed here: negative removes bags. `reason` from the list, `note` optional. */
 export async function recordAdjustment(input: StockInput): Promise<StockResult> {
   const p = await prepare(input);
   if (p.error !== null) return { ok: false, error: p.error };
   const place = p.place;
+  const requestId = p.requestId;
   if (place === NEW_TRUCK_PLACE) return { ok: false, error: "Pick a product and a place." };
   const res = await inTransaction(async (tx) => {
-    const picked = await pickProduct(tx, input, p.session.user.id, false);
+    const again = await firstTime(tx, requestId, "stock_adjustment", p.session.user.id);
+    if (again) return again;
+    const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     const loc = await locate(tx, picked.productId, place);
     if (!loc.ok) return loc;
@@ -295,6 +302,7 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
       await currentMovements(tx, loc.key),
       loc.key,
       input.bags,
+      input.reason,
       String(input.note ?? ""),
       p.session.user.role,
     );
@@ -317,24 +325,46 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
 
 export type TransferInput = {
   productId: string;
-  /** Place keys, as in StockInput. */
+  /** Place keys, as in StockInput. `to` may be `NEW_TRUCK_PLACE` (a hired truck typed in `truck`). */
   from: string;
   to: string;
+  /** The quick truck form, used when `to` is `NEW_TRUCK_PLACE`. */
+  truck?: { number: string; driverName: string; driverPhone: string };
   bags: number;
   note: string;
+  /** The form's one-time id: a second tap moves nothing more (request-rules.ts). */
+  requestId: string;
 };
 
-/** Moves bags between two places (leftovers to the godown, loading a truck). */
+/**
+ * Moves bags between two places (leftovers to the godown, loading a truck). Logistics or admin.
+ * The bags may go onto a hired truck typed in the form (found or made by its number, like a purchase).
+ */
 export async function transferStock(input: TransferInput): Promise<StockResult> {
   const session = await requireRole(...rolesFor("transferStock"));
-  const from = parsePlaceKey(input.from);
-  const to = parsePlaceKey(input.to);
-  if (!isUuid(input.productId) || !from || !to) {
-    return { ok: false, error: "Pick a product and two places." };
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
+  const places = checkTransferPlaces(input.from, input.to);
+  if (!places.ok) return places;
+  if (!isUuid(input.productId)) return { ok: false, error: "Pick a product." };
+  let note = String(input.note ?? "").trim().slice(0, 200);
+  let truck: Truck | null = null;
+  if (places.to === NEW_TRUCK_PLACE) {
+    const check = checkTruck(input.truck ?? {});
+    if (!check.ok) return check;
+    truck = check.value;
+    note = truckNote(note, truck);
   }
-  if (placeKey(from) === placeKey(to)) return { ok: false, error: "Pick two different places." };
-  const note = String(input.note ?? "").trim().slice(0, 200);
   const res = await inTransaction(async (tx) => {
+    const again = await firstTime(tx, request.id, "stock_transfer", session.user.id);
+    if (again) return again;
+    const from = places.from;
+    const to: PlaceRef =
+      places.to === NEW_TRUCK_PLACE
+        ? { kind: "vehicle", id: await truckByNumber(tx, truck?.number ?? "", session.user.id) }
+        : places.to;
+    // The typed truck may be the very place the bags are on.
+    if (placeKey(from) === placeKey(to)) return { ok: false, error: "Pick two different places." };
     // Lock both places in a fixed order (sorted keys) so two moves cannot wait on each other.
     for (const place of [from, to].sort((a, b) => placeKey(a).localeCompare(placeKey(b)))) {
       const locked = await lockPlace(tx, place);
@@ -359,6 +389,7 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
         bags: input.bags,
         from: fromKey.placeKey,
         to: placeKey(to),
+        ...(truck ? { truck: truck.number } : {}),
         ...(note ? { reason: note } : {}),
       },
     });

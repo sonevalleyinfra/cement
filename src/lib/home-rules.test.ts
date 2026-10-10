@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  LAST_PAYMENT_SKIPS,
+  shopsWithoutSalesRep,
+  truckLoads,
   cashInHandPaise,
   homeSections,
   isOpenOrderStatus,
@@ -80,5 +83,57 @@ describe("logisticsCounts", () => {
     }));
     expect(logisticsCounts(orders)).toEqual({ ready: 2, partly: 1 });
     expect(logisticsCounts([])).toEqual({ ready: 0, partly: 0 });
+  });
+});
+
+describe("truckLoads", () => {
+  const row = (kind: string, placeKey: string, placeName: string, productName: string, bags: number) => ({
+    kind,
+    placeKey,
+    placeName,
+    productName,
+    bags,
+  });
+  it("lists only trucks holding bags now, by number, with bags per product", () => {
+    const loads = truckLoads([
+      row("godown", "godown:g", "Main", "Prism Trade OPC 53", 500),
+      row("vehicle", "vehicle:2", "BR02CD5678", "Prism Trade OPC 53", 40),
+      row("vehicle", "vehicle:1", "BR01AB1234", "Prism Trade OPC 53", 10),
+      row("vehicle", "vehicle:1", "BR01AB1234", "Prism Trade PPC 43", 30),
+      row("vehicle", "vehicle:3", "BR03EE0001", "Prism Trade OPC 53", 0),
+    ]);
+    expect(loads).toEqual([
+      {
+        truck: "BR01AB1234",
+        bags: 40,
+        products: [
+          { name: "Prism Trade PPC 43", bags: 30 },
+          { name: "Prism Trade OPC 53", bags: 10 },
+        ],
+      },
+      { truck: "BR02CD5678", bags: 40, products: [{ name: "Prism Trade OPC 53", bags: 40 }] },
+    ]);
+  });
+  it("is empty when no truck holds bags", () => {
+    expect(truckLoads([row("godown", "godown:g", "Main", "P", 5)])).toEqual([]);
+  });
+});
+
+describe("shopsWithoutSalesRep", () => {
+  it("counts switched-on shops with nobody", () => {
+    expect(
+      shopsWithoutSalesRep([
+        { active: true, salesRepId: null },
+        { active: true, salesRepId: "s1" },
+        { active: false, salesRepId: null },
+        { active: true, salesRepId: "" },
+      ]),
+    ).toBe(2);
+  });
+});
+
+describe("LAST_PAYMENT_SKIPS", () => {
+  it("a rejected or reversed payment is never shown as the shop's last payment", () => {
+    expect(LAST_PAYMENT_SKIPS).toEqual(["rejected", "reversed"]);
   });
 });

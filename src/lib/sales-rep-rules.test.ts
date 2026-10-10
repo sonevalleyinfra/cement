@@ -4,7 +4,6 @@ import {
   movesWithSalesRep,
   orderSalesRep,
   pickableSalesReps,
-  salesRepOnAdd,
 } from "./sales-rep-rules";
 
 describe("orderSalesRep", () => {
@@ -24,19 +23,6 @@ describe("orderSalesRep", () => {
     expect(orderSalesRep(null, { id: "shop", role: "retailer" })).toBeNull();
     expect(orderSalesRep(null, { id: "boss", role: "admin" })).toBeNull();
     expect(orderSalesRep(null, { id: "x", role: null })).toBeNull();
-  });
-});
-
-describe("salesRepOnAdd", () => {
-  it("a sales person adding a shop looks after it", () => {
-    expect(salesRepOnAdd({ id: "s1", role: "sales" })).toBe("s1");
-  });
-  it("admin adding a shop leaves it for admin to pick", () => {
-    expect(salesRepOnAdd({ id: "a1", role: "admin" })).toBeNull();
-    expect(salesRepOnAdd({ id: "a1", role: "admin,sales" })).toBeNull();
-  });
-  it("nobody else gets it", () => {
-    expect(salesRepOnAdd({ id: "l1", role: "logistics" })).toBeNull();
   });
 });
 
@@ -62,7 +48,10 @@ describe("pickableSalesReps", () => {
 });
 
 describe("checkSalesRepPick", () => {
-  it("allows nobody", () => expect(checkSalesRepPick(null, undefined)).toEqual({ ok: true }));
+  it("a sales person is required", () => {
+    expect(checkSalesRepPick(null, undefined)).toEqual({ ok: false, error: "Pick a sales person." });
+    expect(checkSalesRepPick("", undefined).ok).toBe(false);
+  });
   it("allows an active sales person", () => expect(checkSalesRepPick("s1", person())).toEqual({ ok: true }));
   it("refuses an unknown, deactivated, deleted or non-sales person", () => {
     expect(checkSalesRepPick("s1", undefined).ok).toBe(false);

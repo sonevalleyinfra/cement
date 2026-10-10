@@ -8,9 +8,8 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { matchesRetailerSearch } from "@/lib/retailer-rules";
 import {
-  addRetailerFromLogin,
+  addRetailer,
   linkRetailerUser,
   saveRetailer,
   setRetailerActive,
@@ -26,21 +25,23 @@ type Row = {
   userId: string | null;
   salesRepId: string | null;
   salesRepName: string;
+  loginName: string;
 };
 type Login = { id: string; label: string };
-type Pickable = { id: string; name: string; email: string; phone: string };
+
+const selectClass = "h-12 w-full rounded-xl border bg-background px-3 text-base";
 
 export function RetailersView({
   rows,
   canEdit,
   logins,
-  pickable,
   salesReps,
 }: {
   rows: Row[];
+  /** Admin: add, edit and turn off shops. */
   canEdit: boolean;
+  /** Retailer logins not linked to a shop yet; null = this viewer cannot link. */
   logins: Login[] | null;
-  pickable: Pickable[];
   /** Sales people admin may pick; null = this viewer cannot change it. */
   salesReps: Login[] | null;
 }) {
@@ -50,9 +51,7 @@ export function RetailersView({
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
-  const [search, setSearch] = useState("");
-  const [picked, setPicked] = useState<Pickable | null>(null);
-  const matches = pickable.filter((p) => matchesRetailerSearch(p, search));
+  const [newRep, setNewRep] = useState("");
 
   function openSheet(row: Row) {
     setEditing(row);
@@ -61,18 +60,22 @@ export function RetailersView({
   }
 
   function openAdd() {
-    setSearch("");
-    setPicked(null);
+    setNewRep("");
     setError("");
     setAdding(true);
   }
 
+  // onSubmit (not a form action) so the fields keep their text when there is an error.
   function submitAdd(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!picked) return;
-    const place = String(new FormData(e.currentTarget).get("place") ?? "");
+    const f = new FormData(e.currentTarget);
     start(async () => {
-      const res = await addRetailerFromLogin(picked.id, place);
+      const res = await addRetailer({
+        name: String(f.get("name") ?? ""),
+        phone: String(f.get("phone") ?? ""),
+        place: String(f.get("place") ?? ""),
+        salesRepId: newRep,
+      });
       if (res.ok) setAdding(false);
       else setError(res.error);
     });
@@ -124,12 +127,16 @@ export function RetailersView({
                           disabled={pending}
                           onChange={(e) =>
                             start(async () => {
-                              const res = await setRetailerSalesRep(r.id, e.target.value || null);
+                              const res = await setRetailerSalesRep(r.id, e.target.value);
                               setLinkError(res.ok ? "" : res.error);
                             })
                           }
                         >
-                          <option value="">No sales person</option>
+                          {!r.salesRepId && (
+                            <option value="" disabled>
+                              No sales person
+                            </option>
+                          )}
                           {/* Keep showing a current pick who is no longer active. */}
                           {r.salesRepId && !salesReps.some((p) => p.id === r.salesRepId) && (
                             <option value={r.salesRepId}>{r.salesRepName || "Former sales person"}</option>
@@ -157,6 +164,9 @@ export function RetailersView({
                           }
                         >
                           <option value="">No login</option>
+                          {r.userId && !logins.some((l) => l.id === r.userId) && (
+                            <option value={r.userId}>{r.loginName || "Linked login"}</option>
+                          )}
                           {logins.map((l) => (
                             <option key={l.id} value={l.id}>
                               {l.label}
@@ -211,64 +221,38 @@ export function RetailersView({
           </Button>
         </form>
       </Sheet>
-      <Sheet open={adding} onOpenChange={setAdding} title={picked ? "New retailer" : "Pick retailer"}>
-        {picked ? (
-          <form onSubmit={submitAdd} className="flex flex-col gap-4">
-            <button
-              type="button"
-              onClick={() => setPicked(null)}
-              className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left shadow-card ring-1 ring-foreground/6"
-            >
-              <span className="font-semibold">{picked.name}</span>
-              <span className="text-xs text-muted-foreground">
-                <span className="tabular">{picked.phone}</span> · {picked.email}
-              </span>
-            </button>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-place">Place</Label>
-              <Input id="add-place" name="place" autoComplete="off" />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={pending}>
-              Add
-            </Button>
-          </form>
-        ) : (
-          <>
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, email or phone"
-              aria-label="Search retailers"
-              autoComplete="off"
-              className="mb-3"
-            />
-            <ul className="flex flex-col gap-2">
-              {matches.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPicked(p);
-                      setError("");
-                    }}
-                    className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left shadow-card ring-1 ring-foreground/6"
-                  >
-                    <span className="font-semibold">{p.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      <span className="tabular">{p.phone || "No phone"}</span> · {p.email}
-                    </span>
-                  </button>
-                </li>
+      <Sheet open={adding} onOpenChange={setAdding} title="New retailer">
+        <form onSubmit={submitAdd} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="add-name">Name</Label>
+            <Input id="add-name" name="name" autoComplete="off" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="add-phone">Phone</Label>
+            <Input id="add-phone" name="phone" type="tel" inputMode="numeric" autoComplete="off" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="add-place">Place</Label>
+            <Input id="add-place" name="place" autoComplete="off" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="add-rep">Sales person</Label>
+            <select id="add-rep" className={selectClass} value={newRep} onChange={(e) => setNewRep(e.target.value)}>
+              <option value="" disabled>
+                Pick one
+              </option>
+              {(salesReps ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
               ))}
-              {matches.length === 0 && (
-                <li className="py-6 text-center text-muted-foreground">
-                  {pickable.length === 0 ? "No new retailers. Ask admin to add one." : "No match"}
-                </li>
-              )}
-            </ul>
-          </>
-        )}
+            </select>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" disabled={pending || !newRep}>
+            Add
+          </Button>
+        </form>
       </Sheet>
     </>
   );
