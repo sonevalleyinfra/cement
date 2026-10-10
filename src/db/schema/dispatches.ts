@@ -11,6 +11,8 @@ import { vehicles } from "./vehicles";
  * `vehicleId` is the truck that carries them to the shop.
  * `ratePaise` is the rate per bag this load was billed at (the order's rate at that moment).
  * Each dispatch posts one ledger debit: bags x ratePaise.
+ * `salesRepId` is the order's sales person at the moment of dispatch, so the sales report by sales person
+ * does not change when admin later gives the shop to someone else (empty = nobody).
  */
 export const dispatches = pgTable(
   "dispatches",
@@ -28,6 +30,7 @@ export const dispatches = pgTable(
     fromGodownId: uuid("from_godown_id").references(() => godowns.id),
     fromVehicleId: uuid("from_vehicle_id").references(() => vehicles.id),
     ratePaise: integer("rate_paise").notNull(),
+    salesRepId: text("sales_rep_id").references(() => user.id),
     dispatchedBy: text("dispatched_by")
       .notNull()
       .references(() => user.id),

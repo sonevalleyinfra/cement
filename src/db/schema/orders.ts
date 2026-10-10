@@ -46,6 +46,8 @@ export const orders = pgTable(
 /**
  * History: one row for every status change (including the first "placed"), and for every rate
  * fill or change (status stays the same; the reason says "Rate filled" / "Rate edited: ...").
+ * A rate row also keeps the rate before and after (`fromRatePaise` / `toRatePaise`, staff only;
+ * empty on other rows and on the first fill's "before").
  */
 export const orderEvents = pgTable(
   "order_events",
@@ -60,6 +62,8 @@ export const orderEvents = pgTable(
       .notNull()
       .references(() => user.id),
     reason: text("reason").default("").notNull(),
+    fromRatePaise: integer("from_rate_paise"),
+    toRatePaise: integer("to_rate_paise"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("order_events_order_idx").on(t.orderId, t.createdAt)],

@@ -318,6 +318,7 @@ async function main() {
           driverPhone: truck.driverPhone,
           fromGodownId: godown.id,
           ratePaise: RATE,
+          salesRepId: ids.sales,
           dispatchedBy: ids.logistics,
         });
         await tx.insert(stockMovements).values({
@@ -381,6 +382,7 @@ async function main() {
           driverPhone: truck.driverPhone,
           fromGodownId: godown.id,
           ratePaise: rate,
+          salesRepId: ids.sales,
           dispatchedBy: ids.logistics,
           createdAt: when,
         });
@@ -517,7 +519,7 @@ async function main() {
   const wrong = await cash(0, 200_000, ids.sales);
   // Accounts reverse the Rs 2,000 (wrong shop) while sales still holds it.
   await db.transaction(async (tx) => {
-    const plan = planReversal("accounts", wrong, "Wrong shop", { balancePaise: 1_200_000, availablePaise: 1_200_000 });
+    const plan = planReversal("accounts", wrong, "Wrong shop", "holder", { balancePaise: 1_200_000, availablePaise: 1_200_000 });
     if (!plan.ok) throw new Error(plan.error);
     await postEntry(
       tx,

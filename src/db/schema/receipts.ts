@@ -13,7 +13,7 @@ import { retailers } from "./retailers";
  * or "rejected" (`rejectReason`); `checkedBy` / `checkedAt` say who and when.
  * A received or verified payment can become "reversed"; `reversedAt`, `reversedBy` and `reversalReason`
  * say when, who and why. `utr` is stored without spaces in capitals and is unique among online
- * payments that were not rejected.
+ * payments that still stand (a rejected or reversed payment frees its UTR).
  */
 export const receipts = pgTable(
   "receipts",
@@ -47,7 +47,7 @@ export const receipts = pgTable(
     index("receipts_created_idx").on(t.createdAt),
     uniqueIndex("receipts_utr_unique_idx")
       .on(t.utr)
-      .where(sql`${t.mode} = 'online' and ${t.status} <> 'rejected'`),
+      .where(sql`${t.mode} = 'online' and ${t.status} not in ('rejected', 'reversed')`),
     check("receipts_total_positive", sql`${t.totalPaise} > 0`),
     check("receipts_utr_online_only", sql`(${t.mode} = 'online') = (${t.utr} is not null and ${t.utr} <> '')`),
     check("receipts_mode_valid", oneOf(t.mode, PAYMENT_MODES)),
