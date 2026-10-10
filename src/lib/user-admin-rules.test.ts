@@ -4,6 +4,7 @@ import {
   checkRolesAndFirms,
   checkSelfDeactivate,
   checkSelfRoleChange,
+  cleanEmail,
   cleanUserPhone,
   passwordFromBytes,
   usersInTab,
@@ -48,6 +49,16 @@ describe("validateNewUser", () => {
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "12345", roles: ["admin"] }).ok).toBe(false);
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "5876543210", roles: ["admin"] }).ok).toBe(false);
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "09876543210", roles: ["admin"] }).ok).toBe(true);
+  });
+});
+
+describe("cleanEmail", () => {
+  it("trims and lower-cases", () => expect(cleanEmail("  Ram@X.Com ")).toBe("ram@x.com"));
+  it("rejects empty and bad emails", () => {
+    expect(cleanEmail("")).toBeNull();
+    expect(cleanEmail(undefined)).toBeNull();
+    expect(cleanEmail("ram@x")).toBeNull();
+    expect(cleanEmail("ram x@y.com")).toBeNull();
   });
 });
 

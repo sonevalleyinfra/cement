@@ -28,6 +28,12 @@ export function cleanUserPhone(raw: string | null | undefined): string | null {
   return isValidIndianMobile(phone) ? phone : null;
 }
 
+/** Cleans an email (trimmed, lower case). Returns it, or null if it does not look like an email. */
+export function cleanEmail(raw: string | null | undefined): string | null {
+  const email = (raw ?? "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
 /** Trims and checks the create-user form. The phone is a required 10-digit mobile. */
 export function validateNewUser(raw: {
   name?: string | null;
@@ -37,9 +43,9 @@ export function validateNewUser(raw: {
   firmIds?: readonly string[];
 }): UserCheck {
   const name = (raw.name ?? "").trim().replace(/\s+/g, " ");
-  const email = (raw.email ?? "").trim().toLowerCase();
+  const email = cleanEmail(raw.email);
   if (!name) return { ok: false, error: "Enter a name" };
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email" };
+  if (!email) return { ok: false, error: "Enter a valid email" };
   const phone = cleanUserPhone(raw.phone);
   if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const roles = [...new Set(raw.roles ?? [])];

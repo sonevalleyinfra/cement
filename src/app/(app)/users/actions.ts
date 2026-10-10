@@ -1,7 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
@@ -20,6 +20,7 @@ import {
   checkRolesAndFirms,
   checkSelfDeactivate,
   checkSelfRoleChange,
+  cleanEmail,
   cleanUserPhone,
   passwordFromBytes,
   validateNewUser,
@@ -93,13 +94,18 @@ export async function createUser(form: {
   return { ok: true };
 }
 
-/** Changes a user's phone, roles and firm access. */
+/**
+ * Changes a user's email, phone, roles and firm access. A new email counts as
+ * verified (the admin vouches for it, as when creating the user). They sign in with it from now on.
+ */
 export async function updateUserAccess(
   userId: string,
-  form: { phone: string; roles: string[]; firmIds: string[] },
+  form: { email: string; phone: string; roles: string[]; firmIds: string[] },
 ): Promise<UserResult> {
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
   if (!Array.isArray(form.roles) || !Array.isArray(form.firmIds)) return { ok: false, error: "Check the form" };
+  const email = cleanEmail(typeof form.email === "string" ? form.email : "");
+  if (!email) return { ok: false, error: "Enter a valid email" };
   const phone = cleanUserPhone(typeof form.phone === "string" ? form.phone : "");
   if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const self = checkSelfRoleChange(me.id === userId, form.roles);
@@ -115,13 +121,27 @@ export async function updateUserAccess(
     .where(and(eq(user.id, userId), isNull(user.deletedAt)))
     .limit(1);
   if (!target) return { ok: false, error: "User not found." };
+  // Deleted users keep their email, so it stays taken.
+  const [taken] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(and(eq(user.email, email), ne(user.id, userId)))
+    .limit(1);
+  if (taken) return { ok: false, error: "Email already used" };
 
   const roles = form.roles as Role[];
-  // Phone, role, firm access and the audit row change together, or not at all.
+  // Email, phone, role, firm access and the audit row change together, or not at all.
   await db.transaction(async (tx) => {
-    const [before] = await tx.select({ role: user.role, phone: user.phone }).from(user).where(eq(user.id, userId)).limit(1);
+    const [before] = await tx
+      .select({ email: user.email, role: user.role, phone: user.phone })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
     const beforeFirms = await tx.select({ firmId: userFirms.firmId }).from(userFirms).where(eq(userFirms.userId, userId));
-    await tx.update(user).set({ role: joinRoles(roles), phone, updatedAt: new Date() }).where(eq(user.id, userId));
+    await tx
+      .update(user)
+      .set({ email, emailVerified: true, role: joinRoles(roles), phone, updatedAt: new Date() })
+      .where(eq(user.id, userId));
     const keep = roles.includes("admin") ? [] : firmIds;
     await replaceFirms(tx, userId, keep);
     await writeAudit(tx, {
@@ -130,8 +150,13 @@ export async function updateUserAccess(
       entityId: userId,
       action: "update",
       details: {
-        before: { phone: before?.phone ?? "", roles: parseRoles(before?.role), firmIds: beforeFirms.map((r) => r.firmId).sort() },
-        after: { phone, roles, firmIds: [...keep].sort() },
+        before: {
+          email: before?.email ?? "",
+          phone: before?.phone ?? "",
+          roles: parseRoles(before?.role),
+          firmIds: beforeFirms.map((r) => r.firmId).sort(),
+        },
+        after: { email, phone, roles, firmIds: [...keep].sort() },
       },
     });
   });

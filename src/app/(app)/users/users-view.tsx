@@ -81,7 +81,12 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
     const formData = new FormData(e.currentTarget);
     start(async () => {
       const res = editing
-        ? await updateUserAccess(editing.id, { phone: String(formData.get("phone") ?? ""), roles, firmIds })
+        ? await updateUserAccess(editing.id, {
+            email: String(formData.get("email") ?? ""),
+            phone: String(formData.get("phone") ?? ""),
+            roles,
+            firmIds,
+          })
         : await createUser({
             name: String(formData.get("name") ?? ""),
             email: String(formData.get("email") ?? ""),
@@ -166,17 +171,15 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
       <Sheet open={open} onOpenChange={setOpen} title={editing ? `Edit ${editing.name}` : "New user"}>
         <form key={editing?.id ?? "new"} onSubmit={submit} className="flex flex-col gap-4">
           {!editing && (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" autoComplete="off" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" name="email" type="email" autoComplete="off" />
-              </div>
-            </>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" autoComplete="off" />
+            </div>
           )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" name="email" type="email" autoComplete="off" defaultValue={editing?.email ?? ""} />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="phone">Phone</Label>
             <Input
