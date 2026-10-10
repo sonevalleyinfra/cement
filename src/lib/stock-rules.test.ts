@@ -207,3 +207,10 @@ describe("placeGroups", () => {
     expect(placeGroups([{ key: "godown:2", kind: "godown", name: "Main Godown" }])).toHaveLength(1);
   });
 });
+
+describe("canDispatch wording", () => {
+  it("says '1 bag' for one bag in stock", () => {
+    expect(canDispatch(1, 5)).toEqual({ ok: false, error: "Only 1 bag in stock." });
+    expect(canDispatch(4, 5)).toEqual({ ok: false, error: "Only 4 bags in stock." });
+  });
+});

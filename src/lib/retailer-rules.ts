@@ -59,3 +59,14 @@ export function pickableRetailerLogins<T extends RetailerLogin>(
   const taken = new Set(linkedUserIds.filter((id): id is string => id !== null));
   return logins.filter((l) => hasRole(l.role, "retailer") && !l.banned && !l.deletedAt && !taken.has(l.id));
 }
+
+/**
+ * The Retailers search box: every word typed must appear in the shop's name, place or phone
+ * (capitals and spaces do not matter). An empty search matches every shop.
+ */
+export function matchesRetailerSearch(shop: { name: string; place: string; phone: string }, query: string): boolean {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = `${shop.name} ${shop.place} ${shop.phone}`.toLowerCase();
+  return terms.every((t) => haystack.includes(t));
+}

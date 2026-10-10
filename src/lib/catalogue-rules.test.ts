@@ -17,6 +17,7 @@ import {
   renamedProducts,
   pickProductParts,
   resolveProduct,
+  shortProductName,
   validateNewProduct,
   type CatalogueLookups,
 } from "./catalogue-rules";
@@ -343,5 +344,20 @@ describe("renamedProducts", () => {
       { id: "p2", name: "Other Trade OPC 53", brand: "Other", channel: "trade", typeCode: "OPC", grade: "53", bagKg: 50 },
     ];
     expect(renamedProducts(rows)).toEqual([{ id: "p1", name: "Prisma Trade OPC 53" }]);
+  });
+});
+
+describe("shortProductName", () => {
+  it("drops the brand while only one brand is on", () => {
+    expect(shortProductName("Prism Trade OPC 43", ["Prism", "UltraTech"], false)).toBe("Trade OPC 43");
+    expect(shortProductName("Prism Non-trade PPC 53 40kg", ["Prism"], false)).toBe("Non-trade PPC 53 40kg");
+  });
+  it("keeps the brand when more than one brand is on", () => {
+    expect(shortProductName("Prism Trade OPC 43", ["Prism", "UltraTech"], true)).toBe("Prism Trade OPC 43");
+  });
+  it("prefers the longest matching brand and leaves other names alone", () => {
+    expect(shortProductName("Ultra Tech Trade OPC 43", ["Ultra", "Ultra Tech"], false)).toBe("Trade OPC 43");
+    expect(shortProductName("Trade OPC 43", ["Prism"], false)).toBe("Trade OPC 43");
+    expect(shortProductName("Prismatic Trade OPC 43", ["Prism"], false)).toBe("Prismatic Trade OPC 43");
   });
 });

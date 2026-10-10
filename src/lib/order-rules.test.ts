@@ -227,3 +227,10 @@ describe("bag quantities", () => {
     expect(statusAfterDispatch(100, 100)).toBe("dispatched");
   });
 });
+
+describe("bag wording in messages", () => {
+  it("says 'bag is' for one and 'bags are' for more", () => {
+    expect(checkDispatchBags(10, 9, 5)).toEqual({ ok: false, error: "Only 1 bag is left to dispatch." });
+    expect(checkDispatchBags(10, 5, 9)).toEqual({ ok: false, error: "Only 5 bags are left to dispatch." });
+  });
+});

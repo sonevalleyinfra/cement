@@ -26,6 +26,7 @@
  */
 import { formatINR } from "@/lib/money";
 import { rateMoveText } from "@/lib/rate-rules";
+import { bagsText, isAre } from "@/lib/words";
 
 export const NOTIFICATION_EVENTS = [
   "placed",
@@ -122,13 +123,13 @@ export function recipientIds(
   return uniqueRecipients(list, actorId);
 }
 
-const MESSAGES: Record<NotificationEvent, (what: string) => { title: string; body: string }> = {
+const MESSAGES: Record<NotificationEvent, (what: string, bags: number) => { title: string; body: string }> = {
   placed: (w) => ({ title: "New order", body: `${w} placed.` }),
-  rate_filled: (w) => ({ title: "Rate filled", body: `${w} is waiting for approval.` }),
+  rate_filled: (w) => ({ title: "Rate filled", body: `${w} waiting for approval.` }),
   rate_edited: (w) => ({ title: "Rate changed", body: `${w}.` }),
   approved: (w) => ({ title: "Order approved", body: `${w} approved.` }),
   rejected: (w) => ({ title: "Order rejected", body: `${w} rejected.` }),
-  dispatched: (w) => ({ title: "Order dispatched", body: `${w} is on its way.` }),
+  dispatched: (w, bags) => ({ title: "Order dispatched", body: `${w} ${isAre(bags)} on the way.` }),
   cancelled: (w) => ({ title: "Order cancelled", body: `${w} cancelled.` }),
 };
 
@@ -151,8 +152,8 @@ export function buildNotifications(input: {
   rate?: RateChange | null;
 }): NotificationDraft[] {
   const { event, retailerName, bags, people, actorId } = input;
-  const what = `${retailerName}, ${bags} ${bags === 1 ? "bag" : "bags"}`;
-  const msg = MESSAGES[event](what);
+  const what = `${retailerName}, ${bagsText(bags)}`;
+  const msg = MESSAGES[event](what, bags);
   const staffBody = event === "rate_edited" && input.rate ? `${what}: ${rateChangeText(input.rate)}.` : msg.body;
   return recipientIds(event, people, actorId).map((userId) => ({
     userId,

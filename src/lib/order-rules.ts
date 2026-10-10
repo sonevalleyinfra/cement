@@ -14,6 +14,7 @@
  * - Money is integer paise only.
  */
 import { hasAnyRole, type Role } from "./roles";
+import { bagsText, isAre } from "./words";
 
 export const ORDER_STATUSES = [
   "placed",
@@ -140,7 +141,7 @@ export function checkDispatchBags(
 ): DispatchCheck {
   if (!isValidBags(bags)) return { ok: false, error: "Bags must be a whole number above zero." };
   const left = remainingBags(orderedBags, alreadyDispatchedBags);
-  if (bags > left) return { ok: false, error: `Only ${left} bags are left to dispatch.` };
+  if (bags > left) return { ok: false, error: `Only ${bagsText(left)} ${isAre(left)} left to dispatch.` };
   return { ok: true, remainingAfter: left - bags };
 }
 

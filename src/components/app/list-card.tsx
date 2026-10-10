@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * One row in a list: top line (chip + status), a title, and a bottom row of numbers.
- * Pass `href` to make the whole card tappable, `icon` (an `IconTile`) to show it beside the title,
- * and `featured` for the one highlighted card on a screen (brand gradient, white text).
+ * Pass `href` (a link) or `onClick` (opens a sheet) to make the whole card tappable, `icon` (an `IconTile`)
+ * to show it beside the title, and `featured` for the one highlighted card on a screen (brand gradient, white text).
  */
 export function ListCard({
   href,
+  onClick,
   top,
   title,
   icon,
@@ -19,6 +20,7 @@ export function ListCard({
   className,
 }: {
   href?: string;
+  onClick?: () => void;
   top?: ReactNode;
   title: string;
   icon?: ReactNode;
@@ -34,7 +36,7 @@ export function ListCard({
       <div className="flex items-center gap-3">
         {icon}
         <div className="flex-1 text-base leading-snug font-semibold">{title}</div>
-        {href && (
+        {(href || onClick) && (
           <ChevronRight
             aria-hidden
             className={cn(
@@ -52,11 +54,18 @@ export function ListCard({
     featured
       ? "bg-brand-gradient text-white shadow-brand [--muted-foreground:oklch(1_0_0/0.8)]"
       : "bg-card shadow-card ring-1 ring-foreground/6",
-    href &&
+    (href || onClick) &&
       "transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring",
     className,
   );
   const style = { animationDelay: `${Math.min(index, 8) * 45}ms` };
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cn(classes, "w-full text-left")} style={style}>
+        {body}
+      </button>
+    );
+  }
   return href ? (
     <Link href={href} className={classes} style={style}>
       {body}

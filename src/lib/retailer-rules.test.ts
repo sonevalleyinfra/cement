@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isValidIndianMobile,
+  matchesRetailerSearch,
   normalizePhone,
   pickableRetailerLogins,
   type RetailerLogin,
@@ -63,4 +64,24 @@ describe("pickableRetailerLogins", () => {
     expect(pickableRetailerLogins([login({ deletedAt: new Date() })], [])).toEqual([]));
   it("drops logins already linked to a shop", () =>
     expect(pickableRetailerLogins([login()], [null, "u1"])).toEqual([]));
+});
+
+describe("matchesRetailerSearch", () => {
+  const shop = { name: "Sharma Building Supplies", place: "Patna", phone: "9876543210" };
+  it("matches name, place or phone, ignoring capitals", () => {
+    expect(matchesRetailerSearch(shop, "sharma")).toBe(true);
+    expect(matchesRetailerSearch(shop, "PATNA")).toBe(true);
+    expect(matchesRetailerSearch(shop, "76543")).toBe(true);
+  });
+  it("needs every word to match", () => {
+    expect(matchesRetailerSearch(shop, "sharma patna")).toBe(true);
+    expect(matchesRetailerSearch(shop, "sharma gaya")).toBe(false);
+  });
+  it("an empty search shows everything", () => {
+    expect(matchesRetailerSearch(shop, "")).toBe(true);
+    expect(matchesRetailerSearch(shop, "   ")).toBe(true);
+  });
+  it("finds nothing for an unknown word", () => {
+    expect(matchesRetailerSearch(shop, "zzz")).toBe(false);
+  });
 });

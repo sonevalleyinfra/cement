@@ -42,6 +42,18 @@ export function productName(parts: {
   return `${parts.brand} ${CHANNEL_LABELS[parts.channel]} ${parts.typeCode} ${parts.grade}${size}`;
 }
 
+/**
+ * The product name for a narrow table: "Trade OPC 43" instead of "Prism Trade OPC 43". The brand is
+ * kept only when more than one brand is switched on (`showBrand`), because only then it tells products apart.
+ */
+export function shortProductName(name: string, brandNames: readonly string[], showBrand: boolean): string {
+  if (showBrand) return name;
+  const brand = [...brandNames]
+    .sort((a, b) => b.length - a.length)
+    .find((b) => b !== "" && name.startsWith(`${b} `));
+  return brand ? name.slice(brand.length + 1) : name;
+}
+
 /** Trims and joins spaces in a list name (brand, type, grade). Null when empty. */
 export function cleanListName(text: string, max = 40): string | null {
   const clean = String(text ?? "").trim().replace(/\s+/g, " ").slice(0, max);

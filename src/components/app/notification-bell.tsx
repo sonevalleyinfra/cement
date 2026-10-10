@@ -11,11 +11,11 @@ export async function NotificationBell() {
     <Link
       href="/notifications"
       aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
-      className="relative flex size-10 items-center justify-center rounded-full transition-colors duration-150 hover:bg-primary/8 active:bg-primary/12"
+      className="relative flex size-12 items-center justify-center rounded-full transition-colors duration-150 hover:bg-primary/8 active:bg-primary/12"
     >
       <Bell className="size-5" />
       {unread > 0 && (
-        <span className="animate-pop absolute top-1 right-0.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground ring-2 ring-background">
+        <span className="animate-pop absolute top-1.5 right-1.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground ring-2 ring-background">
           {unread > 9 ? "9+" : unread}
         </span>
       )}

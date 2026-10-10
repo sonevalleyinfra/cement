@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import type { NavItem } from "@/components/app/bottom-nav";
 import { AppShell, AppTitle } from "@/components/app/app-shell";
 import { DataTable } from "@/components/app/data-table";
+import { chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
+import { FormHint } from "@/components/app/form-hint";
 import { IconTile } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -11,6 +13,7 @@ import { FilterSelect, RangeForm } from "@/components/app/range-form";
 import { ListSkeleton } from "@/components/app/skeleton";
 import { Stat } from "@/components/app/stat";
 import { StatusChip } from "@/components/app/status-chip";
+import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { formatINR, formatINRCompact } from "@/lib/money";
 import { DemoControls } from "./demo-controls";
@@ -123,6 +126,32 @@ export default function DesignPage() {
         ]}
         total={["Total", "300", formatINR(10_320_000, { hidePaise: true })]}
       />
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Table, stacked (many number columns)</h2>
+      <DataTable
+        stacked
+        columns={[{ label: "Product" }, { label: "Bags" }, { label: "Sales" }, { label: "Profit" }]}
+        rows={[
+          ["Trade OPC 43", "240", formatINR(8_400_000), formatINR(1_200_000)],
+          ["Non-trade PPC 53", "60", formatINR(1_920_000), "–"],
+        ]}
+        total={["Total", "300", formatINR(10_320_000), formatINR(1_200_000)]}
+      />
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Chips, text link, hint</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={chipClass(true)}>Open</span>
+        <span className={chipClass(false)}>All</span>
+        <TextLink href="/design" strong>
+          New payment
+        </TextLink>
+      </div>
+      <div className="mt-3">
+        <FormHint>Enter the amount</FormHint>
+        <Button disabled className="w-full">
+          Save payment
+        </Button>
+      </div>
 
       <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Loading</h2>
       <ListSkeleton rows={2} />

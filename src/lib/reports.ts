@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray, lt, lte, sql, type Column } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  brands,
   dispatches,
   ledgerEntries,
   orderEvents,
@@ -13,6 +14,7 @@ import {
   user,
   walletMovements,
 } from "@/db/schema";
+import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
 import { duesAging } from "@/lib/due-items";
 import { nameMaps, toMap } from "@/lib/names";
 import type { ReportRange } from "@/lib/report-range";
@@ -28,8 +30,24 @@ import { getSuppliers } from "@/lib/suppliers";
  * The SQL only picks rows (by date); every sum, group and check is a tested plain function.
  */
 
+/**
+ * Product names for report tables on a phone: without the brand ("Trade OPC 43") while only one
+ * brand is switched on, with it when there are several.
+ */
+async function productLabeler(): Promise<(name: string) => string> {
+  const rows = await db.select({ name: brands.name, active: brands.active }).from(brands);
+  const showBrand = hasManyBrands(rows.filter((b) => b.active));
+  const names = rows.map((b) => b.name);
+  return (name) => shortProductName(name, names, showBrand);
+}
+
 /** Dispatches in the range, with the names the sales report groups by. */
 async function salesRows(range: ReportRange): Promise<SaleRow[]> {
+  const [label, rows] = await Promise.all([productLabeler(), salesQuery(range)]);
+  return rows.map((r) => ({ ...r, productName: label(r.productName) }));
+}
+
+async function salesQuery(range: ReportRange) {
   const rows = await db
     .select({
       bags: dispatches.bags,
@@ -146,9 +164,11 @@ export async function getStockReport(range: ReportRange) {
       .from(stockMovements),
     nameMaps(),
   ]);
-  const flows = stockFlows(rows, range, names.products);
+  const label = await productLabeler();
+  const products = new Map([...names.products].map(([id, name]) => [id, label(name)]));
+  const flows = stockFlows(rows, range, products);
   return {
-    now: stockNow(rows, { products: names.products, godowns: names.godowns, vehicles: names.vehicles }),
+    now: stockNow(rows, { products, godowns: names.godowns, vehicles: names.vehicles }),
     flows,
     total: totalFlow(flows),
   };

@@ -1,5 +1,6 @@
 /** Pure stock rules (no database). Stock is an append-only list of signed movements. */
 import { isAdmin } from "./roles";
+import { bagsText } from "./words";
 
 export const MOVEMENT_TYPES = ["opening", "purchase", "dispatch", "adjustment", "transfer"] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
@@ -43,7 +44,7 @@ export function canDispatch(
 ): { ok: true } | { ok: false; error: string } {
   if (!isPositiveBags(bags)) return { ok: false, error: "Bags must be a whole number above zero." };
   if (currentBalance < bags) {
-    return { ok: false, error: `Only ${Math.max(currentBalance, 0)} bags in stock.` };
+    return { ok: false, error: `Only ${bagsText(Math.max(currentBalance, 0))} in stock.` };
   }
   return { ok: true };
 }

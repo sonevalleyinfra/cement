@@ -6,6 +6,7 @@ import {
   historyReason,
   historyStepLabel,
   mentionsMoney,
+  orderAmountSummary,
   canPlaceOrder,
   canSeePrice,
   isBagsInRange,
@@ -160,5 +161,55 @@ describe("historyRateLine", () => {
       expect(historyRateLine(role, { fromRatePaise: 35000, toRatePaise: 36000 })).toBeNull();
     }
     expect(historyRateLine("sales", { fromRatePaise: null, toRatePaise: null })).toBeNull();
+  });
+});
+
+describe("orderAmountSummary", () => {
+  it("nothing sent: the order's rate and the total at that rate", () => {
+    expect(orderAmountSummary({ status: "approved", bags: 50, ratePaise: 36000, loads: [] })).toEqual({
+      caption: "Rate ₹360.00 per bag",
+      totalPaise: 1_800_000,
+      lines: [],
+    });
+  });
+  it("no rate yet: nothing to show", () => {
+    expect(orderAmountSummary({ status: "placed", bags: 50, ratePaise: null, loads: [] })).toBeNull();
+  });
+  it("partly dispatched: total, billed so far and the bags still to send at the current rate", () => {
+    const a = orderAmountSummary({
+      status: "partly_dispatched",
+      bags: 100,
+      ratePaise: 37000,
+      loads: [{ bags: 40, ratePaise: 36000 }],
+    });
+    expect(a).toEqual({
+      caption: "Total",
+      totalPaise: 40 * 36000 + 60 * 37000,
+      lines: ["Billed ₹14,400.00", "60 bags not sent, at ₹370.00 per bag"],
+    });
+  });
+  it("one bag left is singular", () => {
+    const a = orderAmountSummary({ status: "partly_dispatched", bags: 41, ratePaise: 36000, loads: [{ bags: 40, ratePaise: 36000 }] });
+    expect(a?.lines[1]).toBe("1 bag not sent, at ₹360.00 per bag");
+  });
+  it("cancelled after some bags went out: only what was billed, no single rate", () => {
+    const a = orderAmountSummary({ status: "cancelled", bags: 100, ratePaise: 36000, loads: [{ bags: 40, ratePaise: 35000 }] });
+    expect(a).toEqual({ caption: "Billed", totalPaise: 1_400_000, lines: [] });
+  });
+  it("cancelled or rejected with nothing sent: nothing, so no misleading rate", () => {
+    expect(orderAmountSummary({ status: "cancelled", bags: 100, ratePaise: 36000, loads: [] })).toBeNull();
+    expect(orderAmountSummary({ status: "rejected", bags: 100, ratePaise: 36000, loads: [] })).toBeNull();
+  });
+  it("fully dispatched at different rates: the billed total", () => {
+    const a = orderAmountSummary({
+      status: "dispatched",
+      bags: 100,
+      ratePaise: 37000,
+      loads: [
+        { bags: 40, ratePaise: 36000 },
+        { bags: 60, ratePaise: 37000 },
+      ],
+    });
+    expect(a).toEqual({ caption: "Billed", totalPaise: 40 * 36000 + 60 * 37000, lines: [] });
   });
 });

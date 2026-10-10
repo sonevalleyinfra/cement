@@ -11,10 +11,12 @@
  * - Dispatch loads (bags, vehicle, driver, phone, date) are shown to everyone who may see the
  *   order; the load's rate only to staff.
  */
-import { isValidBags } from "./order-rules";
+import { formatINR } from "./money";
+import { isOrderStatus, isValidBags, orderTotalPaise, orderValuePaise, remainingBags } from "./order-rules";
 import { isStaff } from "./permissions";
 import { isRateEvent, rateEventLabel, rateMoveText } from "./rate-rules";
 import { hasAnyRole, isRetailerOnly } from "./roles";
+import { bagsText } from "./words";
 
 export { isRetailerOnly };
 
@@ -76,6 +78,39 @@ export function orderListScope(
 export function cancelledNote(status: string, orderedBags: number, sentBags: number): string | null {
   if (status !== "cancelled" || sentBags <= 0) return null;
   return `${sentBags} of ${orderedBags} bags dispatched`;
+}
+
+export type OrderAmount = { caption: string; totalPaise: number; lines: string[] };
+
+/**
+ * The money box on an order, for staff only (a shop never sees rates or amounts). It never shows one
+ * "rate per bag" that was not billed:
+ * - nothing sent yet: the order's rate and the total at that rate;
+ * - some sent, more to come: the total, what was billed so far, and the bags not sent at the current rate
+ *   (each load shows its own rate in its own row);
+ * - finished or cancelled after some bags went out: only what was billed;
+ * - closed with nothing sent (rejected, cancelled): nothing (null).
+ */
+export function orderAmountSummary(order: {
+  status: string;
+  bags: number;
+  ratePaise: number | null;
+  loads: readonly { bags: number; ratePaise: number }[];
+}): OrderAmount | null {
+  const totalPaise = orderValuePaise(order);
+  if (totalPaise === null) return null;
+  if (order.loads.length === 0) {
+    return order.ratePaise === null
+      ? null
+      : { caption: `Rate ${formatINR(order.ratePaise)} per bag`, totalPaise, lines: [] };
+  }
+  const closed = isOrderStatus(order.status) && ["rejected", "dispatched", "cancelled"].includes(order.status);
+  if (closed) return { caption: "Billed", totalPaise, lines: [] };
+  const billed = order.loads.reduce((n, l) => n + orderTotalPaise(l.bags, l.ratePaise), 0);
+  const left = remainingBags(order.bags, order.loads.reduce((n, l) => n + l.bags, 0));
+  const lines = [`Billed ${formatINR(billed)}`];
+  if (left > 0 && order.ratePaise !== null) lines.push(`${bagsText(left)} not sent, at ${formatINR(order.ratePaise)} per bag`);
+  return { caption: "Total", totalPaise, lines };
 }
 
 /** Words that give a price away in a free-text staff reason. */
