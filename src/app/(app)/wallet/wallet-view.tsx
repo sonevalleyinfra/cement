@@ -2,13 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { ConfirmStep } from "@/components/app/confirm-step";
+import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { firstMissing } from "@/lib/form-rules";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
 import { MAX_REASON } from "@/lib/receipt-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { answerHandover, requestHandover } from "./actions";
 
@@ -36,37 +40,49 @@ export function WalletView({
   const [answering, setAnswering] = useState<Request | null>(null);
   const [received, setReceived] = useState("");
   const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
+  // Handing cash over asks "are you sure?" first (confirming = that question is on screen).
+  const [confirming, setConfirming] = useState(false);
+  const { error, setError, clearError } = useFormError([handOpen, amount, answering?.id, received, reason]);
   const [pending, start] = useTransition();
   const handover = useSubmit();
 
+  const handoverPaise = parseRupeesToPaise(amount);
+  const handoverHint = firstMissing([[handoverPaise === null || handoverPaise <= 0, "Enter the amount"]]);
+  const receivedPaise = parseRupeesToPaise(received);
+  const receivedHint = firstMissing([[receivedPaise === null || receivedPaise <= 0, "Enter the amount received"]]);
+  const rejectHint = firstMissing([[reason.trim() === "", "Enter a reason to reject"]]);
+
   function handOver() {
-    const paise = parseRupeesToPaise(amount);
-    if (paise === null || paise <= 0) return setError("Enter the amount.");
-    setError("");
+    if (handoverPaise === null || handoverPaise <= 0) return;
+    clearError();
     handover.run(
-      (requestId) => requestHandover({ amountPaise: paise, requestId }),
+      (requestId) => requestHandover({ amountPaise: handoverPaise, requestId }),
       (res) => {
         if (res.ok) {
+          clearError();
+          setConfirming(false);
           setHandOpen(false);
           setAmount("");
           router.refresh();
-        } else setError(res.error);
+        } else {
+          // Back to the amount, with what went wrong.
+          setConfirming(false);
+          setError(res.error);
+        }
       },
     );
   }
 
   function answer(action: "confirm" | "reject") {
     if (!answering) return;
-    setError("");
-    const paise = parseRupeesToPaise(received);
-    if (action === "confirm" && (paise === null || paise <= 0)) return setError("Enter the amount received.");
+    clearError();
     start(async () => {
       const res = await answerHandover(
         answering.id,
-        action === "confirm" ? { action, amountPaise: paise ?? 0 } : { action, reason },
+        action === "confirm" ? { action, amountPaise: receivedPaise ?? 0 } : { action, reason },
       );
       if (res.ok) {
+        clearError();
         setAnswering(null);
         router.refresh();
       } else setError(res.error);
@@ -91,7 +107,8 @@ export function WalletView({
               variant="outline"
               disabled={mine.availablePaise <= 0}
               onClick={() => {
-                setError("");
+                clearError();
+                setConfirming(false);
                 setAmount(rupees(mine.availablePaise));
                 setHandOpen(true);
               }}
@@ -123,7 +140,7 @@ export function WalletView({
                           <Button
                             disabled={pending}
                             onClick={() => {
-                              setError("");
+                              clearError();
                               setReceived(rupees(r.amountPaise));
                               setReason("");
                               setAnswering(r);
@@ -165,14 +182,29 @@ export function WalletView({
 
       <Sheet open={handOpen} onOpenChange={setHandOpen} title="Hand over cash">
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="handover">Amount (₹)</Label>
-            <Input id="handover" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button disabled={handover.pending} onClick={handOver}>
-            Hand over
-          </Button>
+          {confirming && handoverPaise !== null ? (
+            <ConfirmStep
+              question={`Hand over ${formatINR(handoverPaise)} to the office?`}
+              confirmLabel="Hand over"
+              onBack={() => setConfirming(false)}
+              onConfirm={handOver}
+              pending={handover.pending}
+            />
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="handover">Amount (₹)</Label>
+                <Input id="handover" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <div>
+                <FormHint>{handoverHint}</FormHint>
+                <Button className="w-full" disabled={handoverHint !== null} onClick={() => setConfirming(true)}>
+                  Hand over
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </Sheet>
 
@@ -182,16 +214,22 @@ export function WalletView({
             <Label htmlFor="received">Received (₹)</Label>
             <Input id="received" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} />
           </div>
-          <Button disabled={pending} onClick={() => answer("confirm")}>
-            Received
-          </Button>
+          <div>
+            <FormHint>{receivedHint}</FormHint>
+            <Button className="w-full" disabled={pending || receivedHint !== null} onClick={() => answer("confirm")}>
+              Received
+            </Button>
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="reject-reason">Reason</Label>
             <Input id="reject-reason" maxLength={MAX_REASON} value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
-          <Button variant="outline" disabled={pending || reason.trim() === ""} onClick={() => answer("reject")}>
-            Reject
-          </Button>
+          <div>
+            <FormHint>{rejectHint}</FormHint>
+            <Button className="w-full" variant="outline" disabled={pending || rejectHint !== null} onClick={() => answer("reject")}>
+              Reject
+            </Button>
+          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
       </Sheet>

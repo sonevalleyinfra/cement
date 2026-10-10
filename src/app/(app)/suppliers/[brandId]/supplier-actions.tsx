@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { parseRupeesToPaise } from "@/lib/money";
 import { MAX_REASON } from "@/lib/receipt-rules";
 import { SUPPLIER_MODE_LABELS, SUPPLIER_PAYMENT_MODES } from "@/lib/supplier-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { addSupplierAdjustment, recordSupplierCredit, recordSupplierPayment, setSupplierOpening } from "../actions";
 
@@ -88,7 +89,8 @@ function EntryForm({
 }) {
   const router = useRouter();
   const { pending, run } = useSubmit();
-  const [error, setError] = useState("");
+  // The fields are read with FormData, so the error is cleared by the form's onInput (and the toggles below).
+  const { error, setError, clearError } = useFormError();
   // Opening: true = we owe the supplier. Adjustment: true = we owe more.
   const [plus, setPlus] = useState(true);
   const [mode, setMode] = useState<string>("bank");
@@ -96,7 +98,7 @@ function EntryForm({
   // onSubmit (not a form action) so the fields keep their text when there is an error.
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError("");
+    clearError();
     const f = new FormData(e.currentTarget);
     const paise = parseRupeesToPaise(String(f.get("amount") ?? ""));
     if (paise === null || paise <= 0) return setError("Enter the amount.");
@@ -114,6 +116,7 @@ function EntryForm({
               : addSupplierAdjustment({ brandId, amountPaise: plus ? paise : -paise, reason, entryDate, requestId }),
       (res) => {
         if (res.ok) {
+          clearError();
           onDone();
           router.refresh();
         } else setError(res.error);
@@ -121,19 +124,24 @@ function EntryForm({
     );
   }
 
+  function pickSign(value: boolean) {
+    clearError();
+    setPlus(value);
+  }
+
   const toggle = (labels: [string, string]) => (
     <div className="grid grid-cols-2 gap-2">
-      <Button type="button" variant={plus ? "default" : "outline"} onClick={() => setPlus(true)}>
+      <Button type="button" variant={plus ? "default" : "outline"} onClick={() => pickSign(true)}>
         {labels[0]}
       </Button>
-      <Button type="button" variant={plus ? "outline" : "default"} onClick={() => setPlus(false)}>
+      <Button type="button" variant={plus ? "outline" : "default"} onClick={() => pickSign(false)}>
         {labels[1]}
       </Button>
     </div>
   );
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
+    <form onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
       {kind === "opening" && toggle([`We owe ${brandName}`, `${brandName} owes us`])}
       {kind === "adjustment" && toggle(["We owe more", "We owe less"])}
       <div className="flex flex-col gap-1.5">
@@ -145,7 +153,10 @@ function EntryForm({
           <SelectField
             label="Mode"
             value={mode}
-            onChange={setMode}
+            onChange={(m) => {
+              clearError();
+              setMode(m);
+            }}
             options={SUPPLIER_PAYMENT_MODES.map((m) => ({ value: m, label: SUPPLIER_MODE_LABELS[m] }))}
           />
           <div className="flex flex-col gap-1.5">

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { TextLink } from "@/components/app/text-link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormMessage } from "@/components/form-message";
@@ -40,7 +40,7 @@ export function SignInForm() {
   }
 
   return (
-    <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
+    <form method="post" onSubmit={onSubmit} onInput={() => setError(null)} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" name="email" type="email" autoComplete="email" required />
@@ -48,9 +48,7 @@ export function SignInForm() {
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="password">Password</Label>
-          <Link href="/forgot-password" className="text-sm text-muted-foreground hover:underline">
-            Forgot password?
-          </Link>
+          <TextLink href="/forgot-password">Forgot password?</TextLink>
         </div>
         <Input id="password" name="password" type="password" autoComplete="current-password" required />
       </div>

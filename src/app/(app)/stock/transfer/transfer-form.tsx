@@ -2,13 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hasManyBrands, productGroups, startBrand } from "@/lib/catalogue-rules";
+import { firstMissing } from "@/lib/form-rules";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { transferStock } from "../actions";
 import { TruckFields, type TruckInput } from "../truck-fields";
@@ -49,25 +52,35 @@ export function TransferForm({
   const [truck, setTruck] = useState(NO_TRUCK);
   const [digits, setDigits] = useState("");
   const [note, setNote] = useState("");
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // "Bags moved." stays until the next save; an error goes away as soon as any field changes.
+  const [done, setDone] = useState("");
+  const { error, setError, clearError } = useFormError([productId, from, to, truck, digits, note]);
   const newTruck = to === NEW_TRUCK_PLACE;
 
   const bagsAt = (key: string) => balances.find((b) => b.productId === productId && b.placeKey === key)?.bags ?? 0;
   const bags = Number(digits || 0);
 
+  const hint = firstMissing([
+    [!productId, "Pick a product"],
+    [from === to, "Pick two different places"],
+    [newTruck && (!truck.number.trim() || !truck.driverName.trim()), "Enter the truck number and driver"],
+    [bags === 0, "Enter the bags"],
+  ]);
+
   function submit() {
-    setMessage(null);
+    setDone("");
+    clearError();
     run(
       (requestId) =>
         transferStock({ productId, from, to, truck: newTruck ? truck : undefined, bags, note, requestId }),
       (res) => {
         if (res.ok) {
-          setMessage({ ok: true, text: "Bags moved." });
+          setDone("Bags moved.");
           setDigits("");
           setNote("");
           if (newTruck) setTruck(NO_TRUCK);
           router.refresh();
-        } else setMessage({ ok: false, text: res.error });
+        } else setError(res.error);
       },
     );
   }
@@ -114,22 +127,19 @@ export function TransferForm({
         aria-label="Note (optional)"
         maxLength={200}
       />
-      {message && (
-        <p role="status" className={message.ok ? "text-sm text-green-700" : "text-sm text-destructive"}>
-          {message.text}
+      {error && (
+        <p role="status" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {done && !error && (
+        <p role="status" className="text-sm text-green-700">
+          {done}
         </p>
       )}
       <PinnedAction>
-        <Button
-          onClick={submit}
-          disabled={
-            pending ||
-            bags === 0 ||
-            !productId ||
-            from === to ||
-            (newTruck && (!truck.number.trim() || !truck.driverName.trim()))
-          }
-        >
+        <FormHint>{hint}</FormHint>
+        <Button onClick={submit} disabled={pending || hint !== null}>
           Move bags
         </Button>
       </PinnedAction>

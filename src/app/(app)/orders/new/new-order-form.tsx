@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { RateField } from "@/components/app/rate-field";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { productGroups } from "@/lib/catalogue-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
 
@@ -34,7 +36,8 @@ export function NewOrderForm({
   const [rate, setRate] = useState("");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
+  // The error goes away as soon as the retailer, product, bags or rate is changed.
+  const { error, setError, clearError } = useFormError([retailerId, productId, bags, rate]);
   const { pending, run } = useSubmit();
 
   const retailer = retailers.find((r) => r.id === retailerId);
@@ -44,7 +47,7 @@ export function NewOrderForm({
     : retailers;
 
   function submit() {
-    setError("");
+    clearError();
     run(
       (requestId) =>
         placeOrder({
@@ -87,18 +90,7 @@ export function NewOrderForm({
       </div>
       <Keypad value={bags} onChange={setBags} maxLength={6} />
 
-      {askRate && (
-        <label className="flex flex-col gap-1 text-sm font-semibold">
-          Rate per bag (₹)
-          <Input
-            inputMode="numeric"
-            value={rate}
-            onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))}
-            maxLength={5}
-            autoComplete="off"
-          />
-        </label>
-      )}
+      {askRate && <RateField value={rate} onChange={setRate} bags={Number(bags || 0)} />}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       <PinnedAction>

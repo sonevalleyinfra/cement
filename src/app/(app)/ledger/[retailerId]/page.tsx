@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
+import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
 import { retailers, user as users } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
@@ -15,8 +15,7 @@ import { can } from "@/lib/permissions";
 import { hasAnyRole } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 import { mayViewLedger } from "../access";
-import { AdjustmentForm } from "./adjustment-form";
-import { OpeningForm } from "./opening-form";
+import { LedgerActions } from "./ledger-actions";
 
 export default async function RetailerLedgerPage({
   params,
@@ -46,23 +45,18 @@ export default async function RetailerLedgerPage({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">{retailer.name}</h1>
-        {staff && (
-          <Link href="/ledger" className="text-sm text-muted-foreground underline">
-            All retailers
-          </Link>
-        )}
-        {isRetailerOnly(user.role) && (
-          <Link href="/receipts" className="text-sm text-muted-foreground underline">
-            Payments
-          </Link>
-        )}
+        {staff && <TextLink href="/ledger">All retailers</TextLink>}
+        {isRetailerOnly(user.role) && <TextLink href="/receipts">Payments</TextLink>}
       </div>
       <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <div className="text-xs text-muted-foreground">{balanceLine(balance).label}</div>
         <div className="tabular text-3xl font-bold">{formatINR(balanceLine(balance).amountPaise)}</div>
       </div>
-      {can(user.role, "setOpeningBalance") && !hasOpening && <OpeningForm retailerId={retailerId} />}
-      {can(user.role, "adjustLedger") && <AdjustmentForm retailerId={retailerId} />}
+      <LedgerActions
+        retailerId={retailerId}
+        canOpen={can(user.role, "setOpeningBalance") && !hasOpening}
+        canAdjust={can(user.role, "adjustLedger")}
+      />
       {entries.length === 0 ? (
         <EmptyState title="No entries yet" />
       ) : (

@@ -2,21 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { chipClass } from "@/components/app/chip";
+import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { firstMissing } from "@/lib/form-rules";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { MAX_REASON, MAX_UTR, MODE_LABELS, PAYMENT_MODES, validateModeDetails, type PaymentMode } from "@/lib/receipt-rules";
 import { loadDues, saveReceipt } from "../actions";
 
 type RetailerRow = { id: string; name: string; place: string };
-
-const chip = (on: boolean) =>
-  `h-11 rounded-full px-4 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
 
 export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
   const router = useRouter();
@@ -29,7 +30,8 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
   const [note, setNote] = useState("");
   // What the picked retailer owes right now (null until loaded).
   const [duesPaise, setDuesPaise] = useState<number | null>(null);
-  const [error, setError] = useState("");
+  // Goes away as soon as the retailer, amount, mode or UTR is changed.
+  const { error, setError, clearError } = useFormError([retailer?.id, digits, mode, utr, note]);
   const [loading, start] = useTransition();
   const { pending: saving, run } = useSubmit();
   const pending = loading || saving;
@@ -39,23 +41,28 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
   const advancePaise = duesPaise !== null && totalPaise > duesPaise ? totalPaise - duesPaise : 0;
 
   const modeError = validateModeDetails(mode, { utr });
-  const canSave = !!retailer && totalPaise > 0 && !modeError && !pending;
+  const hint = firstMissing([
+    [!retailer, "Pick a retailer"],
+    [totalPaise <= 0, "Enter the amount"],
+    [modeError !== null, modeError ?? ""],
+  ]);
+  const canSave = hint === null && !pending;
 
   function pickRetailer(r: RetailerRow) {
     setRetailer(r);
     setPickOpen(false);
     setDuesPaise(null);
-    setError("");
+    clearError();
     start(async () => {
       const res = await loadDues(r.id);
       if (res.ok) setDuesPaise(res.duesPaise);
-      else setError(res.error);
+      else setError(res.error, [r.id, digits, mode, utr, note]);
     });
   }
 
   function submit() {
     if (!retailer) return;
-    setError("");
+    clearError();
     run(
       (requestId) =>
         saveReceipt({
@@ -123,7 +130,7 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
       <section className="flex flex-col gap-3">
         <div className="flex gap-2">
           {PAYMENT_MODES.map((m) => (
-            <button key={m} type="button" className={chip(mode === m)} onClick={() => setMode(m)}>
+            <button key={m} type="button" className={chipClass(mode === m)} onClick={() => setMode(m)}>
               {MODE_LABELS[m]}
             </button>
           ))}
@@ -140,6 +147,7 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <PinnedAction>
+        <FormHint>{hint}</FormHint>
         <Button type="button" size="lg" disabled={!canSave} onClick={submit}>
           {saving ? "Saving…" : "Save payment"}
         </Button>

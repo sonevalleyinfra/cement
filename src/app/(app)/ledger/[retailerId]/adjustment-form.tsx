@@ -2,42 +2,41 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { FormHint } from "@/components/app/form-hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { firstMissing } from "@/lib/form-rules";
 import { parseRupeesToPaise } from "@/lib/money";
 import { MAX_REASON } from "@/lib/receipt-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { addAdjustment } from "../actions";
 
-/** Admin adds a + or - adjustment to this retailer's ledger, with a reason. */
-export function AdjustmentForm({ retailerId }: { retailerId: string }) {
+/** Admin adds a + or - adjustment to this retailer's ledger, with a reason (shown in a sheet). `onDone` closes it. */
+export function AdjustmentForm({ retailerId, onDone }: { retailerId: string; onDone: () => void }) {
   const router = useRouter();
   const { pending, run } = useSubmit();
-  const [open, setOpen] = useState(false);
   const [owesMore, setOwesMore] = useState(true);
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
-
-  if (!open) {
-    return (
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        Adjustment
-      </Button>
-    );
-  }
+  const { error, setError, clearError } = useFormError([owesMore, amount, reason]);
+  const paise = parseRupeesToPaise(amount);
+  const hint = firstMissing([
+    [paise === null || paise <= 0, "Enter the amount"],
+    [!reason.trim(), "Enter a reason"],
+  ]);
 
   function submit() {
-    setError("");
-    const paise = parseRupeesToPaise(amount);
-    if (paise === null || paise <= 0) return setError("Enter the amount.");
+    if (paise === null || paise <= 0) return;
+    clearError();
     run(
       (requestId) => addAdjustment({ retailerId, amountPaise: owesMore ? paise : -paise, reason, requestId }),
       (res) => {
         if (res.ok) {
+          clearError();
           setAmount("");
           setReason("");
-          setOpen(false);
+          onDone();
           router.refresh();
         } else setError(res.error);
       },
@@ -45,8 +44,7 @@ export function AdjustmentForm({ retailerId }: { retailerId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-      <div className="text-sm font-semibold">Adjustment</div>
+    <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant={owesMore ? "default" : "outline"} onClick={() => setOwesMore(true)}>
           Owes more
@@ -62,11 +60,9 @@ export function AdjustmentForm({ retailerId }: { retailerId: string }) {
           {error}
         </p>
       )}
-      <div className="flex gap-2">
-        <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-          Back
-        </Button>
-        <Button onClick={submit} disabled={pending || !amount.trim() || !reason.trim()}>
+      <div>
+        <FormHint>{hint}</FormHint>
+        <Button className="w-full" onClick={submit} disabled={pending || hint !== null}>
           {pending ? "Saving…" : "Save adjustment"}
         </Button>
       </div>

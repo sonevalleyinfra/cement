@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { TextLink } from "@/components/app/text-link";
 import { useState } from "react";
 import { FormMessage } from "@/components/form-message";
 import { Button } from "@/components/ui/button";
@@ -38,15 +38,15 @@ export function ResetPasswordForm({ token }: { token: string }) {
     return (
       <FormMessage kind="success">
         Your password has been changed.{" "}
-        <Link href="/sign-in" className="underline">
+        <TextLink href="/sign-in" strong>
           Sign in
-        </Link>
+        </TextLink>
       </FormMessage>
     );
   }
 
   return (
-    <form method="post" onSubmit={onSubmit} className="flex flex-col gap-4">
+    <form method="post" onSubmit={onSubmit} onInput={() => setError(null)} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">New password</Label>
         <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />

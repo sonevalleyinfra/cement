@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { FormHint } from "@/components/app/form-hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { firstMissing } from "@/lib/form-rules";
 import { formatINR } from "@/lib/money";
 import { orderTotalPaise } from "@/lib/order-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { decideOrder } from "../orders/actions";
 
 export function ApprovalCard({
@@ -22,10 +25,12 @@ export function ApprovalCard({
   const router = useRouter();
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
+  const { error, setError, clearError } = useFormError(reason);
   const [pending, start] = useTransition();
+  const hint = firstMissing([[reason.trim() === "", "Enter a reason"]]);
 
   function decide(decision: "approved" | "rejected") {
+    clearError();
     start(async () => {
       const res = await decideOrder(order.id, decision, reason, order.ratePaise);
       if (!res.ok) setError(res.error);
@@ -39,7 +44,7 @@ export function ApprovalCard({
       className="animate-in-up flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6"
       style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
     >
-      <Link href={`/orders/${order.id}`} className="text-base font-semibold">
+      <Link href={`/orders/${order.id}`} className="-my-2 flex min-h-12 items-center text-base font-semibold">
         {order.retailer}
       </Link>
       <div className="flex items-end justify-between">
@@ -61,25 +66,42 @@ export function ApprovalCard({
             aria-label="Reason for rejecting"
           />
           {error && <p className="text-sm text-destructive">{error}</p>}
+          <FormHint>{hint}</FormHint>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setRejecting(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                clearError();
+                setRejecting(false);
+              }}
+              disabled={pending}
+            >
               Back
             </Button>
-            <Button variant="destructive" onClick={() => decide("rejected")} disabled={pending}>
+            <Button variant="destructive" onClick={() => decide("rejected")} disabled={pending || hint !== null}>
               Confirm reject
             </Button>
           </div>
         </div>
       ) : (
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setRejecting(true)} disabled={pending}>
-            Reject
-          </Button>
-          <Button onClick={() => decide("approved")} disabled={pending}>
-            Approve
-          </Button>
+        <>
           {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                clearError();
+                setRejecting(true);
+              }}
+              disabled={pending}
+            >
+              Reject
+            </Button>
+            <Button onClick={() => decide("approved")} disabled={pending}>
+              Approve
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );

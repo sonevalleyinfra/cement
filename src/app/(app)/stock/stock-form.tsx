@@ -1,14 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { chipClass } from "@/components/app/chip";
+import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
+import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
+import { firstMissing } from "@/lib/form-rules";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
 import { purchaseAmountPaise } from "@/lib/supplier-rules";
 import {
@@ -18,6 +21,7 @@ import {
   STOCK_FIX_REASONS,
   type StockFixReason,
 } from "@/lib/stock-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
 import { TruckFields, type TruckInput } from "./truck-fields";
@@ -36,9 +40,6 @@ const copy = {
   opening: { button: "Set opening stock", note: "", done: "Opening stock set." },
   adjust: { button: "Save adjustment", note: "Note (optional)", done: "Adjustment saved." },
 } as const;
-
-const chip = (on: boolean) =>
-  `h-11 rounded-full px-4 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
 
 const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
 
@@ -75,7 +76,9 @@ export function StockForm({
   // The quick truck form (purchase into a hired truck): nothing about the truck is saved for next time.
   const [truck, setTruck] = useState(NO_TRUCK);
   const newTruck = mode === "purchase" && place === NEW_TRUCK_PLACE;
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
+  const [done, setDone] = useState("");
+  const { error, setError, clearError } = useFormError([pick, place, digits, minus, note, reason, costText, invoiceNo, truck]);
 
   // Brand first. With one brand there is no Brand drop-down: that brand is used.
   const brandId = startBrand(lists.brands, pick.brandId);
@@ -88,8 +91,18 @@ export function StockForm({
   const costPaise = parseRupeesToPaise(costText);
   const owedPaise = costPaise === null ? null : purchaseAmountPaise(bags, costPaise);
 
+  const hint = firstMissing([
+    [!product, "Pick a product"],
+    [!place, "Pick a place"],
+    [newTruck && (!truck.number.trim() || !truck.driverName.trim()), "Enter the truck number and driver"],
+    [bags === 0, "Enter the bags"],
+    [mode === "adjust" && reason === null, "Pick a reason"],
+    [mode === "purchase" && (costPaise === null || costPaise < 1), "Enter the cost per bag"],
+  ]);
+
   function submit() {
-    setMessage(null);
+    setDone("");
+    clearError();
     const input = {
       brandId,
       channel: parts.channel,
@@ -107,7 +120,7 @@ export function StockForm({
       (requestId) => action({ ...input, requestId }),
       (res) => {
         if (res.ok) {
-          setMessage({ ok: true, text: copy[mode].done });
+          setDone(copy[mode].done);
           setDigits("");
           setNote("");
           setReason(null);
@@ -115,7 +128,7 @@ export function StockForm({
           setInvoiceNo("");
           setTruck(NO_TRUCK);
           router.refresh();
-        } else setMessage({ ok: false, text: res.error });
+        } else setError(res.error);
       },
     );
   }
@@ -124,9 +137,9 @@ export function StockForm({
     return (
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
         <span>{products.length === 0 ? "No products yet" : "No godown yet"}</span>
-        <Link href={products.length === 0 ? "/catalogue" : "/godowns"} className="font-semibold underline">
+        <TextLink href={products.length === 0 ? "/catalogue" : "/godowns"} strong>
           {products.length === 0 ? "Catalogue" : "Godowns"}
-        </Link>
+        </TextLink>
       </div>
     );
   }
@@ -199,7 +212,7 @@ export function StockForm({
               type="button"
               role="radio"
               aria-checked={reason === r}
-              className={chip(reason === r)}
+              className={chipClass(reason === r)}
               onClick={() => setReason(r)}
             >
               {STOCK_FIX_LABELS[r]}
@@ -242,24 +255,19 @@ export function StockForm({
           maxLength={200}
         />
       )}
-      {message && (
-        <p role="status" className={message.ok ? "text-sm text-green-700" : "text-sm text-destructive"}>
-          {message.text}
+      {error && (
+        <p role="status" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {done && !error && (
+        <p role="status" className="text-sm text-green-700">
+          {done}
         </p>
       )}
       <PinnedAction>
-        <Button
-          onClick={submit}
-          disabled={
-            pending ||
-            bags === 0 ||
-            !product ||
-            !place ||
-            (newTruck && (!truck.number.trim() || !truck.driverName.trim())) ||
-            (mode === "purchase" && (costPaise === null || costPaise < 1)) ||
-            (mode === "adjust" && reason === null)
-          }
-        >
+        <FormHint>{hint}</FormHint>
+        <Button onClick={submit} disabled={pending || hint !== null}>
           {copy[mode].button}
         </Button>
       </PinnedAction>

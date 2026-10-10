@@ -1,16 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EmptyState } from "@/components/app/empty-state";
+import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
+import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
+import { StatusChip } from "@/components/app/status-chip";
+import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { truckAfterPlacePick } from "@/lib/dispatch-rules";
-import { remainingBags } from "@/lib/order-rules";
+import { firstMissing } from "@/lib/form-rules";
+import { isOrderStatus, remainingBags } from "@/lib/order-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
+import { bagsText } from "@/lib/words";
 import { dispatchOrder } from "./actions";
 
 type OrderRow = {
@@ -25,8 +31,6 @@ type OrderRow = {
 /** A stock place (`key` is "godown:<id>" or "vehicle:<id>"); `truck` is its number when the bags are on a truck. */
 type Place = { key: string; name: string; truck: string | null };
 type Balance = { productId: string; placeKey: string; bags: number };
-
-const selectClass = "h-11 w-full rounded-xl border bg-background px-3 text-base";
 
 export function DispatchView({
   isAdmin,
@@ -48,7 +52,8 @@ export function DispatchView({
   const [fromPlace, setFromPlace] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
-  const [error, setError] = useState("");
+  // Goes away when any field is changed, after a save and when the sheet opens again.
+  const { error, setError, clearError } = useFormError([open?.id, bags, truck, fromPlace, driverName, driverPhone]);
   const { pending, run, renew } = useSubmit();
 
   function openSheet(o: OrderRow) {
@@ -59,7 +64,7 @@ export function DispatchView({
     pickPlace(fullest?.key ?? "", "", null);
     setDriverName("");
     setDriverPhone("");
-    setError("");
+    clearError();
     renew();
   }
 
@@ -77,6 +82,7 @@ export function DispatchView({
 
   function submit() {
     if (!open) return;
+    clearError();
     run(
       (requestId) =>
         dispatchOrder({
@@ -90,6 +96,7 @@ export function DispatchView({
         }),
       (res) => {
         if (res.ok) {
+          clearError();
           setOpen(null);
           router.refresh();
         } else setError(res.error);
@@ -103,13 +110,12 @@ export function DispatchView({
         <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <p className="text-sm font-medium">No stock yet</p>
           {isAdmin && (
-            <Link href="/stock/purchase" className="text-sm font-semibold underline">
+            <TextLink href="/stock/purchase" strong>
               Add stock
-            </Link>
+            </TextLink>
           )}
         </div>
       )}
-      {error && !open && <p className="text-sm text-destructive">{error}</p>}
       {orders.length === 0 ? (
         <EmptyState title="Nothing to dispatch" />
       ) : (
@@ -122,15 +128,11 @@ export function DispatchView({
                   index={i}
                   href={`/orders/${o.id}`}
                   title={o.retailer}
-                  top={
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {o.status.replace("_", " ")}
-                    </span>
-                  }
+                  top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
                   bottom={
                     <div className="text-xs text-muted-foreground">
                       {o.product} · <span className="tabular">{o.sent}</span> of{" "}
-                      <span className="tabular">{o.bags}</span> bags sent
+                      <span className="tabular">{o.bags}</span> {o.bags === 1 ? "bag" : "bags"} sent
                     </div>
                   }
                 />
@@ -158,16 +160,12 @@ export function DispatchView({
                 onChange={(e) => setBags(e.target.value.replace(/\D/g, ""))}
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold">
-              Take from
-              <select className={selectClass} value={fromPlace} onChange={(e) => pickPlace(e.target.value)}>
-                {places.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.name} ({stockHere(open, p.key)} bags)
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Take from"
+              value={fromPlace}
+              onChange={(key) => pickPlace(key)}
+              options={places.map((p) => ({ value: p.key, label: `${p.name} (${stockHere(open, p.key)} bags)` }))}
+            />
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Truck number
               <Input
@@ -192,9 +190,12 @@ export function DispatchView({
               />
             </label>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button onClick={submit} disabled={pending}>
-              Dispatch {bags || 0} bags
-            </Button>
+            <div>
+              <FormHint>{firstMissing([[Number(bags || 0) < 1, "Enter the bags"]])}</FormHint>
+              <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1}>
+                Dispatch {bagsText(Number(bags || 0))}
+              </Button>
+            </div>
           </div>
         )}
       </Sheet>

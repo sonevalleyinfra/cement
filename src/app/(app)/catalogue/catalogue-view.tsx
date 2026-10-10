@@ -3,7 +3,9 @@
 import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
+import { chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
+import { FormHint } from "@/components/app/form-hint";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
@@ -20,6 +22,8 @@ import {
   startBrand,
   type ProductChannel,
 } from "@/lib/catalogue-rules";
+import { firstMissing } from "@/lib/form-rules";
+import { useFormError } from "@/lib/use-form-error";
 import {
   addBrand,
   addCementType,
@@ -53,9 +57,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "brands", label: "Brands" },
   { id: "types", label: "Types" },
 ];
-
-const tabChip = (on: boolean) =>
-  `h-11 shrink-0 rounded-full px-4 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
 
 const rowClass = "flex items-center justify-between gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6";
 
@@ -109,7 +110,6 @@ export function CatalogueView({
   const [sheet, setSheet] = useState<null | "product" | "brand" | "type" | "grade">(null);
   // The brand being renamed (its sheet is open while this is set).
   const [renaming, setRenaming] = useState<Brand | null>(null);
-  const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
   // Add-product drop-downs, in order: brand → channel → type → grade → bag size.
@@ -123,6 +123,13 @@ export function CatalogueView({
   const [gradeId, setGradeId] = useState("");
   const [bagKg, setBagKg] = useState(String(DEFAULT_BAG_KG));
   const typeGrades = grades.filter((g) => g.typeId === typeId && g.active);
+  // The error goes away when a drop-down changes; the text sheets are read with FormData (onInput clears it).
+  const { error, setError, clearError } = useFormError([brandId, channel, typeId, gradeId, bagKg]);
+  const productHint = firstMissing([
+    [activeBrands.length === 0, "Add a brand first"],
+    [!typeId, "Pick a type"],
+    [!gradeId, "Pick a grade"],
+  ]);
   const preview = (() => {
     const b = brands.find((x) => x.id === brandId);
     const t = types.find((x) => x.id === typeId);
@@ -144,10 +151,11 @@ export function CatalogueView({
     .filter((sec) => sec.list.length > 0);
 
   function run(fn: () => Promise<CatalogueResult>, closeOnOk = false) {
-    setError("");
+    clearError();
     start(async () => {
       const res = await fn();
       if (res.ok) {
+        clearError();
         if (closeOnOk) setSheet(null);
         router.refresh();
       } else setError(res.error);
@@ -158,11 +166,11 @@ export function CatalogueView({
     if (isOpen) return;
     setSheet(null);
     setRenaming(null);
-    setError("");
+    clearError();
   }
 
   function open(which: NonNullable<typeof sheet>) {
-    setError("");
+    clearError();
     setSheet(which);
   }
 
@@ -193,7 +201,7 @@ export function CatalogueView({
       <h1 className="text-xl font-bold">Catalogue</h1>
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4">
         {TABS.map((t) => (
-          <button key={t.id} type="button" className={tabChip(tab === t.id)} onClick={() => setTab(t.id)}>
+          <button key={t.id} type="button" className={chipClass(tab === t.id)} onClick={() => setTab(t.id)}>
             {t.label}
           </button>
         ))}
@@ -236,7 +244,7 @@ export function CatalogueView({
                 pending={pending}
                 onToggle={() => toggleItem("brand", b.id, !b.active)}
                 onRename={() => {
-                  setError("");
+                  clearError();
                   setRenaming(b);
                   setSheet("brand");
                 }}
@@ -324,13 +332,16 @@ export function CatalogueView({
           />
           {preview && <p className="text-base font-semibold">{preview}</p>}
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {activeBrands.length === 0 && <p className="text-sm text-destructive">Add a brand first.</p>}
-          <Button
-            disabled={pending || !brandId || !typeId || !gradeId}
-            onClick={() => run(() => addProduct({ brandId, channel, typeId, gradeId, bagKg: Number(bagKg) }), true)}
-          >
-            Save
-          </Button>
+          <div>
+            <FormHint>{productHint}</FormHint>
+            <Button
+              className="w-full"
+              disabled={pending || productHint !== null || !brandId}
+              onClick={() => run(() => addProduct({ brandId, channel, typeId, gradeId, bagKg: Number(bagKg) }), true)}
+            >
+              Save
+            </Button>
+          </div>
         </div>
       </Sheet>
 
@@ -339,7 +350,12 @@ export function CatalogueView({
         onOpenChange={close}
         title={sheet === "brand" ? (renaming ? "Rename brand" : "New brand") : sheet === "type" ? "New type" : "New grade"}
       >
-        <form key={`${sheet ?? "none"}-${renaming?.id ?? ""}`} onSubmit={submitText} className="flex flex-col gap-4">
+        <form
+          key={`${sheet ?? "none"}-${renaming?.id ?? ""}`}
+          onSubmit={submitText}
+          onInput={clearError}
+          className="flex flex-col gap-4"
+        >
           {sheet === "brand" && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">Brand name</Label>

@@ -2,28 +2,34 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { FormHint } from "@/components/app/form-hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { firstMissing } from "@/lib/form-rules";
 import type { CashPlace } from "@/lib/receipt-reversal";
 import { MAX_REASON } from "@/lib/receipt-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { rejectOnline, reverseReceipt, verifyOnline } from "./actions";
 
 /** Accounts tap "Verified" after finding the payment on the bank statement. */
 export function VerifyButton({ receiptId }: { receiptId: string }) {
   const router = useRouter();
-  const [error, setError] = useState("");
+  const { error, setError, clearError } = useFormError();
   const [pending, start] = useTransition();
   return (
     <div className="flex flex-col gap-1">
       <Button
         disabled={pending}
-        onClick={() =>
+        onClick={() => {
+          clearError();
           start(async () => {
             const res = await verifyOnline(receiptId);
-            if (res.ok) router.refresh();
-            else setError(res.error);
-          })
-        }
+            if (res.ok) {
+              clearError();
+              router.refresh();
+            } else setError(res.error);
+          });
+        }}
       >
         {pending ? "Saving…" : "Verified"}
       </Button>
@@ -53,9 +59,13 @@ export function ReasonAction({
   const [reason, setReason] = useState("");
   const [cashPlace, setCashPlace] = useState<CashPlace | null>(null);
   const needsPlace = action === "reverse" && cashHolder !== null;
-  const [error, setError] = useState("");
+  const { error, setError, clearError } = useFormError([reason, cashPlace]);
   const [pending, start] = useTransition();
   const label = action === "reject" ? "Reject" : "Reverse";
+  const hint = firstMissing([
+    [reason.trim() === "", "Enter a reason"],
+    [needsPlace && cashPlace === null, "Pick where the cash is"],
+  ]);
 
   if (!asking) {
     return (
@@ -96,23 +106,34 @@ export function ReasonAction({
         </div>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      <FormHint>{hint}</FormHint>
       <div className="flex gap-2">
-        <Button variant="outline" onClick={() => setAsking(false)} disabled={pending}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            clearError();
+            setAsking(false);
+          }}
+          disabled={pending}
+        >
           Back
         </Button>
         <Button
           variant="destructive"
-          disabled={pending || reason.trim() === "" || (needsPlace && cashPlace === null)}
-          onClick={() =>
+          disabled={pending || hint !== null}
+          onClick={() => {
+            clearError();
             start(async () => {
               const res =
                 action === "reject"
                   ? await rejectOnline(receiptId, reason)
                   : await reverseReceipt(receiptId, reason, cashPlace ?? undefined);
-              if (res.ok) router.refresh();
-              else setError(res.error);
-            })
-          }
+              if (res.ok) {
+                clearError();
+                router.refresh();
+              } else setError(res.error);
+            });
+          }}
         >
           {pending ? "Saving…" : `Confirm ${label.toLowerCase()}`}
         </Button>
