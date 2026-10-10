@@ -42,6 +42,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
   const [editing, setEditing] = useState<Row | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [firmIds, setFirmIds] = useState<string[]>([]);
+  const [tempPassword, setTempPassword] = useState("");
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
   const [pending, start] = useTransition();
@@ -71,6 +72,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
     setEditing(row);
     setRoles(row ? parseRoles(row.role) : []);
     setFirmIds(row ? row.firmIds : []);
+    setTempPassword("");
     setError("");
     setOpen(true);
   }
@@ -86,6 +88,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
             phone: String(formData.get("phone") ?? ""),
             roles,
             firmIds,
+            password: tempPassword,
           })
         : await createUser({
             name: String(formData.get("name") ?? ""),
@@ -93,6 +96,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
             phone: String(formData.get("phone") ?? ""),
             roles,
             firmIds,
+            password: tempPassword,
           });
       if (res.ok) setOpen(false);
       else setError(res.error);
@@ -192,6 +196,20 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
             />
           </div>
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">{editing ? "New temporary password" : "Temporary password"}</Label>
+            {/* Plain text so the admin can read it out or copy it to the user. Blank = no change / email a link. */}
+            <Input
+              id="password"
+              name="password"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={tempPassword}
+              onChange={(e) => setTempPassword(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
             <Label>Roles</Label>
             <Checks options={ROLES.map((x) => ({ id: x, label: x }))} value={roles} onChange={setRoles} />
           </div>
@@ -201,7 +219,7 @@ export function UsersView({ rows, firms, myId }: { rows: Row[]; firms: Firm[]; m
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={pending}>
-            {editing ? "Save" : "Create and email link"}
+            {editing ? "Save" : tempPassword.trim() ? "Create" : "Create and email link"}
           </Button>
         </form>
       </Sheet>

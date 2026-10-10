@@ -36,7 +36,14 @@ describe("validateNewUser", () => {
     });
     expect(r).toEqual({
       ok: true,
-      value: { name: "Ram Singh", email: "ram@x.com", phone: "9876543210", roles: ["sales"], firmIds: ["a"] },
+      value: {
+        name: "Ram Singh",
+        email: "ram@x.com",
+        phone: "9876543210",
+        roles: ["sales"],
+        firmIds: ["a"],
+        password: null,
+      },
     });
   });
   it("rejects bad name and email", () => {
@@ -49,6 +56,24 @@ describe("validateNewUser", () => {
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "12345", roles: ["admin"] }).ok).toBe(false);
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "5876543210", roles: ["admin"] }).ok).toBe(false);
     expect(validateNewUser({ name: "A", email: "a@b.co", phone: "09876543210", roles: ["admin"] }).ok).toBe(true);
+  });
+});
+
+describe("validateNewUser temporary password", () => {
+  const base = { name: "A", email: "a@b.co", phone: "9876543210", roles: ["admin"] };
+  it("keeps a valid password", () => {
+    const r = validateNewUser({ ...base, password: "cement2026" });
+    expect(r.ok && r.value.password).toBe("cement2026");
+  });
+  it("gives null for a blank box", () => {
+    const r = validateNewUser({ ...base, password: "  " });
+    expect(r.ok && r.value.password).toBeNull();
+  });
+  it("rejects a short password", () => {
+    expect(validateNewUser({ ...base, password: "short" })).toEqual({
+      ok: false,
+      error: "Password: at least 8 characters",
+    });
   });
 });
 
