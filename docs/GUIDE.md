@@ -659,6 +659,19 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 - **Trucks are hired, so none are saved.** In a purchase pick "New truck…" and type the truck number, driver
   and phone; in a dispatch type the truck number each time. A truck shows in the place lists only while it holds bags.
 - **Stock**: switch between *By product* and *By place*, and filter by Trade / Non-trade and type.
+- **Purchase** (Stock → Purchase, admin): pick the product and the place, type the bags and the **cost per bag**
+  (required, in rupees), and an invoice number if you have one. One save adds the bags to stock and adds
+  bags x cost to what you owe Prism. The cost per bag is kept so the reports can show the average purchase cost.
+  A purchase typed wrongly is fixed with a stock correction and a Prism adjustment, not by editing it.
+
+### The Prism account (admin)
+- **More → Prism account** (also on the admin home): the big number is what you owe Prism ("Prism owes you" if it
+  is below zero). Below it, every entry, newest first, with its date, amount, note and who added it.
+- **Opening** sets the starting balance, once. **Record payment** (bank needs the UTR, cash and other don't).
+  **Credit** is a scheme or discount from Prism (reason required). **Adjust** adds or removes an amount, with a reason.
+  Each has a date: today unless you pick an earlier day.
+- Entries are never edited or deleted. If one is wrong, add an adjustment with the reason. Every entry also
+  appears in the activity log.
 
 ### The daily flow
 1. Sales places an order and types the rate per bag. Or the retailer places it (no rate); then the shop's sales
@@ -686,7 +699,8 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 1. `pnpm dev` (creates the tables and the admin), then in another terminal `pnpm seed:demo`.
 2. Sign in with password `Demo@12345` and one of: `admin@demo.test`, `sales@demo.test`, `accounts@demo.test`,
    `logistics@demo.test`, `retailer@demo.test`.
-3. It adds 6 retailers, 2 truck numbers, one godown with 500 bags of every product, 6 orders in different
+3. It adds 6 retailers, 2 truck numbers, one godown with 500 bags of every product (plus 200 bags bought at a cost,
+   with a Prism account: opening balance, the purchases, one bank payment and one scheme credit), 6 orders in different
    statuses (waiting for a rate, waiting for approval, approved, partly dispatched, dispatched, cancelled; dues come
    from their dispatches) and payments: cash taken by sales and logistics, one handover confirmed and one waiting,
    online payments waiting / verified / rejected, and one reversed cash payment. Running it twice is safe.

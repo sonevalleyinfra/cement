@@ -15,6 +15,8 @@ import {
   findProductByParts,
   PRODUCT_CHANNELS,
 } from "@/lib/catalogue-rules";
+import { formatINR, parseRupeesToPaise } from "@/lib/money";
+import { purchaseAmountPaise } from "@/lib/prism-rules";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
 import { ListEditorSheet } from "./list-editor-sheet";
@@ -61,6 +63,9 @@ export function StockForm({
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
+  // Purchase only: what one bag cost (typed in rupees) and the optional Prism invoice number.
+  const [costText, setCostText] = useState("");
+  const [invoiceNo, setInvoiceNo] = useState("");
   // The quick truck form (purchase into a hired truck): nothing about the truck is saved for next time.
   const [truck, setTruck] = useState({ number: "", driverName: "", driverPhone: "" });
   const newTruck = mode === "purchase" && place === NEW_TRUCK_PLACE;
@@ -77,6 +82,8 @@ export function StockForm({
 
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
+  const costPaise = parseRupeesToPaise(costText);
+  const owedPaise = costPaise === null ? null : purchaseAmountPaise(bags, costPaise);
 
   function submit() {
     setMessage(null);
@@ -88,6 +95,7 @@ export function StockForm({
       truck: newTruck ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
       note,
+      ...(mode === "purchase" ? { costPerBagPaise: costPaise ?? undefined, invoiceNo } : {}),
     };
     start(async () => {
       const action = mode === "purchase" ? recordPurchase : mode === "opening" ? recordOpening : recordAdjustment;
@@ -96,6 +104,8 @@ export function StockForm({
         setMessage({ ok: true, text: copy[mode].done });
         setDigits("");
         setNote("");
+        setCostText("");
+        setInvoiceNo("");
         setTruck({ number: "", driverName: "", driverPhone: "" });
         router.refresh();
       } else setMessage({ ok: false, text: res.error });
@@ -208,6 +218,32 @@ export function StockForm({
         {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
+      {mode === "purchase" && (
+        <>
+          <Input
+            value={costText}
+            onChange={(e) => setCostText(e.target.value)}
+            placeholder="Cost per bag (₹)"
+            aria-label="Cost per bag"
+            inputMode="decimal"
+            autoComplete="off"
+            maxLength={10}
+          />
+          {owedPaise !== null && (
+            <div className="tabular text-center text-sm text-muted-foreground" aria-live="polite">
+              Owed to Prism <span className="font-semibold text-foreground">{formatINR(owedPaise)}</span>
+            </div>
+          )}
+          <Input
+            value={invoiceNo}
+            onChange={(e) => setInvoiceNo(e.target.value)}
+            placeholder="Invoice no. (optional)"
+            aria-label="Invoice number"
+            autoComplete="off"
+            maxLength={60}
+          />
+        </>
+      )}
       {mode !== "opening" && (
         <Input
           value={note}
@@ -231,6 +267,7 @@ export function StockForm({
             !picked ||
             !place ||
             (newTruck && (!truck.number.trim() || !truck.driverName.trim())) ||
+            (mode === "purchase" && (costPaise === null || costPaise < 1)) ||
             (missing && mode !== "purchase") ||
             (mode === "adjust" && !note.trim())
           }

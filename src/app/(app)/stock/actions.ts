@@ -4,6 +4,10 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { brands, cementTypes, grades, products, stockMovements } from "@/db/schema";
+import { toISTDateKey } from "@/lib/datetime";
+import { formatINR } from "@/lib/money";
+import { postPrismEntry } from "@/lib/prism";
+import { checkCostPerBag, purchaseEntry } from "@/lib/prism-rules";
 import { writeAudit } from "@/lib/audit";
 import { DEFAULT_BAG_KG, isProductChannel, resolveProduct } from "@/lib/catalogue-rules";
 import {
@@ -42,6 +46,10 @@ export type StockInput = {
   bags: number;
   /** Supplier / note for a purchase, or the reason for an adjustment. */
   note: string;
+  /** Purchase only (required): what one bag cost, in paise. */
+  costPerBagPaise?: number;
+  /** Purchase only (optional): the Prism invoice number. */
+  invoiceNo?: string;
 };
 
 /** Thrown inside a transaction to undo everything in it (e.g. a product or truck made a moment ago). */
@@ -160,9 +168,15 @@ function done(): StockResult {
   return { ok: true };
 }
 
+/**
+ * A purchase adds the bags AND what we now owe Prism (bags x cost per bag), in one transaction:
+ * either both are saved or neither. The cost per bag is also kept on the stock movement.
+ */
 export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const p = await prepare(input, true);
   if (p.error !== null) return { ok: false, error: p.error };
+  const cost = checkCostPerBag(input.costPerBagPaise);
+  if (!cost.ok) return cost;
   let note = String(input.note ?? "").trim().slice(0, 200);
   let truck: Truck | null = null;
   if (p.place === NEW_TRUCK_PLACE) {
@@ -185,9 +199,23 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     if (!loc.ok) return loc;
     const m = inMovement("purchase", loc.key, input.bags, note);
     if (!m.ok) return m;
-    await tx.insert(stockMovements).values(toRow(m.movement, p.session.user.id));
+    const [product] = await tx.select({ name: products.name }).from(products).where(eq(products.id, picked.productId));
+    const owed = purchaseEntry(m.movement.bags, cost.costPaise, toISTDateKey(new Date()), {
+      reference: input.invoiceNo,
+      description: `${m.movement.bags} bags ${product?.name ?? ""} at ${formatINR(cost.costPaise)}`.replace(/\s+/g, " "),
+    });
+    if (!owed.ok) return owed;
+    const [moved] = await tx
+      .insert(stockMovements)
+      .values({ ...toRow(m.movement, p.session.user.id), unitCostPaise: cost.costPaise })
+      .returning({ id: stockMovements.id });
+    await postPrismEntry(tx, owed.entry, p.session.user.id, moved.id);
     return { ok: true };
   });
+  if (res.ok) {
+    revalidatePath("/prism");
+    revalidatePath("/dashboard");
+  }
   return res.ok ? done() : res;
 }
 

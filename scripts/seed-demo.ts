@@ -1,6 +1,7 @@
 /**
  * Fills a LOCAL database with demo data: one user per role, retailers, trucks,
  * a godown with opening stock, orders in different statuses (dues come from their dispatches)
+ * the Prism account (an opening balance, purchases with a cost per bag, a payment and a scheme credit),
  * and payments: cash by sales and logistics, one handover confirmed and one waiting, online
  * payments waiting / verified / rejected, and one reversed cash payment.
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
@@ -14,6 +15,7 @@ import {
   ledgerEntries,
   orderEvents,
   orders,
+  prismLedgerEntries,
   products,
   receipts,
   retailers,
@@ -25,8 +27,11 @@ import {
 } from "@/db/schema";
 import { env } from "@/env";
 import { auth } from "@/lib/auth";
+import { toISTDateKey } from "@/lib/datetime";
 import { postEntry } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
+import { postPrismEntry } from "@/lib/prism";
+import { creditEntry, openingEntry as prismOpening, paymentEntry, purchaseEntry } from "@/lib/prism-rules";
 import { planReversal } from "@/lib/receipt-reversal";
 import { planReceipt, planVerify } from "@/lib/receipt-rules";
 import { statusAfterDispatch, type OrderStatus } from "@/lib/order-rules";
@@ -39,6 +44,57 @@ async function ensureUser(email: string, name: string, role: string): Promise<st
     body: { email, password: DEMO_PASSWORD, name, role: role as "admin", data: { emailVerified: true } },
   });
   return created.user.id;
+}
+
+/** Days before today, as "YYYY-MM-DD" (India). */
+const daysAgo = (n: number) => toISTDateKey(Date.now() - n * 86_400_000);
+
+/**
+ * The Prism account: we owed Rs 2,00,000 at the start; 200 bags of every product bought at a cost
+ * (the product at index i costs Rs 280 + Rs 5 x i a bag, plus a second, dearer buy of the first one);
+ * Rs 5,00,000 paid by bank; a Rs 15,000 scheme credit. Skipped if the account already has entries.
+ */
+async function seedPrism(adminId: string, productRows: { id: string; name: string }[]) {
+  const [any] = await db.select({ id: prismLedgerEntries.id }).from(prismLedgerEntries).limit(1);
+  if (any) return;
+  const [godown] = await db
+    .select({ id: godowns.id })
+    .from(godowns)
+    .where(sql`lower(${godowns.name}) = 'main godown'`);
+  if (!godown) throw new Error("Main Godown missing.");
+  const entry = (r: { ok: true; entry: Parameters<typeof postPrismEntry>[1] } | { ok: false; error: string }) => {
+    if (!r.ok) throw new Error(r.error);
+    return r.entry;
+  };
+  await db.transaction(async (tx) => {
+    await postPrismEntry(tx, entry(prismOpening([], 20_000_000, daysAgo(30))), adminId);
+    const buys = [
+      ...productRows.map((p, i) => ({ p, bags: 200, costPaise: 28_000 + 500 * i, ago: 20, invoice: `DEMO-INV-${i + 1}` })),
+      { p: productRows[0], bags: 100, costPaise: 29_500, ago: 5, invoice: "DEMO-INV-13" },
+    ];
+    for (const b of buys) {
+      const [moved] = await tx
+        .insert(stockMovements)
+        .values({
+          productId: b.p.id,
+          godownId: godown.id,
+          type: "purchase",
+          bags: b.bags,
+          unitCostPaise: b.costPaise,
+          reason: "Demo purchase",
+          actorId: adminId,
+        })
+        .returning({ id: stockMovements.id });
+      const owed = purchaseEntry(b.bags, b.costPaise, daysAgo(b.ago), {
+        reference: b.invoice,
+        description: `${b.bags} bags ${b.p.name} at Rs ${b.costPaise / 100}`,
+      });
+      await postPrismEntry(tx, entry(owed), adminId, moved.id);
+    }
+    await postPrismEntry(tx, entry(paymentEntry(50_000_000, "bank", "DEMOUTRPRISM1", daysAgo(10))), adminId);
+    await postPrismEntry(tx, entry(creditEntry(1_500_000, "Demo festival scheme", daysAgo(3))), adminId);
+  });
+  console.log("[seed-demo] Prism account ready.");
 }
 
 async function main() {
@@ -90,6 +146,7 @@ async function main() {
   // Everything below runs once: skipped if the first demo shop already has an order.
   const [already] = await db.select({ id: orders.id }).from(orders).where(eq(orders.retailerId, shopRows[0].id)).limit(1);
   if (already) {
+    await seedPrism(admin.id, productRows);
     console.log("[seed-demo] Demo data already there. Nothing more to do.");
     return;
   }
@@ -292,6 +349,8 @@ async function main() {
   await online(4, 700_000, ids.logistics, "DEMOUTR0001", "unverified");
   await online(3, 400_000, ids.sales, "DEMOUTR0002", "verified");
   await online(2, 300_000, ids.sales, "DEMOUTR0003", "rejected");
+
+  await seedPrism(admin.id, productRows);
 
   const n = await db.select({ id: ledgerEntries.id }).from(ledgerEntries);
   console.log(`[seed-demo] Done: ${shopRows.length} retailers, ${orderIds.length} orders, ${n.length} ledger rows.`);
