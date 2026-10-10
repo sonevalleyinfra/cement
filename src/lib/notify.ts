@@ -67,6 +67,7 @@ export async function notify(
       bags: orders.bags,
       placedBy: orders.placedBy,
       salesRepId: orders.salesRepId,
+      shopSalesRepId: retailers.salesRepId,
       ratePaise: orders.ratePaise,
     })
     .from(orders)
@@ -86,6 +87,7 @@ export async function notify(
     rate,
     people: {
       salesRepId: row.salesRepId,
+      shopHasSalesRep: row.shopSalesRepId !== null,
       placedBy: row.placedBy,
       retailerUserId: row.retailerUserId,
       rateMissing: row.ratePaise === null,

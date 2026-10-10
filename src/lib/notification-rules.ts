@@ -5,7 +5,7 @@
  * Spec rows used for orders:
  * - Order placed: accounts, and the shop's sales person when the rate is missing. A shop with no
  *   sales person: every admin too (they can fill the rate or give the shop a sales person), so
- *   nothing gets stuck.
+ *   nothing gets stuck. This holds whoever placed it (the retailer, or a sales person covering).
  * - Approved / rejected: placer, sales person; approved also: every logistics person
  * - Dispatched: retailer, sales person
  * - Rate changed: accounts, sales person, admin
@@ -42,6 +42,8 @@ export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 export type OrderPeople = {
   /** Sales person on the order (may be empty). */
   salesRepId: string | null;
+  /** False for an older shop with no sales person of its own (a sales person placing for it is on the order). */
+  shopHasSalesRep: boolean;
   placedBy: string;
   /** The login linked to the retailer shop (may be empty). */
   retailerUserId: string | null;
@@ -98,7 +100,7 @@ export function recipientIds(
       list = [
         people.rateMissing ? people.salesRepId : null,
         ...people.accountsIds,
-        ...(people.salesRepId ? [] : people.adminIds),
+        ...(people.shopHasSalesRep ? [] : people.adminIds),
       ];
       break;
     case "rate_filled":

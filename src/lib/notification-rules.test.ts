@@ -15,6 +15,7 @@ import {
 
 const people: OrderPeople = {
   salesRepId: "rep",
+  shopHasSalesRep: true,
   placedBy: "placer",
   retailerUserId: "shop",
   rateMissing: false,
@@ -36,9 +37,15 @@ describe("recipientIds (spec section 8)", () => {
     ]);
   });
   it("placed for a shop with no sales person: admins are told too, so the order does not get stuck", () => {
-    const noRep = { ...people, salesRepId: null, placedBy: "shop", rateMissing: true };
+    const noRep = { ...people, salesRepId: null, shopHasSalesRep: false, placedBy: "shop", rateMissing: true };
     expect(recipientIds("placed", noRep, "shop")).toEqual(["acc1", "acc2", "adm"]);
     expect(recipientIds("placed", { ...noRep, rateMissing: false, placedBy: "adm" }, "adm")).toEqual(["acc1", "acc2"]);
+  });
+  it("placed by a sales person for a shop with no sales person (the order is theirs): admins are told too", () => {
+    const covering = { ...people, salesRepId: "sales2", shopHasSalesRep: false, placedBy: "sales2", rateMissing: false };
+    expect(recipientIds("placed", covering, "sales2")).toEqual(["acc1", "acc2", "adm"]);
+    // A shop with its own sales person: no admins.
+    expect(recipientIds("placed", { ...covering, shopHasSalesRep: true }, "sales2")).toEqual(["acc1", "acc2"]);
   });
   it("rate filled: accounts and the sales person (not the person who filled it)", () => {
     expect(recipientIds("rate_filled", people, "rep")).toEqual(["acc1", "acc2"]);

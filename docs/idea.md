@@ -86,7 +86,7 @@ opening balance, **purchase** (+ bags × cost per bag, also adds stock), **payme
 
 ## 8. Notifications (in-app)
 
-Order placed → its sales person (if rate missing) and accounts (admins too when the shop has no sales person). Approved / rejected → placer, sales person.
+Order placed → its sales person (if rate missing) and accounts (admins too when the shop has no sales person, whoever placed it). Approved / rejected → placer, sales person.
 Approved → logistics. Dispatched → retailer, sales person. Rate changed → accounts, sales person, admin.
 Cash payment recorded → admin. Online payment recorded → accounts. Cash handover request → accounts. Handover confirmed / payment verified → the staff member.
 
