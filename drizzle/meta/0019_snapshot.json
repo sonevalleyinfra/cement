@@ -1,6 +1,6 @@
 {
-  "id": "e8d9ba6c-cf1f-4dc3-9fa8-30d3ed696d2c",
-  "prevId": "c188bf7f-44f7-4a28-acdf-5efbce733a90",
+  "id": "178fae96-162e-4e25-a988-4b67c0ba94b7",
+  "prevId": "519bb2cb-5e63-4b63-b0ba-4374dc9245ad",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -78,24 +78,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "audit_log_actor_id_user_id_fk": {
           "name": "audit_log_actor_id_user_id_fk",
           "tableFrom": "audit_log",
-          "tableTo": "user",
           "columnsFrom": [
             "actor_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -200,24 +200,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "account_user_id_user_id_fk": {
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
-          "tableTo": "user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -298,34 +298,34 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "session_user_id_user_id_fk": {
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
-          "tableTo": "user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "session_token_unique": {
           "name": "session_token_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "token"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -426,10 +426,10 @@
       "uniqueConstraints": {
         "user_email_unique": {
           "name": "user_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -491,9 +491,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -548,10 +548,10 @@
       "uniqueConstraints": {
         "brands_name_unique": {
           "name": "brands_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "name"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -610,10 +610,10 @@
       "uniqueConstraints": {
         "cement_types_code_unique": {
           "name": "cement_types_code_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "code"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -670,26 +670,26 @@
         "grades_type_id_cement_types_id_fk": {
           "name": "grades_type_id_cement_types_id_fk",
           "tableFrom": "grades",
-          "tableTo": "cement_types",
           "columnsFrom": [
             "type_id"
           ],
+          "tableTo": "cement_types",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "grades_type_name_unique": {
           "name": "grades_type_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "type_id",
             "name"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -782,9 +782,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "dispatches_firm_idx": {
           "name": "dispatches_firm_idx",
@@ -797,76 +797,76 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "dispatches_firm_id_firms_id_fk": {
           "name": "dispatches_firm_id_firms_id_fk",
           "tableFrom": "dispatches",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "dispatches_order_id_orders_id_fk": {
           "name": "dispatches_order_id_orders_id_fk",
           "tableFrom": "dispatches",
-          "tableTo": "orders",
           "columnsFrom": [
             "order_id"
           ],
+          "tableTo": "orders",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "dispatches_vehicle_id_vehicles_id_fk": {
           "name": "dispatches_vehicle_id_vehicles_id_fk",
           "tableFrom": "dispatches",
-          "tableTo": "vehicles",
           "columnsFrom": [
             "vehicle_id"
           ],
+          "tableTo": "vehicles",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "dispatches_location_id_stock_locations_id_fk": {
           "name": "dispatches_location_id_stock_locations_id_fk",
           "tableFrom": "dispatches",
-          "tableTo": "stock_locations",
           "columnsFrom": [
             "location_id"
           ],
+          "tableTo": "stock_locations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "dispatches_dispatched_by_user_id_fk": {
           "name": "dispatches_dispatched_by_user_id_fk",
           "tableFrom": "dispatches",
-          "tableTo": "user",
           "columnsFrom": [
             "dispatched_by"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -986,25 +986,25 @@
           "name": "brand_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "channel": {
           "name": "channel",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "grade_id": {
           "name": "grade_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "bag_kg": {
           "name": "bag_kg",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": 50
         },
         "active": {
@@ -1034,48 +1034,48 @@
         "products_brand_id_brands_id_fk": {
           "name": "products_brand_id_brands_id_fk",
           "tableFrom": "products",
-          "tableTo": "brands",
           "columnsFrom": [
             "brand_id"
           ],
+          "tableTo": "brands",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "products_grade_id_grades_id_fk": {
           "name": "products_grade_id_grades_id_fk",
           "tableFrom": "products",
-          "tableTo": "grades",
           "columnsFrom": [
             "grade_id"
           ],
+          "tableTo": "grades",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "products_name_unique": {
           "name": "products_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "name"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "products_parts_unique": {
           "name": "products_parts_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "brand_id",
             "channel",
             "grade_id",
             "bag_kg"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1127,37 +1127,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "user_firms_user_id_user_id_fk": {
           "name": "user_firms_user_id_user_id_fk",
           "tableFrom": "user_firms",
-          "tableTo": "user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "user_firms_firm_id_firms_id_fk": {
           "name": "user_firms_firm_id_firms_id_fk",
           "tableFrom": "user_firms",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -1210,6 +1210,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "sales_rep_id": {
+          "name": "sales_rep_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -1237,32 +1243,45 @@
         "retailers_user_id_user_id_fk": {
           "name": "retailers_user_id_user_id_fk",
           "tableFrom": "retailers",
-          "tableTo": "user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "retailers_sales_rep_id_user_id_fk": {
+          "name": "retailers_sales_rep_id_user_id_fk",
+          "tableFrom": "retailers",
+          "columnsFrom": [
+            "sales_rep_id"
+          ],
+          "tableTo": "user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "retailers_phone_unique": {
           "name": "retailers_phone_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "phone"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "retailers_user_id_unique": {
           "name": "retailers_user_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1327,10 +1346,10 @@
       "uniqueConstraints": {
         "vehicles_number_unique": {
           "name": "vehicles_number_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "number"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1411,50 +1430,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "order_events_order_id_orders_id_fk": {
           "name": "order_events_order_id_orders_id_fk",
           "tableFrom": "order_events",
-          "tableTo": "orders",
           "columnsFrom": [
             "order_id"
           ],
+          "tableTo": "orders",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "order_events_actor_id_user_id_fk": {
           "name": "order_events_actor_id_user_id_fk",
           "tableFrom": "order_events",
-          "tableTo": "user",
           "columnsFrom": [
             "actor_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "order_events_assignee_id_user_id_fk": {
           "name": "order_events_assignee_id_user_id_fk",
           "tableFrom": "order_events",
-          "tableTo": "user",
           "columnsFrom": [
             "assignee_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1569,9 +1588,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "orders_retailer_idx": {
           "name": "orders_retailer_idx",
@@ -1584,89 +1603,89 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "orders_firm_id_firms_id_fk": {
           "name": "orders_firm_id_firms_id_fk",
           "tableFrom": "orders",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "orders_retailer_id_retailers_id_fk": {
           "name": "orders_retailer_id_retailers_id_fk",
           "tableFrom": "orders",
-          "tableTo": "retailers",
           "columnsFrom": [
             "retailer_id"
           ],
+          "tableTo": "retailers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "orders_product_id_products_id_fk": {
           "name": "orders_product_id_products_id_fk",
           "tableFrom": "orders",
-          "tableTo": "products",
           "columnsFrom": [
             "product_id"
           ],
+          "tableTo": "products",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "orders_placed_by_user_id_fk": {
           "name": "orders_placed_by_user_id_fk",
           "tableFrom": "orders",
-          "tableTo": "user",
           "columnsFrom": [
             "placed_by"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "orders_sales_rep_id_user_id_fk": {
           "name": "orders_sales_rep_id_user_id_fk",
           "tableFrom": "orders",
-          "tableTo": "user",
           "columnsFrom": [
             "sales_rep_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "orders_logistics_id_user_id_fk": {
           "name": "orders_logistics_id_user_id_fk",
           "tableFrom": "orders",
-          "tableTo": "user",
           "columnsFrom": [
             "logistics_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1780,50 +1799,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "notifications_user_id_user_id_fk": {
           "name": "notifications_user_id_user_id_fk",
           "tableFrom": "notifications",
-          "tableTo": "user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "notifications_firm_id_firms_id_fk": {
           "name": "notifications_firm_id_firms_id_fk",
           "tableFrom": "notifications",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "notifications_order_id_orders_id_fk": {
           "name": "notifications_order_id_orders_id_fk",
           "tableFrom": "notifications",
-          "tableTo": "orders",
           "columnsFrom": [
             "order_id"
           ],
+          "tableTo": "orders",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1894,37 +1913,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "stock_locations_firm_id_firms_id_fk": {
           "name": "stock_locations_firm_id_firms_id_fk",
           "tableFrom": "stock_locations",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "stock_locations_vehicle_id_vehicles_id_fk": {
           "name": "stock_locations_vehicle_id_vehicles_id_fk",
           "tableFrom": "stock_locations",
-          "tableTo": "vehicles",
           "columnsFrom": [
             "vehicle_id"
           ],
+          "tableTo": "vehicles",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2030,76 +2049,76 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "stock_movements_firm_id_firms_id_fk": {
           "name": "stock_movements_firm_id_firms_id_fk",
           "tableFrom": "stock_movements",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "stock_movements_product_id_products_id_fk": {
           "name": "stock_movements_product_id_products_id_fk",
           "tableFrom": "stock_movements",
-          "tableTo": "products",
           "columnsFrom": [
             "product_id"
           ],
+          "tableTo": "products",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "stock_movements_location_id_stock_locations_id_fk": {
           "name": "stock_movements_location_id_stock_locations_id_fk",
           "tableFrom": "stock_movements",
-          "tableTo": "stock_locations",
           "columnsFrom": [
             "location_id"
           ],
+          "tableTo": "stock_locations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "stock_movements_order_id_orders_id_fk": {
           "name": "stock_movements_order_id_orders_id_fk",
           "tableFrom": "stock_movements",
-          "tableTo": "orders",
           "columnsFrom": [
             "order_id"
           ],
+          "tableTo": "orders",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "stock_movements_actor_id_user_id_fk": {
           "name": "stock_movements_actor_id_user_id_fk",
           "tableFrom": "stock_movements",
-          "tableTo": "user",
           "columnsFrom": [
             "actor_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2205,9 +2224,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "ledger_entries_order_idx": {
           "name": "ledger_entries_order_idx",
@@ -2220,9 +2239,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "ledger_entries_one_opening_idx": {
           "name": "ledger_entries_one_opening_idx",
@@ -2241,64 +2260,64 @@
             }
           ],
           "isUnique": true,
-          "where": "\"ledger_entries\".\"kind\" = 'opening'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"ledger_entries\".\"kind\" = 'opening'",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "ledger_entries_firm_id_firms_id_fk": {
           "name": "ledger_entries_firm_id_firms_id_fk",
           "tableFrom": "ledger_entries",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ledger_entries_retailer_id_retailers_id_fk": {
           "name": "ledger_entries_retailer_id_retailers_id_fk",
           "tableFrom": "ledger_entries",
-          "tableTo": "retailers",
           "columnsFrom": [
             "retailer_id"
           ],
+          "tableTo": "retailers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ledger_entries_order_id_orders_id_fk": {
           "name": "ledger_entries_order_id_orders_id_fk",
           "tableFrom": "ledger_entries",
-          "tableTo": "orders",
           "columnsFrom": [
             "order_id"
           ],
+          "tableTo": "orders",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "ledger_entries_actor_id_user_id_fk": {
           "name": "ledger_entries_actor_id_user_id_fk",
           "tableFrom": "ledger_entries",
-          "tableTo": "user",
           "columnsFrom": [
             "actor_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2371,9 +2390,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "receipt_allocations_order_idx": {
           "name": "receipt_allocations_order_idx",
@@ -2386,50 +2405,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "receipt_allocations_receipt_id_receipts_id_fk": {
           "name": "receipt_allocations_receipt_id_receipts_id_fk",
           "tableFrom": "receipt_allocations",
-          "tableTo": "receipts",
           "columnsFrom": [
             "receipt_id"
           ],
+          "tableTo": "receipts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "receipt_allocations_firm_id_firms_id_fk": {
           "name": "receipt_allocations_firm_id_firms_id_fk",
           "tableFrom": "receipt_allocations",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "receipt_allocations_order_id_orders_id_fk": {
           "name": "receipt_allocations_order_id_orders_id_fk",
           "tableFrom": "receipt_allocations",
-          "tableTo": "orders",
           "columnsFrom": [
             "order_id"
           ],
+          "tableTo": "orders",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2460,15 +2479,15 @@
           "primaryKey": false,
           "notNull": true,
           "identity": {
-            "type": "always",
             "name": "receipts_receipt_no_seq",
-            "schema": "public",
             "increment": "1",
-            "startWith": "1",
             "minValue": "1",
             "maxValue": "2147483647",
+            "startWith": "1",
             "cache": "1",
-            "cycle": false
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
           }
         },
         "retailer_id": {
@@ -2583,9 +2602,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "receipts_created_idx": {
           "name": "receipts_created_idx",
@@ -2598,63 +2617,63 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "receipts_retailer_id_retailers_id_fk": {
           "name": "receipts_retailer_id_retailers_id_fk",
           "tableFrom": "receipts",
-          "tableTo": "retailers",
           "columnsFrom": [
             "retailer_id"
           ],
+          "tableTo": "retailers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "receipts_received_firm_id_firms_id_fk": {
           "name": "receipts_received_firm_id_firms_id_fk",
           "tableFrom": "receipts",
-          "tableTo": "firms",
           "columnsFrom": [
             "received_firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "receipts_received_by_user_id_fk": {
           "name": "receipts_received_by_user_id_fk",
           "tableFrom": "receipts",
-          "tableTo": "user",
           "columnsFrom": [
             "received_by"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "receipts_reversed_by_user_id_fk": {
           "name": "receipts_reversed_by_user_id_fk",
           "tableFrom": "receipts",
-          "tableTo": "user",
           "columnsFrom": [
             "reversed_by"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2761,63 +2780,63 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "wallet_movements_firm_id_firms_id_fk": {
           "name": "wallet_movements_firm_id_firms_id_fk",
           "tableFrom": "wallet_movements",
-          "tableTo": "firms",
           "columnsFrom": [
             "firm_id"
           ],
+          "tableTo": "firms",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "wallet_movements_collector_id_user_id_fk": {
           "name": "wallet_movements_collector_id_user_id_fk",
           "tableFrom": "wallet_movements",
-          "tableTo": "user",
           "columnsFrom": [
             "collector_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "wallet_movements_receipt_id_receipts_id_fk": {
           "name": "wallet_movements_receipt_id_receipts_id_fk",
           "tableFrom": "wallet_movements",
-          "tableTo": "receipts",
           "columnsFrom": [
             "receipt_id"
           ],
+          "tableTo": "receipts",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "wallet_movements_actor_id_user_id_fk": {
           "name": "wallet_movements_actor_id_user_id_fk",
           "tableFrom": "wallet_movements",
-          "tableTo": "user",
           "columnsFrom": [
             "actor_id"
           ],
+          "tableTo": "user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2838,10 +2857,10 @@
   },
   "enums": {},
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

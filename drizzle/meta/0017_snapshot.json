@@ -1,5 +1,5 @@
 {
-  "id": "e9f25692-47db-450c-b725-d4a4ee360db6",
+  "id": "10d2e9fc-0cab-4bb0-8313-99c9eb565ba8",
   "prevId": "2413d693-ac06-448b-9564-a4975fce9838",
   "version": "7",
   "dialect": "postgresql",
@@ -503,199 +503,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.brands": {
-      "name": "brands",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "brands_name_unique": {
-          "name": "brands_name_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.cement_types": {
-      "name": "cement_types",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "cement_types_code_unique": {
-          "name": "cement_types_code_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "code"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.grades": {
-      "name": "grades",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "type_id": {
-          "name": "type_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "grades_type_id_cement_types_id_fk": {
-          "name": "grades_type_id_cement_types_id_fk",
-          "tableFrom": "grades",
-          "tableTo": "cement_types",
-          "columnsFrom": [
-            "type_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "grades_type_name_unique": {
-          "name": "grades_type_name_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "type_id",
-            "name"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.dispatches": {
       "name": "dispatches",
       "schema": "",
@@ -982,31 +789,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "brand_id": {
-          "name": "brand_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "channel": {
-          "name": "channel",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "grade_id": {
-          "name": "grade_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "bag_kg": {
-          "name": "bag_kg",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "default": 50
-        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -1020,44 +802,10 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "products_brand_id_brands_id_fk": {
-          "name": "products_brand_id_brands_id_fk",
-          "tableFrom": "products",
-          "tableTo": "brands",
-          "columnsFrom": [
-            "brand_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "products_grade_id_grades_id_fk": {
-          "name": "products_grade_id_grades_id_fk",
-          "tableFrom": "products",
-          "tableTo": "grades",
-          "columnsFrom": [
-            "grade_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "products_name_unique": {
@@ -1066,29 +814,10 @@
           "columns": [
             "name"
           ]
-        },
-        "products_parts_unique": {
-          "name": "products_parts_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "brand_id",
-            "channel",
-            "grade_id",
-            "bag_kg"
-          ]
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "products_channel_valid": {
-          "name": "products_channel_valid",
-          "value": "\"products\".\"channel\" in ('trade', 'non_trade')"
-        },
-        "products_bag_kg_valid": {
-          "name": "products_bag_kg_valid",
-          "value": "\"products\".\"bag_kg\" in (50)"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.user_firms": {
@@ -1210,6 +939,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "sales_rep_id": {
+          "name": "sales_rep_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -1240,6 +975,19 @@
           "tableTo": "user",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "retailers_sales_rep_id_user_id_fk": {
+          "name": "retailers_sales_rep_id_user_id_fk",
+          "tableFrom": "retailers",
+          "tableTo": "user",
+          "columnsFrom": [
+            "sales_rep_id"
           ],
           "columnsTo": [
             "id"

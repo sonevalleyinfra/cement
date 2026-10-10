@@ -124,43 +124,50 @@
     {
       "idx": 17,
       "version": "7",
-      "when": 1791629691519,
-      "tag": "0017_catalogue",
+      "when": 1791627986810,
+      "tag": "0017_retailer_sales_rep",
       "breakpoints": true
     },
     {
       "idx": 18,
       "version": "7",
-      "when": 1791629704493,
-      "tag": "0018_catalogue_seed",
+      "when": 1791629691519,
+      "tag": "0018_catalogue",
       "breakpoints": true
     },
     {
       "idx": 19,
       "version": "7",
-      "when": 1791629718125,
-      "tag": "0019_catalogue_required",
+      "when": 1791629704493,
+      "tag": "0019_catalogue_seed",
       "breakpoints": true
     },
     {
       "idx": 20,
       "version": "7",
-      "when": 1791630046589,
-      "tag": "0020_godowns",
+      "when": 1791629718125,
+      "tag": "0020_catalogue_required",
       "breakpoints": true
     },
     {
       "idx": 21,
       "version": "7",
-      "when": 1791630060206,
-      "tag": "0021_godowns_from_places",
+      "when": 1791630046589,
+      "tag": "0021_godowns",
       "breakpoints": true
     },
     {
       "idx": 22,
       "version": "7",
+      "when": 1791630060206,
+      "tag": "0022_godowns_from_places",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
       "when": 1791630062293,
-      "tag": "0022_godowns_required",
+      "tag": "0023_godowns_required",
       "breakpoints": true
     }
   ]

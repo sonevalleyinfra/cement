@@ -33,7 +33,7 @@ Each firm runs as its own independent book.
 
 | Role | Can do |
 |---|---|
-| Admin | Add firms, retailers, users, firm access. Catalogue (brands, types, grades, products) and godowns. Purchase entry. Verify online payments. Confirm cash handover. Stock adjustments. Firm-wise and consolidated reports. |
+| Admin | Add firms, retailers, users, firm access. Pick / change each retailer's sales person. Catalogue (brands, types, grades, products) and godowns. Purchase entry. Verify online payments. Confirm cash handover. Stock adjustments. Firm-wise and consolidated reports. |
 | Sales | Place orders (choose firm), fill rate, track orders, collect payments |
 | Retailer | Place orders with any firm (quantity only, no price), track dispatch, view dues per firm |
 | Accounts | Approve / reject orders with reason, seeing the retailer's dues **with that firm** (and total across firms for context) |
@@ -49,7 +49,8 @@ Placed (firm selected) → Rate filled → Approved / Rejected → Assigned → 
 ```
 
 1. **Placed** by sales rep or retailer. **Firm is chosen at order time.** Retailer sees no price.
-2. **Rate filled** by sales rep. Required before approval.
+   Every retailer is tied to **one sales person** (admin can change it). The order goes to that sales person, no round robin.
+2. **Rate filled** by the retailer's sales person. Required before approval.
 3. **Accounts** sees order total, retailer's dues with this firm, and total dues across firms. Approves or rejects with reason.
 4. **Notify** placer, sales rep and admin on approve / reject.
 5. **Assigned** to a logistics member by round robin (skips inactive members).

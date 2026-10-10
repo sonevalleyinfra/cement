@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { retailers, user as users } from "@/db/schema";
 import { can, rolesFor } from "@/lib/permissions";
 import { pickableRetailerLogins } from "@/lib/retailer-rules";
+import { pickableSalesReps } from "@/lib/sales-rep-rules";
 import { hasRole, isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
 import { RetailersView } from "./retailers-view";
@@ -18,12 +19,13 @@ export default async function RetailersPage() {
       place: retailers.place,
       active: retailers.active,
       userId: retailers.userId,
+      salesRepId: retailers.salesRepId,
     })
     .from(retailers)
     .orderBy(asc(retailers.name));
   const canEdit = can(user.role, "editRetailers");
   const allLogins =
-    isAdmin(user.role) || canEdit
+    isAdmin(user.role) || canEdit || can(user.role, "assignSalesRep")
       ? await db
           .select({
             id: users.id,
@@ -49,5 +51,13 @@ export default async function RetailersPage() {
         rows.map((r) => r.userId),
       ).map((u) => ({ id: u.id, name: u.name, email: u.email, phone: u.phone }))
     : [];
-  return <RetailersView rows={rows} canEdit={canEdit} logins={logins} pickable={pickable} />;
+  // Everyone who sees the list sees each shop's sales person; only admin may change it.
+  const people: { id: string; name: string }[] =
+    allLogins.length > 0 ? allLogins : await db.select({ id: users.id, name: users.name }).from(users);
+  const names = new Map(people.map((u) => [u.id, u.name]));
+  const shown = rows.map((r) => ({ ...r, salesRepName: r.salesRepId ? (names.get(r.salesRepId) ?? "") : "" }));
+  const salesReps = can(user.role, "assignSalesRep")
+    ? pickableSalesReps(allLogins).map((u) => ({ id: u.id, label: u.name }))
+    : null;
+  return <RetailersView rows={shown} canEdit={canEdit} logins={logins} pickable={pickable} salesReps={salesReps} />;
 }
