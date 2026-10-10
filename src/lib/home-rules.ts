@@ -10,12 +10,12 @@
  * - Dues add up each retailer's positive balance (one retailer's advance does not
  *   cancel what another retailer owes).
  * - Cash in hand = cash collected - handovers confirmed (pending requests still count as in hand).
- * - Logistics "Ready" = approved or assigned orders they may dispatch (their own, unassigned, or
- *   whose assignee can no longer do it); "Partly sent" = partly dispatched ones. Same rule as
- *   the dispatch list (ordersUserMayDispatch in dispatch-rules.ts).
+ * - Logistics "Ready" = approved orders; "Partly sent" = partly dispatched ones. Any logistics
+ *   person may dispatch any of them (same list as the dispatch screen).
  */
 import { toISTDateKey } from "./datetime";
 import { duesFrom, type LedgerEntry } from "./ledger-rules";
+import { isFinalStatus, isOrderStatus } from "./order-rules";
 import { isAdmin, parseRoles } from "./roles";
 
 export const HOME_SECTIONS = ["sales", "accounts", "logistics", "retailer", "admin"] as const;
@@ -61,18 +61,17 @@ export function cashInHandPaise(collectedPaise: number, confirmedPaise: number, 
   return collectedPaise - reversedPaise - confirmedPaise;
 }
 
-/** Orders that are not finished (a retailer's "open orders"). */
-const CLOSED = ["rejected", "delivered", "cancelled"];
+/** Orders that are not finished (a retailer's "open orders"): not rejected, dispatched or cancelled. */
 export function isOpenOrderStatus(status: string): boolean {
-  return !CLOSED.includes(status);
+  return isOrderStatus(status) && !isFinalStatus(status);
 }
 
-/** Logistics home numbers from the orders this person may dispatch. */
+/** Logistics home numbers from the approved and partly dispatched orders. */
 export function logisticsCounts(orders: readonly { status: string }[]): { ready: number; partly: number } {
   let ready = 0;
   let partly = 0;
   for (const o of orders) {
-    if (o.status === "approved" || o.status === "assigned") ready++;
+    if (o.status === "approved") ready++;
     else if (o.status === "partly_dispatched") partly++;
   }
   return { ready, partly };

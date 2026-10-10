@@ -78,7 +78,7 @@ export async function SalesHome({ userId }: { userId: string }) {
   const s = await getSalesHome(userId);
   return (
     <Cards>
-      <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate pending", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
+      <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
       <Card index={1} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Retailers", value: num(s.retailersWithDues) }]} />
     </Cards>
   );
@@ -103,8 +103,8 @@ export async function AccountsHome() {
   );
 }
 
-export async function LogisticsHome({ user }: { user: { id: string; role: string | null | undefined } }) {
-  const s = await getLogisticsHome(user);
+export async function LogisticsHome() {
+  const s = await getLogisticsHome();
   return (
     <Cards>
       <Card index={0} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} />
@@ -131,6 +131,7 @@ export async function AdminHome() {
       <Card index={2} href="/stock" title="Stock" icon={Package} tone="blue" stats={[{ label: "Bags", value: num(s.stockBags) }]} />
       <Card index={3} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "In hand", value: money(s.cashInHandPaise) }]} />
       <Card index={4} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+      <Card index={5} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
     </Cards>
   );
 }

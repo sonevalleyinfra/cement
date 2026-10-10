@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  canCancelOrder,
+  cancelledNote,
   historyForViewer,
+  historyReason,
   historyStepLabel,
   mentionsMoney,
   canPlaceOrder,
@@ -71,7 +72,9 @@ describe("retailer scoping", () => {
 describe("chipStatus", () => {
   it("maps every status", () => {
     for (const s of ORDER_STATUSES) expect(chipStatus(s)).toBeTruthy();
-    expect(chipStatus("rate_filled")).toBe("pending");
+    expect(chipStatus("placed")).toBe("pending");
+    expect(chipStatus("approved")).toBe("approved");
+    expect(chipStatus("dispatched")).toBe("dispatched");
     expect(chipStatus("cancelled")).toBe("rejected");
     expect(chipStatus("partly_dispatched")).toBe("dispatched");
   });
@@ -85,31 +88,13 @@ describe("chipLabel", () => {
   });
 });
 
-describe("canCancelOrder", () => {
-  const before = { status: "placed", placedBy: "u1", salesRepId: "rep" };
-  const after = { status: "approved", placedBy: "u1", salesRepId: "rep" };
-  it("lets the placer or the assigned rep cancel before approval", () => {
-    expect(canCancelOrder("sales", "u1", before)).toBe(true);
-    expect(canCancelOrder("sales", "rep", before)).toBe(true);
-    expect(canCancelOrder("sales", "rep", { ...before, status: "rate_filled" })).toBe(true);
+describe("cancelledNote", () => {
+  it("says how many bags went out before the rest was cancelled", () => {
+    expect(cancelledNote("cancelled", 100, 40)).toBe("40 of 100 bags dispatched");
   });
-  it("refuses another sales person before approval", () => {
-    expect(canCancelOrder("sales", "someone-else", before)).toBe(false);
-  });
-  it("refuses retailers and logistics", () => {
-    expect(canCancelOrder("retailer", "u1", before)).toBe(false);
-    expect(canCancelOrder("logistics", "rep", after)).toBe(false);
-  });
-  it("after approval only accounts or admin", () => {
-    expect(canCancelOrder("accounts", "x", after)).toBe(true);
-    expect(canCancelOrder("sales", "rep", after)).toBe(false);
-    expect(canCancelOrder("admin", "x", after)).toBe(true);
-    expect(canCancelOrder("admin", "x", before)).toBe(true);
-  });
-  it("refuses finished orders", () => {
-    expect(canCancelOrder("admin", "x", { ...after, status: "dispatched" })).toBe(false);
-    expect(canCancelOrder("admin", "x", { ...after, status: "cancelled" })).toBe(false);
-    expect(canCancelOrder("admin", "x", { ...after, status: "nonsense" })).toBe(false);
+  it("is empty when nothing was sent or the order is not cancelled", () => {
+    expect(cancelledNote("cancelled", 100, 0)).toBeNull();
+    expect(cancelledNote("partly_dispatched", 100, 40)).toBeNull();
   });
 });
 
@@ -117,11 +102,11 @@ describe("historyForViewer", () => {
   const events = [
     { id: "1", toStatus: "placed", reason: "" },
     { id: "2", toStatus: "rejected", reason: "Dues too high" },
-    { id: "3", toStatus: "assigned", reason: "Rate edited: market went up" },
+    { id: "3", toStatus: "approved", reason: "Rate edited: market went up" },
     { id: "4", toStatus: "partly_dispatched", reason: "40 bags in KA01AB1234" },
     { id: "5", toStatus: "cancelled", reason: "Rate too low for this shop" },
-    { id: "6", toStatus: "dispatched", reason: "Closed short: 60 bags not sent. Price dispute" },
-    { id: "7", toStatus: "dispatched", reason: "Closed short: 1 bag not sent. Shop closed" },
+    { id: "6", toStatus: "placed", reason: "Rate filled" },
+    { id: "7", toStatus: "cancelled", reason: "Shop closed" },
     { id: "8", toStatus: "cancelled", reason: "Gave ₹10 off" },
   ];
   it("staff see everything", () => {
@@ -129,15 +114,14 @@ describe("historyForViewer", () => {
     expect(historyForViewer("retailer,sales", events)).toEqual(events);
     expect(historyForViewer("admin", events)).toEqual(events);
   });
-  it("a pure retailer never sees rate edits or money talk", () => {
+  it("a pure retailer never sees rate rows or money talk", () => {
     const seen = historyForViewer("retailer", events);
-    expect(seen.map((e) => e.id)).toEqual(["1", "2", "4", "5", "6", "7", "8"]);
+    expect(seen.map((e) => e.id)).toEqual(["1", "2", "4", "5", "7", "8"]);
     const reason = (id: string) => seen.find((e) => e.id === id)?.reason;
     expect(reason("2")).toBe("Dues too high");
     expect(reason("4")).toBe("40 bags in KA01AB1234");
     expect(reason("5")).toBe("");
-    expect(reason("6")).toBe("Closed short: 60 bags not sent.");
-    expect(reason("7")).toBe("Closed short: 1 bag not sent. Shop closed");
+    expect(reason("7")).toBe("Shop closed");
     expect(reason("8")).toBe("");
   });
   it("spots money words", () => {
@@ -151,14 +135,24 @@ describe("historyForViewer", () => {
 });
 
 describe("historyStepLabel", () => {
-  it("shows a rate edit row (status unchanged) as Rate edited", () => {
-    expect(historyStepLabel({ toStatus: "assigned", reason: "Rate edited: market went up" })).toBe("Rate edited");
+  it("shows rate rows (status unchanged) as Rate filled / Rate edited", () => {
+    expect(historyStepLabel({ toStatus: "approved", reason: "Rate edited: market went up" })).toBe("Rate edited");
     expect(historyStepLabel({ toStatus: "partly_dispatched", reason: "Rate edited: diesel" })).toBe("Rate edited");
+    expect(historyStepLabel({ toStatus: "placed", reason: "Rate filled" })).toBe("Rate filled");
   });
   it("shows other rows by their new status", () => {
-    expect(historyStepLabel({ toStatus: "assigned", reason: "" })).toBe("Assigned");
+    expect(historyStepLabel({ toStatus: "approved", reason: "" })).toBe("Approved");
+    // Old rows from before the simpler flow still read well.
     expect(historyStepLabel({ toStatus: "rate_filled", reason: "" })).toBe("Rate filled");
     // A second partial load keeps the status but is a real step, not a rate edit.
     expect(historyStepLabel({ toStatus: "partly_dispatched", reason: "40 bags in KA01AB1234" })).toBe("Partly dispatched");
+  });
+});
+
+describe("historyReason", () => {
+  it("drops the rate prefix and the bare rate-filled row", () => {
+    expect(historyReason("Rate edited: diesel up")).toBe("diesel up");
+    expect(historyReason("Rate filled")).toBe("");
+    expect(historyReason("40 bags in KA01AB1234")).toBe("40 bags in KA01AB1234");
   });
 });

@@ -2,21 +2,21 @@
  * Who gets told what, as plain functions (no database, no request).
  * Source: docs/idea.md section 8 (Notifications).
  *
- * Spec rows used:
- * - Order placed: accounts, sales rep
- * - Rate edited: accounts, admin, sales rep (also used for the first "rate filled")
- * - Approved / rejected: placer, sales rep, admin
- * - Assigned: the logistics member picked for the order
- * - Dispatched: retailer, sales rep
- * - Payment recorded: admin
- * - Handover / online verified: collector
+ * Spec rows used for orders:
+ * - Order placed: accounts, and the shop's sales person when the rate is missing
+ * - Approved / rejected: placer, sales person; approved also: every logistics person
+ * - Dispatched: retailer, sales person
+ * - Rate changed: accounts, sales person, admin
  * Where the spec is silent (simplest choice):
- * - Delivered: retailer, sales rep (same as dispatched)
- * - Cancelled: placer, sales rep, admin
- * - Handover rejected and receipt reversed: collector (same as handover confirmed)
+ * - Rate filled (by the sales person or admin on a placed order): accounts and the sales person,
+ *   so accounts know it is ready to approve.
+ * - Cancelled: placer, sales person, the shop's login.
+ * Money rows:
+ * - Payment recorded: admin. Handover confirmed / online verified: collector.
+ * - Handover rejected and receipt reversed: collector (same as handover confirmed).
  * Rules: the person who did the action is never told about their own action; nobody
- * gets the same notification twice; ORDER messages never contain a price (retailers also read these). Money messages go to
- * staff only, so they may show the amount.
+ * gets the same notification twice; ORDER messages never contain a price (retailers also read these).
+ * Money messages go to staff only, so they may show the amount.
  */
 import { formatINR } from "@/lib/money";
 
@@ -26,23 +26,23 @@ export const NOTIFICATION_EVENTS = [
   "rate_edited",
   "approved",
   "rejected",
-  "assigned",
   "dispatched",
-  "delivered",
   "cancelled",
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
 export type OrderPeople = {
-  /** Sales rep on the order (may be empty). */
+  /** Sales person on the order (may be empty). */
   salesRepId: string | null;
   placedBy: string;
   /** The login linked to the retailer shop (may be empty). */
   retailerUserId: string | null;
-  /** Logistics person assigned to the order (empty until approval). */
-  logisticsId: string | null;
+  /** True while the order has no rate (a retailer's order waiting for its sales person). */
+  rateMissing: boolean;
   /** Accounts people (not banned). */
   accountsIds: readonly string[];
+  /** Logistics people (not banned). */
+  logisticsIds: readonly string[];
   adminIds: readonly string[];
 };
 
@@ -84,23 +84,25 @@ export function recipientIds(
   let list: (string | null)[];
   switch (event) {
     case "placed":
-      list = [...people.accountsIds, people.salesRepId];
+      list = [people.rateMissing ? people.salesRepId : null, ...people.accountsIds];
       break;
     case "rate_filled":
-    case "rate_edited":
-      list = [...people.accountsIds, ...people.adminIds, people.salesRepId];
+      list = [...people.accountsIds, people.salesRepId];
       break;
-    case "assigned":
-      list = [people.logisticsId];
+    case "rate_edited":
+      list = [...people.accountsIds, people.salesRepId, ...people.adminIds];
       break;
     case "approved":
+      list = [people.placedBy, people.salesRepId, ...people.logisticsIds];
+      break;
     case "rejected":
-    case "cancelled":
-      list = [people.placedBy, people.salesRepId, ...people.adminIds];
+      list = [people.placedBy, people.salesRepId];
       break;
     case "dispatched":
-    case "delivered":
       list = [people.retailerUserId, people.salesRepId];
+      break;
+    case "cancelled":
+      list = [people.placedBy, people.salesRepId, people.retailerUserId];
       break;
   }
   return uniqueRecipients(list, actorId);
@@ -109,12 +111,10 @@ export function recipientIds(
 const MESSAGES: Record<NotificationEvent, (what: string) => { title: string; body: string }> = {
   placed: (w) => ({ title: "New order", body: `${w} placed.` }),
   rate_filled: (w) => ({ title: "Rate filled", body: `${w} is waiting for approval.` }),
-  rate_edited: (w) => ({ title: "Rate edited", body: `${w}.` }),
+  rate_edited: (w) => ({ title: "Rate changed", body: `${w}.` }),
   approved: (w) => ({ title: "Order approved", body: `${w} approved.` }),
   rejected: (w) => ({ title: "Order rejected", body: `${w} rejected.` }),
-  assigned: (w) => ({ title: "Order assigned", body: `${w} to dispatch.` }),
   dispatched: (w) => ({ title: "Order dispatched", body: `${w} is on its way.` }),
-  delivered: (w) => ({ title: "Order delivered", body: `${w} delivered.` }),
   cancelled: (w) => ({ title: "Order cancelled", body: `${w} cancelled.` }),
 };
 

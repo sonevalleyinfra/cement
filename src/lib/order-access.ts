@@ -5,22 +5,16 @@
  * Choices where the spec is silent:
  * - A person with the retailer role AND any staff role counts as staff.
  * - Only a pure retailer is price-blind and limited to their own shop's orders.
- * - A pure retailer sees the order history without rate-edit rows, and a staff reason that
- *   talks about money (rate, price, ₹, rs, discount...) is hidden. A "Closed short" row keeps
- *   its first sentence (how many bags were not sent) and drops the staff part.
+ * - A pure retailer sees the order history without rate rows (filled / edited), and a staff
+ *   reason that talks about money (rate, price, ₹, rs, discount...) is hidden.
  * - Dispatch loads (bags, vehicle, driver, phone, date) are shown to everyone who may see the
- *   order (spec 4.6: "Visible to retailer and sales rep"); the load's rate only to staff.
+ *   order; the load's rate only to staff.
  */
-import { isRateEditReason } from "./dispatch-rules";
-import { hasAnyRole, isAdmin, parseRoles } from "./roles";
-import { canUserTransition, isOrderStatus, isValidBags, rolesForTransition, type OrderStatus } from "./order-rules";
+import { hasAnyRole, isRetailerOnly } from "./roles";
+import { isValidBags, type OrderStatus } from "./order-rules";
+import { isRateEvent, rateEventLabel } from "./rate-rules";
 
-/** Pure retailer = has the retailer role and no staff role (and is not admin). */
-export function isRetailerOnly(role: string | null | undefined): boolean {
-  if (isAdmin(role)) return false;
-  const roles = parseRoles(role);
-  return roles.includes("retailer") && roles.every((r) => r === "retailer");
-}
+export { isRetailerOnly };
 
 /** Retailers never see prices or amounts. Everyone else does. */
 export function canSeePrice(role: string | null | undefined): boolean {
@@ -80,16 +74,12 @@ export function chipLabel(status: OrderStatus): string | undefined {
   return undefined;
 }
 
-/** Maps the detailed order status to the five colours the status chip knows. */
-export function chipStatus(
-  status: OrderStatus,
-): "pending" | "approved" | "rejected" | "dispatched" | "delivered" {
+/** Maps the order status to the colours the status chip knows. */
+export function chipStatus(status: OrderStatus): "pending" | "approved" | "rejected" | "dispatched" {
   switch (status) {
     case "placed":
-    case "rate_filled":
       return "pending";
     case "approved":
-    case "assigned":
       return "approved";
     case "rejected":
     case "cancelled":
@@ -97,29 +87,20 @@ export function chipStatus(
     case "partly_dispatched":
     case "dispatched":
       return "dispatched";
-    case "delivered":
-      return "delivered";
   }
 }
 
 /**
- * May this person cancel this order now? The status step must allow their role
- * (order-rules). Before approval only sales may cancel, and only an order they
- * placed or are the assigned rep for. After approval it is accounts' call. Admin always.
+ * The line under a cancelled order that had some bags sent, e.g. "40 of 100 bags dispatched".
+ * Null when it does not apply (not cancelled, or nothing was sent).
  */
-export function canCancelOrder(
-  role: string | null | undefined,
-  userId: string,
-  order: { status: string; placedBy: string | null; salesRepId: string | null },
-): boolean {
-  if (!isOrderStatus(order.status) || !canUserTransition(role, order.status, "cancelled")) return false;
-  if (isAdmin(role) || !rolesForTransition(order.status, "cancelled").includes("sales")) return true;
-  return order.placedBy === userId || order.salesRepId === userId;
+export function cancelledNote(status: string, orderedBags: number, sentBags: number): string | null {
+  if (status !== "cancelled" || sentBags <= 0) return null;
+  return `${sentBags} of ${orderedBags} bags dispatched`;
 }
 
 /** Words that give a price away in a free-text staff reason. */
 const MONEY_WORDS = /(\brate|\bpric|₹|\brs\b|\brs\.|rupee|paise|discount|\bcost|\bamount|\/-)/i;
-const CLOSED_SHORT = /^Closed short: \d+ bags? not sent\./;
 
 export function mentionsMoney(text: string | null | undefined): boolean {
   return MONEY_WORDS.test(text ?? "");
@@ -127,7 +108,7 @@ export function mentionsMoney(text: string | null | undefined): boolean {
 
 /**
  * The order history this person may read. Staff see everything. A pure retailer does not
- * see rate edits, nor staff reasons that mention money.
+ * see rate rows, nor staff reasons that mention money.
  */
 export function historyForViewer<T extends { reason: string }>(
   role: string | null | undefined,
@@ -135,21 +116,24 @@ export function historyForViewer<T extends { reason: string }>(
 ): T[] {
   if (!isRetailerOnly(role)) return [...events];
   return events
-    .filter((e) => !isRateEditReason(e.reason))
-    .map((e) => {
-      if (!mentionsMoney(e.reason)) return e;
-      const closedShort = CLOSED_SHORT.exec(e.reason);
-      return { ...e, reason: closedShort ? closedShort[0] : "" };
-    });
+    .filter((e) => !isRateEvent(e.reason))
+    .map((e) => (mentionsMoney(e.reason) ? { ...e, reason: "" } : e));
 }
 
 /**
- * The step name shown in an order's history. A rate edit is saved as a row that keeps the
- * status (for example "assigned" to "assigned"), so it shows as "Rate edited", not as a
- * second "Assigned". Other rows show their new status ("partly_dispatched" = "Partly dispatched").
+ * The step name shown in an order's history. A rate fill or change keeps the status (for example
+ * "approved" to "approved"), so it shows as "Rate filled" / "Rate edited". Other rows show their
+ * new status ("partly_dispatched" = "Partly dispatched").
  */
 export function historyStepLabel(event: { toStatus: string; reason: string }): string {
-  if (isRateEditReason(event.reason)) return "Rate edited";
+  const rate = rateEventLabel(event.reason);
+  if (rate) return rate;
   const words = event.toStatus.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** The reason line under a history row (a rate row already says it in its label). */
+export function historyReason(reason: string): string {
+  if (reason.startsWith("Rate edited: ")) return reason.slice("Rate edited: ".length);
+  return isRateEvent(reason) ? "" : reason;
 }

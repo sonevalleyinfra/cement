@@ -26,7 +26,7 @@ describe("ledgerEntryLabel", () => {
   it("labels the other kinds by kind, whatever the sign", () => {
     expect(ledgerEntryLabel("opening", 10_000)).toBe("Opening balance");
     expect(ledgerEntryLabel("opening", -10_000)).toBe("Opening balance");
-    expect(ledgerEntryLabel("order_debit", 10_000)).toBe("Order");
+    expect(ledgerEntryLabel("order_debit", 10_000)).toBe("Dispatch");
     expect(ledgerEntryLabel("adjustment", -10_000)).toBe("Adjustment");
   });
   it("falls back to the raw kind for an unknown kind", () => {

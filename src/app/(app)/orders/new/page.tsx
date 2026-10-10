@@ -33,6 +33,7 @@ export default async function NewOrderPage() {
       retailers={retailerRows}
       products={productRows}
       fixedRetailerId={retailerOnly ? retailerRows[0].id : null}
+      askRate={!retailerOnly}
     />
   );
 }

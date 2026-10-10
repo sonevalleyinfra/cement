@@ -4,7 +4,7 @@ import { ACTION_ROLES, can, isStaff, rolesFor, type Action } from "./permissions
 /**
  * The whole role-by-action matrix. One column per role, in this order:
  * admin, sales, accounts, logistics, retailer, (no role).
- * Change this table only together with docs/idea.md section 3.
+ * Change this table only together with docs/idea.md section 1.
  */
 const PEOPLE = ["admin", "sales", "accounts", "logistics", "retailer", "user"] as const;
 const Y = true;
@@ -16,7 +16,8 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   decideOrder:       [Y, N, Y, N, N, N],
   viewApprovals:     [Y, N, Y, N, N, N],
   dispatch:          [Y, N, N, Y, N, N],
-  markDelivered:     [Y, N, N, Y, N, N],
+  changeRate:        [Y, N, N, Y, N, N],
+  cancelOrder:       [Y, N, N, N, N, N],
   recordReceipt:     [Y, Y, Y, Y, N, N],
   viewReceipts:      [Y, Y, Y, Y, N, N],
   verifyPayments:    [Y, N, Y, N, N, N],

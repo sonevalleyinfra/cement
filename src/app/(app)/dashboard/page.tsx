@@ -29,7 +29,7 @@ export default async function DashboardPage() {
       case "accounts":
         return <AccountsHome />;
       case "logistics":
-        return <LogisticsHome user={{ id: user.id, role: user.role }} />;
+        return <LogisticsHome />;
       case "retailer":
         return <RetailerHome userId={user.id} />;
     }

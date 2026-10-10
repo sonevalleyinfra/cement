@@ -8,9 +8,9 @@ import { retailers } from "./retailers";
 
 /**
  * One order = one product for one retailer.
- * `ratePaise` is the price per bag in paise; empty until sales fills the rate.
+ * `ratePaise` is the current price per bag in paise; empty until the sales person fills it.
+ * It may change after approval; each dispatch saves the rate it was billed at.
  * `salesRepId` is the retailer's sales person when the order was placed (see sales-rep-rules.ts).
- * `logisticsId` is the logistics person picked by round robin when the order was approved.
  */
 export const orders = pgTable(
   "orders",
@@ -30,7 +30,6 @@ export const orders = pgTable(
       .notNull()
       .references(() => user.id),
     salesRepId: text("sales_rep_id").references(() => user.id),
-    logisticsId: text("logistics_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -44,7 +43,10 @@ export const orders = pgTable(
   ],
 );
 
-/** History: one row for every status change (including the first "placed"). */
+/**
+ * History: one row for every status change (including the first "placed"), and for every rate
+ * fill or change (status stays the same; the reason says "Rate filled" / "Rate edited: ...").
+ */
 export const orderEvents = pgTable(
   "order_events",
   {
@@ -58,11 +60,6 @@ export const orderEvents = pgTable(
       .notNull()
       .references(() => user.id),
     reason: text("reason").default("").notNull(),
-    /**
-     * Who approval's round robin picked. Set only on that "assigned" row, so the next
-     * approval's turn does not move when someone else takes the order at dispatch.
-     */
-    assigneeId: text("assignee_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("order_events_order_idx").on(t.orderId, t.createdAt)],

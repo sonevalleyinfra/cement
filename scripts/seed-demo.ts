@@ -1,6 +1,7 @@
 /**
  * Fills a LOCAL database with demo data: one user per role, retailers, trucks,
- * a godown with opening stock, orders in different statuses and a receipt.
+ * a godown with opening stock, orders in different statuses (dues come from their dispatches)
+ * and a receipt.
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
  * Safe to run twice: it skips whatever already exists (orders are added only once).
  * Refuses to run on production or a non-local database (rules in scripts/lib/demo-seed-rules.ts).
@@ -24,7 +25,8 @@ import {
 import { env } from "@/env";
 import { auth } from "@/lib/auth";
 import { postEntry } from "@/lib/ledger";
-import { orderDebitPaise } from "@/lib/ledger-rules";
+import { dispatchEntry } from "@/lib/ledger-rules";
+import { statusAfterDispatch, type OrderStatus } from "@/lib/order-rules";
 import { DEMO_PASSWORD, DEMO_USERS, demoSeedBlocker } from "./lib/demo-seed-rules";
 
 async function ensureUser(email: string, name: string, role: string): Promise<string> {
@@ -117,87 +119,82 @@ async function main() {
   const prod = productRows[0];
   const RATE = 35000; // Rs 350 a bag, in paise
 
-  // [shop, bags, final status, bags already dispatched]
-  const plan = [
-    [0, 100, "placed", 0],
-    [1, 80, "rate_filled", 0],
-    [2, 60, "assigned", 0],
-    [3, 100, "partly_dispatched", 40],
-    [4, 50, "dispatched", 50],
-    [5, 30, "cancelled", 0],
-  ] as const;
+  // [shop, bags, final status, loads dispatched]. Shop 0 is the retailer login's shop: its order
+  // was placed by the retailer and waits for the sales person to fill the rate.
+  const plan: [number, number, OrderStatus, number[]][] = [
+    [0, 100, "placed", []],
+    [1, 80, "placed", []],
+    [2, 60, "approved", []],
+    [3, 100, "partly_dispatched", [40]],
+    [4, 50, "dispatched", [30, 20]],
+    [5, 30, "cancelled", []],
+  ];
 
   const orderIds: string[] = [];
-  for (const [shopIdx, bags, status, sentBags] of plan) {
+  for (const [shopIdx, bags, status, loads] of plan) {
     await db.transaction(async (tx) => {
       const shop = shopRows[shopIdx];
-      const priced = status !== "placed";
+      const byRetailer = shopIdx === 0;
       const [o] = await tx
         .insert(orders)
         .values({
           retailerId: shop.id,
           productId: prod.id,
           bags,
-          ratePaise: priced ? RATE : null,
+          ratePaise: byRetailer ? null : RATE,
           status,
-          placedBy: ids.sales,
+          placedBy: byRetailer ? ids.retailer : ids.sales,
           salesRepId: ids.sales,
         })
         .returning();
       orderIds.push(o.id);
-      const trail = ["placed", "rate_filled", "approved", "assigned", "partly_dispatched", "dispatched", "cancelled"];
-      const stop = status === "cancelled" ? "approved" : status;
-      const path = trail.slice(0, trail.indexOf(stop) + 1).filter((s) => s !== "partly_dispatched" || stop === s);
+
+      // History, one second apart so it shows in the right order.
+      let at = Date.now() - 60_000;
       let from: string | null = null;
-      let step = 0;
-      // One second apart, so the history shows in the right order.
-      for (const to of status === "cancelled" ? [...path, "cancelled"] : path) {
+      const event = async (to: string, actorId: string, reason = "") => {
         await tx.insert(orderEvents).values({
           orderId: o.id,
           fromStatus: from,
           toStatus: to,
-          actorId: ids.sales,
-          createdAt: new Date(Date.now() - 60_000 + step++ * 1000),
+          actorId,
+          reason,
+          createdAt: new Date((at += 1000)),
         });
         from = to;
-      }
-      const approved = ["assigned", "partly_dispatched", "dispatched", "cancelled"].includes(status);
-      if (approved) {
-        const amount = orderDebitPaise(bags, RATE) as number;
-        await postEntry(
-          tx,
-          { retailerId: shop.id, kind: "order_debit", amountPaise: amount, orderId: o.id },
-          ids.accounts,
-          "Order approved",
-        );
-        if (status === "cancelled") {
-          await postEntry(
-            tx,
-            { retailerId: shop.id, kind: "adjustment", amountPaise: -amount, orderId: o.id },
-            ids.accounts,
-            "Order cancelled",
-          );
-        }
-      }
-      if (sentBags > 0) {
+      };
+      await event("placed", byRetailer ? ids.retailer : ids.sales);
+      if (status !== "placed") await event("approved", ids.accounts);
+
+      // Each load takes bags out of the godown and bills them: bags x rate (one ledger debit per load).
+      let sent = 0;
+      for (const load of loads) {
+        sent += load;
         await tx.insert(dispatches).values({
           orderId: o.id,
-          bags: sentBags,
+          bags: load,
           vehicleId: truck.id,
           driverName: truck.driverName,
           driverPhone: truck.driverPhone,
           fromGodownId: godown.id,
+          ratePaise: RATE,
           dispatchedBy: ids.logistics,
         });
         await tx.insert(stockMovements).values({
           productId: prod.id,
           godownId: godown.id,
           type: "dispatch",
-          bags: -sentBags,
+          bags: -load,
           orderId: o.id,
+          reason: `Truck ${truck.number}`,
           actorId: ids.logistics,
         });
+        const debit = dispatchEntry(o, load, RATE);
+        if (!debit.ok) throw new Error(debit.error);
+        await postEntry(tx, debit.entry, ids.logistics, `${load} bags in ${truck.number}`);
+        await event(statusAfterDispatch(bags, sent), ids.logistics, `${load} bags in ${truck.number}`);
       }
+      if (status === "cancelled") await event("cancelled", admin.id, "Shop closed for repairs");
     });
   }
 

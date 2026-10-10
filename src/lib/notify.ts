@@ -57,7 +57,7 @@ export async function notify(
   orderId: string,
   event: NotificationEvent,
   actorId: string | null,
-  /** Bags to mention instead of the whole order (a partial dispatch). */
+  /** Bags to mention instead of the whole order (one dispatch, or the bags cancelled). */
   bagsOverride?: number,
 ): Promise<void> {
   const [row] = await tx
@@ -67,7 +67,7 @@ export async function notify(
       bags: orders.bags,
       placedBy: orders.placedBy,
       salesRepId: orders.salesRepId,
-      logisticsId: orders.logisticsId,
+      ratePaise: orders.ratePaise,
     })
     .from(orders)
     .innerJoin(retailers, eq(orders.retailerId, retailers.id))
@@ -76,7 +76,7 @@ export async function notify(
   if (!row) return;
 
   const people = await activePeople(tx);
-  const accountsIds = people.filter((p) => hasRole(p.role, "accounts")).map((p) => p.id);
+  const withRole = (role: string) => people.filter((p) => hasRole(p.role, role)).map((p) => p.id);
 
   const drafts = buildNotifications({
     event,
@@ -87,8 +87,9 @@ export async function notify(
       salesRepId: row.salesRepId,
       placedBy: row.placedBy,
       retailerUserId: row.retailerUserId,
-      logisticsId: row.logisticsId,
-      accountsIds,
+      rateMissing: row.ratePaise === null,
+      accountsIds: withRole("accounts"),
+      logisticsIds: withRole("logistics"),
       adminIds: people.filter((p) => isAdmin(p.role)).map((p) => p.id),
     },
   });

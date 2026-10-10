@@ -6,9 +6,17 @@ import { dispatches, orderEvents, orders, products, retailers, user as users, ve
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
-import { canCancelOrder, canSeePrice, chipLabel, chipStatus, historyForViewer, historyStepLabel } from "@/lib/order-access";
-import { isCloseShort, isOrderStatus, orderValuePaise } from "@/lib/order-rules";
-import { canFillRate } from "@/lib/rate-rules";
+import {
+  canSeePrice,
+  cancelledNote,
+  chipLabel,
+  chipStatus,
+  historyForViewer,
+  historyReason,
+  historyStepLabel,
+} from "@/lib/order-access";
+import { canCancelOrder, isOrderStatus, orderValuePaise, remainingBags } from "@/lib/order-rules";
+import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
 import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
@@ -62,7 +70,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       .innerJoin(users, eq(orderEvents.actorId, users.id))
       .where(eq(orderEvents.orderId, o.id))
       .orderBy(asc(orderEvents.createdAt)),
-    // Truck loads: shown to everyone who may see the order (spec 4.6); the rate to staff only.
+    // Truck loads: shown to everyone who may see the order; the rate to staff only.
     db
       .select({
         id: dispatches.id,
@@ -78,13 +86,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       .where(eq(dispatches.orderId, o.id))
       .orderBy(asc(dispatches.createdAt)),
   ]);
-  // A retailer never sees rate edits or staff reasons about money.
+  // A retailer never sees rate rows or staff reasons about money.
   const events = historyForViewer(user.role, allEvents);
   const sentBags = loads.reduce((n, l) => n + l.bags, 0);
+  const notSent = remainingBags(o.bags, sentBags);
   const valuePaise = orderValuePaise({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads });
+  const cancelled = cancelledNote(o.status, o.bags, sentBags);
 
-  const canCancel = showPrice && canCancelOrder(user.role, user.id, o);
-  const canRate = canFillRate(user.role, user.id, o.salesRepId, o.status);
+  const canCancel = canCancelOrder(user.role, o.status);
+  const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o.status) ? "change" : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -96,6 +106,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         <p className="text-sm text-muted-foreground">
           {o.product} · <span className="tabular">{o.bags}</span> bags
         </p>
+        {cancelled && <p className="text-sm text-muted-foreground">{cancelled}</p>}
         {o.notes && <p className="mt-1 text-sm">{o.notes}</p>}
       </div>
       {showPrice && o.ratePaise !== null && valuePaise !== null && (
@@ -127,15 +138,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 {" · "}
                 {formatDateTime(l.createdAt)}
               </div>
-              {showPrice && l.ratePaise !== null && l.ratePaise !== o.ratePaise && (
-                <div className="text-xs text-muted-foreground">Rate {formatINR(l.ratePaise)} per bag</div>
+              {showPrice && (
+                <div className="text-xs text-muted-foreground">
+                  {formatINR(l.ratePaise)} per bag · {formatINR(l.bags * l.ratePaise)}
+                </div>
               )}
             </li>
           ))}
         </ul>
       )}
-      {canRate && <RateForm orderId={o.id} bags={o.bags} />}
-      {canCancel && <CancelForm orderId={o.id} closeShort={isCloseShort(o.status, sentBags)} />}
+      {rateMode && <RateForm orderId={o.id} bags={notSent} mode={rateMode} hasRate={o.ratePaise !== null} />}
+      {canCancel && <CancelForm orderId={o.id} notSent={notSent} sent={sentBags} />}
       <ol className="flex flex-col gap-3 border-l pl-4">
         {events.map((e) => (
           <li key={e.id}>
@@ -143,7 +156,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <div className="text-xs text-muted-foreground">
               {e.actor} · {formatDateTime(e.createdAt)}
             </div>
-            {e.reason && <div className="text-sm">Reason: {e.reason}</div>}
+            {historyReason(e.reason) && <div className="text-sm">{historyReason(e.reason)}</div>}
           </li>
         ))}
       </ol>

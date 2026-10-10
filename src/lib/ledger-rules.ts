@@ -1,16 +1,12 @@
 /**
  * Retailer ledger rules as plain functions (no database) so they are easy to test.
- * Source: docs/idea.md section 7 (Ledgers) and section 4 (Order Flow).
+ * Source: docs/idea.md section 5 (Retailer dues) and section 3 (Order flow).
  *
  * Choices where the spec is silent:
  * - Amounts are SIGNED integer paise: positive = debit (retailer owes), negative = credit.
- * - The order debit (bags x rate) is posted when Accounts APPROVES the order, because
- *   that is when the rate is final and the order becomes a real sale.
- * - A rate edit at dispatch is for that truck only (owner's decision): it adds an adjustment
- *   of that truck's bags x (truck rate - order rate). Other trucks keep the order rate.
- * - Cancelling adds one compensating entry. Nothing sent: it cancels everything posted for
- *   the order. Partly sent ("close short"): it takes off only the bags not sent, at the
- *   order rate (the amount comes from planCancel in order-rules.ts).
+ * - Each DISPATCH posts one debit (kind "order_debit"): the bags sent x the order's rate at
+ *   that moment (spec 3.3). Approval posts nothing. So a rate change or a cancel only touches
+ *   bags that were never billed, and needs no correcting entry.
  * - Entries are never edited; only new rows are added.
  * - One ledger per retailer. One opening balance per retailer. It may be negative (retailer has advance).
  * - Retailers can see their own ledger (their dues).
@@ -65,61 +61,20 @@ export function orderDebitPaise(bags: number, ratePaise: number | null | undefin
 /** Largest opening balance we accept: ₹100 crore (a typo guard, not a real business limit). */
 export const MAX_OPENING_PAISE = 100 * 1_00_00_000 * 100;
 
-/** The debit entry to post when an order is approved. */
-export function orderDebitEntry(order: {
-  id: string;
-  retailerId: string;
-  bags: number;
-  ratePaise: number | null;
-}): EntryResult {
-  const amount = orderDebitPaise(order.bags, order.ratePaise);
-  if (amount === null) return { ok: false, error: "The order needs bags and a rate before it can be billed." };
+/**
+ * The debit entry for one dispatch: the bags sent x the rate they were sent at.
+ * Linked to the order. One entry per dispatch.
+ */
+export function dispatchEntry(
+  order: { id: string; retailerId: string },
+  bags: number,
+  ratePaise: number | null,
+): EntryResult {
+  const amount = orderDebitPaise(bags, ratePaise);
+  if (amount === null) return { ok: false, error: "The dispatch needs bags and a rate before it can be billed." };
   return {
     ok: true,
-    entry: {
-      retailerId: order.retailerId,
-      kind: "order_debit",
-      amountPaise: amount,
-      orderId: order.id,
-    },
-  };
-}
-
-/**
- * Extra entry when logistics changes the rate for one truck: that truck's bags x
- * (truck rate - order rate). Null when nothing changes or a value is missing.
- */
-export function truckRateChangeEntry(
-  order: { id: string; retailerId: string },
-  truckBags: number,
-  orderRatePaise: number | null,
-  truckRatePaise: number | null,
-): LedgerEntry | null {
-  const oldTotal = orderDebitPaise(truckBags, orderRatePaise);
-  const newTotal = orderDebitPaise(truckBags, truckRatePaise);
-  if (oldTotal === null || newTotal === null || oldTotal === newTotal) return null;
-  return {
-    retailerId: order.retailerId,
-    kind: "adjustment",
-    amountPaise: newTotal - oldTotal,
-    orderId: order.id,
-  };
-}
-
-/**
- * Compensating entry when an order is cancelled or closed short, for the signed amount
- * planCancel worked out. Null when there is nothing to post (zero or not whole paise).
- */
-export function cancelEntry(
-  order: { id: string; retailerId: string },
-  amountPaise: number,
-): LedgerEntry | null {
-  if (!Number.isSafeInteger(amountPaise) || amountPaise === 0) return null;
-  return {
-    retailerId: order.retailerId,
-    kind: "adjustment",
-    amountPaise,
-    orderId: order.id,
+    entry: { retailerId: order.retailerId, kind: "order_debit", amountPaise: amount, orderId: order.id },
   };
 }
 

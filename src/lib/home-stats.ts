@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, isNotNull, notExists, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNotNull, isNull, notExists, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
@@ -10,9 +10,15 @@ import {
   stockMovements,
   walletMovements,
 } from "@/db/schema";
-import { ordersUserMayDispatch } from "@/lib/dispatch-rules";
-import { cashInHandPaise, istDayStart, logisticsCounts, retailersWithDues, totalDuesPaise } from "@/lib/home-rules";
-import { logisticsPeople } from "@/lib/logistics";
+import {
+  cashInHandPaise,
+  isOpenOrderStatus,
+  istDayStart,
+  logisticsCounts,
+  retailersWithDues,
+  totalDuesPaise,
+} from "@/lib/home-rules";
+import { ORDER_STATUSES } from "@/lib/order-rules";
 
 /** Read-only numbers for the home screens. Server-only. */
 
@@ -33,9 +39,15 @@ async function dueRows() {
     .groupBy(ledgerEntries.retailerId);
 }
 
+/** Waiting for accounts: placed with the rate filled (isWaitingApproval in rate-rules). */
+const waitingApproval = and(eq(orders.status, "placed"), isNotNull(orders.ratePaise));
+/** Ready for logistics: approved or partly dispatched. */
+const toDispatch = inArray(orders.status, ["approved", "partly_dispatched"]);
+
 export async function getSalesHome(userId: string, now = new Date()) {
   const [pendingRate, today, dues] = await Promise.all([
-    countOrders(and(eq(orders.salesRepId, userId), eq(orders.status, "placed"))),
+    // "Rate to fill": my shops' placed orders with no rate yet.
+    countOrders(and(eq(orders.salesRepId, userId), eq(orders.status, "placed"), isNull(orders.ratePaise))),
     countOrders(and(eq(orders.salesRepId, userId), gte(orders.createdAt, istDayStart(now)))),
     dueRows(),
   ]);
@@ -63,7 +75,7 @@ async function pendingHandoverPaise() {
 
 export async function getAccountsHome() {
   const [approvals, unverified, cheques, cash] = await Promise.all([
-    countOrders(eq(orders.status, "rate_filled")),
+    countOrders(waitingApproval),
     db
       .select({ c: count() })
       .from(receipts)
@@ -95,22 +107,18 @@ export async function stockByProduct() {
     .orderBy(products.name);
 }
 
-/** Orders waiting for this logistics person: the same ones the dispatch list shows them. */
-export async function getLogisticsHome(user: { id: string; role: string | null | undefined }) {
-  const [open, people, stock] = await Promise.all([
-    db
-      .select({ logisticsId: orders.logisticsId, status: orders.status })
-      .from(orders)
-      .where(inArray(orders.status, ["approved", "assigned", "partly_dispatched"])),
-    logisticsPeople(db),
+/** Orders waiting for logistics: the same ones the dispatch list shows. */
+export async function getLogisticsHome() {
+  const [open, stock] = await Promise.all([
+    db.select({ status: orders.status }).from(orders).where(toDispatch),
     stockByProduct(),
   ]);
-  return { ...logisticsCounts(ordersUserMayDispatch(user, open, people)), stock };
+  return { ...logisticsCounts(open), stock };
 }
 
 export async function getAdminHome(now = new Date()) {
   const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals] = await Promise.all([
+  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable] = await Promise.all([
     countOrders(gte(orders.createdAt, start)),
     db
       .select({ b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
@@ -121,7 +129,8 @@ export async function getAdminHome(now = new Date()) {
     walletSum("collected"),
     walletSum("handover_confirmed"),
     walletSum("reversed"),
-    countOrders(eq(orders.status, "rate_filled")),
+    countOrders(waitingApproval),
+    countOrders(toDispatch),
   ]);
   return {
     todayOrders,
@@ -130,6 +139,7 @@ export async function getAdminHome(now = new Date()) {
     stockBags: stock.reduce((s, p) => s + p.bags, 0),
     cashInHandPaise: cashInHandPaise(collected, confirmed, reversed),
     approvals,
+    toDispatch: dispatchable,
   };
 }
 
@@ -152,7 +162,7 @@ export async function getRetailerHome(userId: string) {
   const [open] = await db
     .select({ c: count() })
     .from(orders)
-    .where(and(eq(orders.retailerId, shop.id), notInArray(orders.status, ["rejected", "delivered", "cancelled"])));
+    .where(and(eq(orders.retailerId, shop.id), inArray(orders.status, ORDER_STATUSES.filter(isOpenOrderStatus))));
   const [bal] = await db
     .select({ p: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
     .from(ledgerEntries)

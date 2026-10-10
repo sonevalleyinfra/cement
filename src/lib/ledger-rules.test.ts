@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   balanceOf,
   canViewLedger,
-  cancelEntry,
+  dispatchEntry,
   duesFrom,
   MAX_OPENING_PAISE,
   openingEntry,
-  orderDebitEntry,
   orderDebitPaise,
-  truckRateChangeEntry,
   sumPaise,
   withRunningBalance,
 } from "./ledger-rules";
@@ -57,56 +55,31 @@ describe("order debit", () => {
     expect(orderDebitPaise(100000, 100000)).toBe(10_000_000_000));
   it("refuses totals JavaScript cannot count exactly", () =>
     expect(orderDebitPaise(1_000_000_000, 100_000_000)).toBeNull());
-  it("builds a debit entry", () => {
-    const r = orderDebitEntry({ id: "o1", retailerId: "r1", bags: 10, ratePaise: 40000 });
-    expect(r).toEqual({
+});
+
+describe("dispatch entry", () => {
+  const o = { id: "o1", retailerId: "r1" };
+  it("bills the bags sent x the rate they were sent at, linked to the order", () => {
+    expect(dispatchEntry(o, 40, 35000)).toEqual({
       ok: true,
-      entry: { retailerId: "r1", kind: "order_debit", amountPaise: 400000, orderId: "o1" },
+      entry: { retailerId: "r1", kind: "order_debit", amountPaise: 1400000, orderId: "o1" },
     });
   });
-  it("fails without a rate", () =>
-    expect(orderDebitEntry({ id: "o1", retailerId: "r1", bags: 10, ratePaise: null }).ok).toBe(false));
-});
-
-describe("truck rate change", () => {
-  const o = { id: "o1", retailerId: "r1" };
-  it("bills only this truck's bags at the difference", () => {
-    // 100 bags ordered at ₹400; this truck takes 30 bags at ₹410.
-    expect(truckRateChangeEntry(o, 30, 40000, 41000)).toEqual({
-      retailerId: "r1",
-      kind: "adjustment",
-      amountPaise: 30000,
-      orderId: "o1",
-    });
-    expect(truckRateChangeEntry(o, 30, 40000, 39000)?.amountPaise).toBe(-30000);
+  it("fails without a rate or bags", () => {
+    expect(dispatchEntry(o, 10, null).ok).toBe(false);
+    expect(dispatchEntry(o, 0, 35000).ok).toBe(false);
   });
-  it("adds nothing when unchanged or a value is missing", () => {
-    expect(truckRateChangeEntry(o, 30, 40000, 40000)).toBeNull();
-    expect(truckRateChangeEntry(o, 30, null, 41000)).toBeNull();
-    expect(truckRateChangeEntry(o, 30, 40000, null)).toBeNull();
-    expect(truckRateChangeEntry(o, 0, 40000, 41000)).toBeNull();
+  it("one entry per dispatch: a rate change only touches later loads", () => {
+    // 100 bags: 40 sent at ₹350, rate changed to ₹360, 60 sent. Nothing else is posted.
+    const a = dispatchEntry(o, 40, 35000);
+    const b = dispatchEntry(o, 60, 36000);
+    if (!a.ok || !b.ok) throw new Error("expected entries");
+    expect(sumPaise([a.entry, b.entry])).toBe(40 * 35000 + 60 * 36000);
   });
-});
-
-describe("cancel entry", () => {
-  const o = { id: "o1", retailerId: "r1" };
-  it("posts the given amount for the order", () => {
-    expect(cancelEntry(o, -2400000)).toEqual({
-      retailerId: "r1",
-      kind: "adjustment",
-      amountPaise: -2400000,
-      orderId: "o1",
-    });
-  });
-  it("posts nothing for zero or a broken amount", () => {
-    expect(cancelEntry(o, 0)).toBeNull();
-    expect(cancelEntry(o, 1.5)).toBeNull();
-    expect(cancelEntry(o, Number.NaN)).toBeNull();
-  });
-  it("a full cancel brings the order back to zero", () => {
-    const posted = [e("r1", 400000, "o1"), e("r1", 10000, "o1")];
-    const entry = cancelEntry(o, -sumPaise(posted));
-    expect(sumPaise([...posted, entry!])).toBe(0);
+  it("a cancelled rest posts nothing: dues = only what was sent", () => {
+    const a = dispatchEntry(o, 40, 35000);
+    if (!a.ok) throw new Error(a.error);
+    expect(sumPaise([a.entry])).toBe(1400000);
   });
 });
 

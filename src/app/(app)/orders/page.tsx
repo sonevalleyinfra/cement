@@ -9,7 +9,7 @@ import { db } from "@/db";
 import { dispatches, orders, products, retailers } from "@/db/schema";
 import { formatINR } from "@/lib/money";
 import { formatDate } from "@/lib/datetime";
-import { canPlaceOrder, canSeePrice, chipLabel, chipStatus, orderListScope } from "@/lib/order-access";
+import { canPlaceOrder, canSeePrice, cancelledNote, chipLabel, chipStatus, orderListScope } from "@/lib/order-access";
 import { isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -45,16 +45,18 @@ export default async function OrdersPage() {
           .orderBy(desc(orders.createdAt))
           .limit(100);
 
-  // Truck loads, so the amount counts each load at its own rate (staff only).
+  // Truck loads: the amount counts each load at its own rate (staff only), and a cancelled
+  // order shows how many bags went out.
   const loads =
-    showPrice && rows.length > 0
+    rows.length > 0
       ? await db
           .select({ orderId: dispatches.orderId, bags: dispatches.bags, ratePaise: dispatches.ratePaise })
           .from(dispatches)
           .where(inArray(dispatches.orderId, rows.map((r) => r.id)))
       : [];
-  const valueOf = (o: (typeof rows)[number]) =>
-    orderValuePaise({ ...o, loads: loads.filter((l) => l.orderId === o.id) });
+  const loadsOf = (id: string) => loads.filter((l) => l.orderId === id);
+  const valueOf = (o: (typeof rows)[number]) => orderValuePaise({ ...o, loads: loadsOf(o.id) });
+  const sentOf = (id: string) => loadsOf(id).reduce((n, l) => n + l.bags, 0);
 
   const canPlace = canPlaceOrder(user.role);
 
@@ -78,6 +80,9 @@ export default async function OrdersPage() {
                       <div className="text-xs text-muted-foreground">
                         {o.product} · {formatDate(o.createdAt)}
                       </div>
+                      {cancelledNote(o.status, o.bags, sentOf(o.id)) && (
+                        <div className="text-xs text-muted-foreground">{cancelledNote(o.status, o.bags, sentOf(o.id))}</div>
+                      )}
                     </div>
                     {showPrice && valueOf(o) !== null && (
                       <div className="tabular text-lg font-semibold">{formatINR(valueOf(o) ?? 0)}</div>

@@ -1,8 +1,6 @@
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { dispatches, orders, products, retailers, user as users } from "@/db/schema";
-import { ordersUserMayDispatch } from "@/lib/dispatch-rules";
-import { logisticsPeople } from "@/lib/logistics";
+import { dispatches, orders, products, retailers } from "@/db/schema";
 import { getBalances } from "@/lib/stock";
 import { rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
@@ -12,15 +10,13 @@ import { DispatchView } from "./dispatch-view";
 export default async function DispatchPage() {
   const { user } = await requireRole(...rolesFor("dispatch"));
 
-  const [rows, balances, people] = await Promise.all([
+  // Every approved or partly dispatched order: any logistics person may send it.
+  const [rows, balances] = await Promise.all([
     db
       .select({
         id: orders.id,
-        logisticsId: orders.logisticsId,
-        assignee: users.name,
         productId: orders.productId,
         bags: orders.bags,
-        ratePaise: orders.ratePaise,
         status: orders.status,
         retailer: retailers.name,
         product: products.name,
@@ -29,12 +25,10 @@ export default async function DispatchPage() {
       .from(orders)
       .innerJoin(retailers, eq(orders.retailerId, retailers.id))
       .innerJoin(products, eq(orders.productId, products.id))
-      .leftJoin(users, eq(orders.logisticsId, users.id))
-      .where(inArray(orders.status, ["approved", "assigned", "partly_dispatched", "dispatched"]))
+      .where(inArray(orders.status, ["approved", "partly_dispatched"]))
       .orderBy(asc(orders.createdAt))
       .limit(100),
     getBalances(),
-    logisticsPeople(db),
   ]);
   // Places with stock history (godown still switched on), godowns first.
   // Trucks are hired, so only the ones holding bags right now are listed.
@@ -54,23 +48,11 @@ export default async function DispatchPage() {
         ]),
     ).values(),
   ];
-  // Only the orders this person may dispatch: their own, unassigned, or orphaned (admin: all).
-  const mine = ordersUserMayDispatch({ id: user.id, role: user.role }, rows, people);
 
   return (
     <DispatchView
       isAdmin={isAdmin(user.role)}
-      orders={mine.map((r) => ({
-        id: r.id,
-        productId: r.productId,
-        retailer: r.retailer,
-        product: r.product,
-        bags: r.bags,
-        sent: r.sent,
-        ratePaise: r.ratePaise,
-        status: r.status,
-        assignee: r.assignee,
-      }))}
+      orders={rows}
       places={places}
       balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
     />

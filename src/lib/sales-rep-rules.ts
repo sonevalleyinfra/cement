@@ -11,7 +11,7 @@
  *   sales, otherwise to nobody (admin can still fill the rate).
  * - When admin changes a shop's sales person, its unfinished orders move to the new one too,
  *   so nothing gets stuck with someone who no longer looks after the shop. Finished orders
- *   (delivered, rejected, cancelled) keep the old name for the record.
+ *   (dispatched, rejected, cancelled) keep the old name for the record.
  */
 import { isFinalStatus, isOrderStatus } from "./order-rules";
 import { hasRole, isAdmin } from "./roles";

@@ -18,15 +18,19 @@ export function NewOrderForm({
   retailers,
   products,
   fixedRetailerId,
+  askRate,
 }: {
   retailers: Retailer[];
   products: Product[];
   fixedRetailerId: string | null;
+  /** Staff type the rate per bag; a retailer never sees it. */
+  askRate: boolean;
 }) {
   const router = useRouter();
   const [retailerId, setRetailerId] = useState<string | null>(fixedRetailerId);
   const [productId, setProductId] = useState<string | null>(products[0]?.id ?? null);
   const [bags, setBags] = useState("");
+  const [rate, setRate] = useState("");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
@@ -45,6 +49,7 @@ export function NewOrderForm({
         retailerId,
         productId,
         bags: Number(bags || 0),
+        rateRupees: askRate ? rate : undefined,
       });
       if (res.ok) router.push("/orders");
       else setError(res.error);
@@ -76,6 +81,19 @@ export function NewOrderForm({
         <span className="ml-2 text-lg font-medium text-muted-foreground">bags</span>
       </div>
       <Keypad value={bags} onChange={setBags} maxLength={6} />
+
+      {askRate && (
+        <label className="flex flex-col gap-1 text-sm font-semibold">
+          Rate per bag (₹)
+          <Input
+            inputMode="numeric"
+            value={rate}
+            onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))}
+            maxLength={5}
+            autoComplete="off"
+          />
+        </label>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       <PinnedAction>

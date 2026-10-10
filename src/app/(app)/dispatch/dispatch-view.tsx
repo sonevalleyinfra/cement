@@ -9,7 +9,7 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { remainingBags } from "@/lib/order-rules";
-import { dispatchOrder, markDelivered } from "./actions";
+import { dispatchOrder } from "./actions";
 
 type OrderRow = {
   id: string;
@@ -18,10 +18,7 @@ type OrderRow = {
   product: string;
   bags: number;
   sent: number;
-  ratePaise: number | null;
   status: string;
-  /** Logistics person on the order (shown to admin). */
-  assignee: string | null;
 };
 /** A stock place (`key` is "godown:<id>" or "vehicle:<id>"); `truck` is its number when the bags are on a truck. */
 type Place = { key: string; name: string; truck: string | null };
@@ -47,8 +44,6 @@ export function DispatchView({
   const [fromPlace, setFromPlace] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
-  const [rate, setRate] = useState("");
-  const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
@@ -60,8 +55,6 @@ export function DispatchView({
     pickPlace(fullest?.key ?? "");
     setDriverName("");
     setDriverPhone("");
-    setRate("");
-    setReason("");
     setError("");
   }
 
@@ -85,21 +78,11 @@ export function DispatchView({
         fromPlace: fromPlace || null,
         driverName,
         driverPhone,
-        newRateRupees: rate,
-        rateReason: reason,
       });
       if (res.ok) {
         setOpen(null);
         router.refresh();
       } else setError(res.error);
-    });
-  }
-
-  function deliver(id: string) {
-    start(async () => {
-      const res = await markDelivered(id);
-      if (res.ok) router.refresh();
-      else setError(res.error);
     });
   }
 
@@ -137,20 +120,13 @@ export function DispatchView({
                     <div className="text-xs text-muted-foreground">
                       {o.product} · <span className="tabular">{o.sent}</span> of{" "}
                       <span className="tabular">{o.bags}</span> bags sent
-                      {isAdmin && <> · {o.assignee ?? "Not assigned"}</>}
                     </div>
                   }
                 />
                 <div className="mt-2">
-                  {left > 0 ? (
-                    <Button className="w-full" onClick={() => openSheet(o)} disabled={places.length === 0}>
-                      Dispatch
-                    </Button>
-                  ) : (
-                    <Button className="w-full" variant="outline" onClick={() => deliver(o.id)} disabled={pending}>
-                      Mark delivered
-                    </Button>
-                  )}
+                  <Button className="w-full" onClick={() => openSheet(o)} disabled={places.length === 0 || left === 0}>
+                    Dispatch
+                  </Button>
                 </div>
               </li>
             );
@@ -204,22 +180,6 @@ export function DispatchView({
                 onChange={(e) => setDriverPhone(e.target.value)}
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold">
-              New rate per bag in ₹ for this truck (only to change it)
-              <Input
-                inputMode="numeric"
-                maxLength={5}
-                value={rate}
-                onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))}
-                placeholder={open.ratePaise !== null ? String(open.ratePaise / 100) : ""}
-              />
-            </label>
-            {rate && (
-              <label className="flex flex-col gap-1 text-sm font-semibold">
-                Reason for the new rate
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} />
-              </label>
-            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button onClick={submit} disabled={pending}>
               Dispatch {bags || 0} bags

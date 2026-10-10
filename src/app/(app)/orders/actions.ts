@@ -1,48 +1,48 @@
 "use server";
 
-import { desc, eq, isNotNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import {
-  dispatches,
-  ledgerEntries,
-  orderEvents,
-  orders,
-  products,
-  retailers,
-} from "@/db/schema";
-import { logisticsCandidates, stepTimes } from "@/lib/dispatch-rules";
+import { dispatches, orderEvents, orders, products, retailers } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { isUuid } from "@/lib/ids";
-import {
-  canCancelOrder,
-  isBagsInRange,
-  resolveOrderRetailer,
-  validatePlaceOrder,
-} from "@/lib/order-access";
-import {
-  approvalStepAssignee,
-  approvalSteps,
-  isOrderStatus,
-  lastRoundRobinAssignee,
-  pickNextAssignee,
-  planCancel,
-} from "@/lib/order-rules";
+import { isBagsInRange, resolveOrderRetailer, validatePlaceOrder } from "@/lib/order-access";
+import { planCancel } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
-import { canDecide, canFillRate, checkRateDigits, checkRejectReason } from "@/lib/rate-rules";
+import {
+  canChangeRate,
+  canDecide,
+  canFillRate,
+  checkRateChange,
+  checkRateDigits,
+  checkRejectReason,
+  RATE_FILLED,
+  rateEditReason,
+  rateOnPlace,
+} from "@/lib/rate-rules";
 import { orderSalesRep } from "@/lib/sales-rep-rules";
-import { postEntry } from "@/lib/ledger";
-import { cancelEntry, orderDebitEntry, sumPaise } from "@/lib/ledger-rules";
-import { logisticsPeople } from "@/lib/logistics";
 import { notify } from "@/lib/notify";
 import { requireRole } from "@/lib/session";
 
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
 
-/** Places an order. Sales, retailer and admin only. */
+function refresh(orderId?: string) {
+  revalidatePath("/orders");
+  if (orderId) revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/approvals");
+  revalidatePath("/dispatch");
+  revalidatePath("/notifications");
+}
+
+/**
+ * Places an order. Sales, retailer and admin only.
+ * Staff type the rate (whole rupees per bag); a retailer never sends one.
+ */
 export async function placeOrder(input: {
   retailerId: string | null;
   productId: string | null;
   bags: number;
+  rateRupees?: string;
   notes?: string;
 }): Promise<PlaceOrderResult> {
   const session = await requireRole(...rolesFor("placeOrder"));
@@ -58,6 +58,8 @@ export async function placeOrder(input: {
   }
 
   const me = session.user;
+  const rate = rateOnPlace(me.role, input.rateRupees);
+  if (!rate.ok) return rate;
 
   const [own] = await db
     .select({ id: retailers.id })
@@ -86,6 +88,7 @@ export async function placeOrder(input: {
         retailerId,
         productId: product.id,
         bags: input.bags,
+        ratePaise: rate.ratePaise,
         status: "placed",
         notes: String(input.notes ?? "").trim().slice(0, 500),
         placedBy: me.id,
@@ -100,181 +103,149 @@ export async function placeOrder(input: {
     });
     await notify(tx, order.id, "placed", me.id);
   });
-  revalidatePath("/orders");
-  revalidatePath("/notifications");
+  refresh();
   return { ok: true };
 }
 
-const CHANGED = "This order was just changed. Refresh.";
-
 /**
- * Moves an order one step inside a transaction, with a history row. Fails (nothing saved)
- * if it changed meanwhile. Approving also bills the retailer and picks logistics.
+ * The order's sales person (or admin) fills or changes the rate while the order is placed.
+ * `rupeeDigits` = whole rupees per bag. The status stays "placed"; accounts can now approve it.
  */
-async function moveOrder(
-  orderId: string,
-  from: "placed" | "rate_filled",
-  to: "rate_filled" | "approved" | "rejected",
-  actorId: string,
-  reason: string,
-  extra: { ratePaise?: number } = {},
-): Promise<PlaceOrderResult> {
+export async function fillRate(orderId: string, rupeeDigits: string): Promise<PlaceOrderResult> {
+  const { user: me } = await requireRole(...rolesFor("fillRate"));
+  if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
+  const rate = checkRateDigits(String(rupeeDigits ?? ""));
+  if (!rate.ok) return rate;
+
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
-    // Lock the order and check everything before writing, so a refusal saves nothing.
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
-    if (!o || o.status !== from) return { ok: false, error: CHANGED };
-
-    if (to !== "approved") {
-      await tx.update(orders).set({ status: to, updatedAt: new Date(), ...extra }).where(eq(orders.id, orderId));
-      await tx.insert(orderEvents).values({ orderId, fromStatus: from, toStatus: to, actorId, reason });
-      await notify(tx, orderId, to, actorId);
-      return { ok: true };
-    }
-
-    // The money side: approval bills the retailer (bags x rate) in their ledger.
-    const debit = orderDebitEntry(o);
-    if (!debit.ok) return { ok: false, error: debit.error };
-
-    // Round robin (spec 4.5). Approvals take turns: this lock (held until the transaction ends)
-    // makes a second approval wait here, so two approvals never pick the same "next" person.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('order_approval_round_robin'))`);
-    const people = await logisticsPeople(tx);
-    // "Last" = whoever round robin picked most recently (dispatch take-overs do not count).
-    const recent = await tx
-      .select({ assigneeId: orderEvents.assigneeId, createdAt: orderEvents.createdAt })
-      .from(orderEvents)
-      .where(isNotNull(orderEvents.assigneeId))
-      .orderBy(desc(orderEvents.createdAt))
-      .limit(1);
-    const logisticsId = pickNextAssignee(logisticsCandidates(people), lastRoundRobinAssignee(recent));
-    const next = approvalSteps(logisticsId);
-
-    // Save the assignee before notify: "assigned" goes to orders.logistics_id.
-    await tx
-      .update(orders)
-      .set({ status: next.status, logisticsId, updatedAt: new Date() })
-      .where(eq(orders.id, orderId));
-    await postEntry(tx, debit.entry, actorId, "Order approved");
-    // Times taken after the lock, so the next approval's rows always come later.
-    const times = stepTimes(new Date(), next.steps.length);
-    let fromStatus: string = from;
-    for (const [i, step] of next.steps.entries()) {
-      await tx.insert(orderEvents).values({
-        createdAt: times[i],
-        orderId,
-        fromStatus,
-        toStatus: step,
-        actorId,
-        reason: step === "approved" ? reason : "",
-        assigneeId: approvalStepAssignee(step, logisticsId),
-      });
-      fromStatus = step;
-    }
-    await notify(tx, orderId, "approved", actorId);
-    if (logisticsId) await notify(tx, orderId, "assigned", actorId);
+    if (!o) return { ok: false, error: "Order not found." };
+    if (!canFillRate(me.role, me.id, o)) return { ok: false, error: "You cannot fill the rate on this order." };
+    if (o.ratePaise === rate.paise) return { ok: true };
+    await tx.update(orders).set({ ratePaise: rate.paise, updatedAt: new Date() }).where(eq(orders.id, orderId));
+    // The history row never shows the price (retailers read the history).
+    await tx.insert(orderEvents).values({
+      orderId,
+      fromStatus: o.status,
+      toStatus: o.status,
+      actorId: me.id,
+      reason: RATE_FILLED,
+    });
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "order",
+      entityId: orderId,
+      action: "fill_rate",
+      details: { ratePaise: { before: o.ratePaise, after: rate.paise } },
+    });
+    await notify(tx, orderId, "rate_filled", me.id);
     return { ok: true };
   });
-  revalidatePath("/orders");
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/approvals");
-  revalidatePath("/dispatch");
-  revalidatePath("/notifications");
+  if (result.ok) refresh(orderId);
   return result;
 }
 
-async function loadOrder(orderId: string) {
-  if (!isUuid(orderId)) return null;
-  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-  return order ?? null;
+/**
+ * Logistics or admin changes the rate of an approved or partly dispatched order (reason needed).
+ * It is billed on the bags dispatched from now on; bags already sent keep their rate.
+ */
+export async function changeRate(orderId: string, rupeeDigits: string, reason: string): Promise<PlaceOrderResult> {
+  const { user: me } = await requireRole(...rolesFor("changeRate"));
+  if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
+
+  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
+    const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
+    if (!o) return { ok: false, error: "Order not found." };
+    if (!canChangeRate(me.role, o.status)) return { ok: false, error: "The rate of this order cannot be changed." };
+    const check = checkRateChange(o.ratePaise, rupeeDigits, reason);
+    if (!check.ok) return check;
+    await tx.update(orders).set({ ratePaise: check.ratePaise, updatedAt: new Date() }).where(eq(orders.id, orderId));
+    await tx.insert(orderEvents).values({
+      orderId,
+      fromStatus: o.status,
+      toStatus: o.status,
+      actorId: me.id,
+      reason: rateEditReason(check.reason),
+    });
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "order",
+      entityId: orderId,
+      action: "change_rate",
+      details: { ratePaise: { before: o.ratePaise, after: check.ratePaise }, reason: check.reason },
+    });
+    await notify(tx, orderId, "rate_edited", me.id);
+    return { ok: true };
+  });
+  if (result.ok) refresh(orderId);
+  return result;
 }
 
-/** Sales (the assigned rep) or admin enters the rate per bag (whole rupees). Moves to pending approval. */
-export async function fillRate(orderId: string, rupeeDigits: string): Promise<PlaceOrderResult> {
-  const session = await requireRole(...rolesFor("fillRate"));
-  const order = await loadOrder(orderId);
-  if (!order) return { ok: false, error: "Order not found." };
-  const me = session.user;
-  if (!canFillRate(me.role, me.id, order.salesRepId, order.status)) {
-    return { ok: false, error: "You cannot fill the rate on this order." };
-  }
-  const rate = checkRateDigits(String(rupeeDigits ?? ""));
-  if (!rate.ok) return rate;
-  return moveOrder(order.id, "placed", "rate_filled", me.id, "", { ratePaise: rate.paise });
-}
-
-/** Accounts or admin approves or rejects (reason needed to reject). */
+/** Accounts or admin approves or rejects a placed order with a rate (reason needed to reject). Nothing is billed here. */
 export async function decideOrder(
   orderId: string,
   decision: "approved" | "rejected",
   reason?: string,
 ): Promise<PlaceOrderResult> {
-  const session = await requireRole(...rolesFor("decideOrder"));
+  const { user: me } = await requireRole(...rolesFor("decideOrder"));
   // Only these two outcomes: anything else (e.g. "cancelled") must go through cancelOrder.
   if (decision !== "approved" && decision !== "rejected") return { ok: false, error: "Pick approve or reject." };
-  const order = await loadOrder(orderId);
-  if (!order) return { ok: false, error: "Order not found." };
-  if (!canDecide(session.user.role, order.status, decision)) {
-    return { ok: false, error: "This order is not waiting for approval." };
-  }
+  if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
   let why = "";
   if (decision === "rejected") {
     const check = checkRejectReason(typeof reason === "string" ? reason : "");
     if (!check.ok) return check;
     why = check.reason;
   }
-  return moveOrder(order.id, "rate_filled", decision, session.user.id, why);
+
+  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
+    const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
+    if (!o) return { ok: false, error: "Order not found." };
+    const allowed = canDecide(me.role, o, decision);
+    if (!allowed.ok) return allowed;
+    await tx.update(orders).set({ status: decision, updatedAt: new Date() }).where(eq(orders.id, orderId));
+    await tx.insert(orderEvents).values({ orderId, fromStatus: o.status, toStatus: decision, actorId: me.id, reason: why });
+    await notify(tx, orderId, decision, me.id);
+    return { ok: true };
+  });
+  if (result.ok) refresh(orderId);
+  return result;
 }
 
 /**
- * Cancels an order (rules in planCancel). No stock moves. Before any bag is sent the whole
- * bill is reversed. Once some bags went out it "closes short": the order becomes dispatched
- * and only the bags not sent come off the bill.
+ * Admin cancels the bags not dispatched yet (rules in planCancel). No stock moves and nothing is
+ * posted: only dispatched bags were billed, and they stay billed.
  */
 export async function cancelOrder(orderId: string, reason: string): Promise<PlaceOrderResult> {
-  const { user: me } = await requireRole("sales", "accounts");
-  const order = await loadOrder(orderId);
-  if (!order) return { ok: false, error: "Order not found." };
+  const { user: me } = await requireRole(...rolesFor("cancelOrder"));
+  if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
-    const [locked] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
-    if (!locked || !isOrderStatus(locked.status)) return { ok: false, error: "Order not found." };
-    if (!canCancelOrder(me.role, me.id, locked)) {
-      return { ok: false, error: "You cannot cancel this order." };
-    }
-    const sent = await tx.select({ bags: dispatches.bags }).from(dispatches).where(eq(dispatches.orderId, orderId));
-    const posted = await tx
-      .select({ amountPaise: ledgerEntries.amountPaise })
-      .from(ledgerEntries)
-      .where(eq(ledgerEntries.orderId, orderId));
+    const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
+    if (!o) return { ok: false, error: "Order not found." };
+    const [sent] = await tx
+      .select({ bags: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
+      .from(dispatches)
+      .where(eq(dispatches.orderId, orderId));
     const plan = planCancel({
-      status: locked.status,
-      orderedBags: locked.bags,
-      dispatchedBags: sent.reduce((n, d) => n + d.bags, 0),
-      ratePaise: locked.ratePaise,
-      postedNetPaise: sumPaise(posted),
+      role: me.role,
+      status: o.status,
+      orderedBags: o.bags,
+      dispatchedBags: sent?.bags ?? 0,
       reason: String(reason ?? ""),
     });
     if (!plan.ok) return plan;
-    const closedShort = plan.closedShortBags !== null;
-
-    const entry = cancelEntry(locked, plan.ledgerPaise);
-    if (entry) await postEntry(tx, entry, me.id, closedShort ? "Order closed short" : "Order cancelled");
-    await tx.update(orders).set({ status: plan.newStatus, updatedAt: new Date() }).where(eq(orders.id, orderId));
+    await tx.update(orders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(orderEvents).values({
       orderId,
-      fromStatus: locked.status,
-      toStatus: plan.newStatus,
+      fromStatus: o.status,
+      toStatus: "cancelled",
       actorId: me.id,
-      reason: plan.historyReason,
+      reason: plan.reason,
     });
-    await notify(tx, orderId, "cancelled", me.id, plan.closedShortBags ?? undefined);
+    await notify(tx, orderId, "cancelled", me.id, plan.cancelledBags);
     return { ok: true };
   });
-  if (result.ok) {
-    revalidatePath("/orders");
-    revalidatePath(`/orders/${orderId}`);
-    revalidatePath("/dispatch");
-    revalidatePath("/notifications");
-  }
+  if (result.ok) refresh(orderId);
   return result;
 }

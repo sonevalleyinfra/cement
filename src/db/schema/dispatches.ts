@@ -9,8 +9,8 @@ import { vehicles } from "./vehicles";
  * One truck load of an order (an order can be split across several dispatches).
  * The bags come from a godown (`fromGodownId`) or a truck (`fromVehicleId`): exactly one is set.
  * `vehicleId` is the truck that carries them to the shop.
- * `ratePaise` is only set when logistics changed the rate at this dispatch;
- * the reason for the change is saved on the order history.
+ * `ratePaise` is the rate per bag this load was billed at (the order's rate at that moment).
+ * Each dispatch posts one ledger debit: bags x ratePaise.
  */
 export const dispatches = pgTable(
   "dispatches",
@@ -27,7 +27,7 @@ export const dispatches = pgTable(
     driverPhone: text("driver_phone").default("").notNull(),
     fromGodownId: uuid("from_godown_id").references(() => godowns.id),
     fromVehicleId: uuid("from_vehicle_id").references(() => vehicles.id),
-    ratePaise: integer("rate_paise"),
+    ratePaise: integer("rate_paise").notNull(),
     dispatchedBy: text("dispatched_by")
       .notNull()
       .references(() => user.id),
@@ -36,7 +36,7 @@ export const dispatches = pgTable(
   (t) => [
     index("dispatches_order_idx").on(t.orderId),
     check("dispatches_bags_positive", sql`${t.bags} > 0`),
-    check("dispatches_rate_positive", sql`${t.ratePaise} is null or ${t.ratePaise} > 0`),
+    check("dispatches_rate_positive", sql`${t.ratePaise} > 0`),
     check("dispatches_one_source", sql`num_nonnulls(${t.fromGodownId}, ${t.fromVehicleId}) = 1`),
   ],
 );

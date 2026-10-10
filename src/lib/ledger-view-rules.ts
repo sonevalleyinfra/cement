@@ -1,7 +1,7 @@
-import { isRetailerOnly } from "./order-access";
+import { isRetailerOnly } from "./roles";
 
 /**
- * Ledger notes are written for staff (for example "Rate edited: <reason>").
+ * Ledger notes are written for staff (for example "40 bags in BR01AB1234").
  * A shop owner who only has the retailer role sees the kind, date, amount and balance only.
  */
 export function showLedgerNotes(role: string | null | undefined): boolean {
@@ -10,7 +10,7 @@ export function showLedgerNotes(role: string | null | undefined): boolean {
 
 const KIND_LABELS: Record<string, string> = {
   opening: "Opening balance",
-  order_debit: "Order",
+  order_debit: "Dispatch",
   receipt_credit: "Payment",
   adjustment: "Adjustment",
 };

@@ -1,10 +1,10 @@
 /**
  * Who may open which screen or run which action, in one place.
  * Plain data + plain functions (no database) so the whole matrix is tested.
- * Source: docs/idea.md section 3 (Roles).
+ * Source: docs/idea.md section 1 (Roles).
  *
  * Admin passes every check (same as hasAnyRole in roles.ts).
- * Finer rules (assigned rep, own shop, own wallet, order status) live next to the
+ * Finer rules (the shop's sales person, own shop, own wallet, order status) live next to the
  * feature (order-rules, rate-rules, wallet-rules...) and are checked on top of this.
  *
  * Choices where the spec is silent:
@@ -18,13 +18,17 @@ import { hasAnyRole, type Role } from "./roles";
 const STAFF: readonly Role[] = ["sales", "accounts", "logistics"];
 
 export const ACTION_ROLES = {
-  // Orders
+  // Orders (docs/idea.md section 3)
   placeOrder: ["sales", "retailer"],
+  /** Fill or change the rate while the order is placed (only the shop's own sales person). */
   fillRate: ["sales"],
   decideOrder: ["accounts"],
   viewApprovals: ["accounts"],
   dispatch: ["logistics"],
-  markDelivered: ["logistics"],
+  /** Change the rate after approval, with a reason. */
+  changeRate: ["logistics"],
+  /** Cancel the bags not dispatched yet, with a reason. */
+  cancelOrder: ["admin"],
   // Money
   recordReceipt: STAFF,
   viewReceipts: STAFF,
@@ -46,7 +50,7 @@ export const ACTION_ROLES = {
   /** Pick (or change) the sales person who looks after a retailer. */
   assignSalesRep: ["admin"],
   manageUsers: ["admin"],
-  /** Brands, types, grades and products (the drop-down lists). */
+  /** Types, grades and products (the drop-down lists). The brand is always Prism. */
   manageCatalogue: ["admin"],
 } as const satisfies Record<string, readonly Role[]>;
 

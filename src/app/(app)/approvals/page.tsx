@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
 import { db } from "@/db";
 import { orders, products, retailers } from "@/db/schema";
@@ -23,7 +23,8 @@ export default async function ApprovalsPage() {
       .from(orders)
       .innerJoin(retailers, eq(orders.retailerId, retailers.id))
       .innerJoin(products, eq(orders.productId, products.id))
-      .where(eq(orders.status, "rate_filled"))
+      // Waiting for accounts: placed, with the rate filled (see isWaitingApproval in rate-rules).
+      .where(and(eq(orders.status, "placed"), isNotNull(orders.ratePaise)))
       .orderBy(asc(orders.createdAt))
       .limit(100),
     getAllBalances(),

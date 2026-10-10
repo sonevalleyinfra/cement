@@ -60,8 +60,10 @@ describe("cash and open orders", () => {
   });
   it("open orders exclude finished ones", () => {
     expect(isOpenOrderStatus("placed")).toBe(true);
+    expect(isOpenOrderStatus("approved")).toBe(true);
     expect(isOpenOrderStatus("partly_dispatched")).toBe(true);
-    expect(isOpenOrderStatus("delivered")).toBe(false);
+    expect(isOpenOrderStatus("dispatched")).toBe(false);
+    expect(isOpenOrderStatus("nonsense")).toBe(false);
     expect(isOpenOrderStatus("cancelled")).toBe(false);
     expect(isOpenOrderStatus("rejected")).toBe(false);
   });
@@ -69,10 +71,10 @@ describe("cash and open orders", () => {
 
 describe("logisticsCounts", () => {
   it("counts ready and partly sent orders, ignores the rest", () => {
-    const orders = ["approved", "assigned", "partly_dispatched", "dispatched", "placed", "assigned"].map((status) => ({
+    const orders = ["approved", "approved", "partly_dispatched", "dispatched", "placed", "cancelled"].map((status) => ({
       status,
     }));
-    expect(logisticsCounts(orders)).toEqual({ ready: 3, partly: 1 });
+    expect(logisticsCounts(orders)).toEqual({ ready: 2, partly: 1 });
     expect(logisticsCounts([])).toEqual({ ready: 0, partly: 0 });
   });
 });

@@ -75,11 +75,11 @@ describe("checkSalesRepPick", () => {
 
 describe("movesWithSalesRep", () => {
   it("moves unfinished orders", () => {
-    for (const s of ["placed", "rate_filled", "approved", "assigned", "partly_dispatched", "dispatched"]) {
+    for (const s of ["placed", "approved", "partly_dispatched"]) {
       expect(movesWithSalesRep(s)).toBe(true);
     }
   });
   it("keeps finished orders with the old sales person", () => {
-    for (const s of ["delivered", "rejected", "cancelled", "nonsense"]) expect(movesWithSalesRep(s)).toBe(false);
+    for (const s of ["dispatched", "rejected", "cancelled", "nonsense"]) expect(movesWithSalesRep(s)).toBe(false);
   });
 });

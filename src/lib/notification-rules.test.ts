@@ -16,48 +16,58 @@ const people: OrderPeople = {
   salesRepId: "rep",
   placedBy: "placer",
   retailerUserId: "shop",
-  logisticsId: "log",
+  rateMissing: false,
   accountsIds: ["acc1", "acc2"],
+  logisticsIds: ["log1", "log2"],
   adminIds: ["adm"],
 };
 
-describe("recipientIds", () => {
-  it("placed: accounts and sales rep", () => {
-    expect(recipientIds("placed", people, "placer")).toEqual(["acc1", "acc2", "rep"]);
+describe("recipientIds (spec section 8)", () => {
+  it("placed with a rate (by sales): accounts only", () => {
+    expect(recipientIds("placed", people, "rep")).toEqual(["acc1", "acc2"]);
+    expect(recipientIds("placed", { ...people, placedBy: "adm" }, "adm")).toEqual(["acc1", "acc2"]);
   });
-  it("rate filled: accounts, admin, sales rep (not the person who filled it)", () => {
-    expect(recipientIds("rate_filled", people, "rep")).toEqual(["acc1", "acc2", "adm"]);
+  it("placed without a rate (by the retailer): the shop's sales person and accounts", () => {
+    expect(recipientIds("placed", { ...people, placedBy: "shop", rateMissing: true }, "shop")).toEqual([
+      "rep",
+      "acc1",
+      "acc2",
+    ]);
   });
-  it("approved and rejected: placer, sales rep, admin", () => {
-    expect(recipientIds("approved", people, "acc1")).toEqual(["placer", "rep", "adm"]);
-    expect(recipientIds("rejected", people, "acc1")).toEqual(["placer", "rep", "adm"]);
+  it("rate filled: accounts and the sales person (not the person who filled it)", () => {
+    expect(recipientIds("rate_filled", people, "rep")).toEqual(["acc1", "acc2"]);
+    expect(recipientIds("rate_filled", people, "adm")).toEqual(["acc1", "acc2", "rep"]);
   });
-  it("dispatched and delivered: retailer and sales rep", () => {
-    expect(recipientIds("dispatched", people, "log")).toEqual(["shop", "rep"]);
-    expect(recipientIds("delivered", people, "log")).toEqual(["shop", "rep"]);
+  it("approved: placer, sales person and every logistics person", () => {
+    expect(recipientIds("approved", people, "acc1")).toEqual(["placer", "rep", "log1", "log2"]);
   });
-  it("cancelled: placer, sales rep, admin", () => {
-    expect(recipientIds("cancelled", people, "x")).toEqual(["placer", "rep", "adm"]);
+  it("rejected: placer and sales person", () => {
+    expect(recipientIds("rejected", people, "acc1")).toEqual(["placer", "rep"]);
   });
-  it("assigned: only the logistics member picked for the order", () => {
-    expect(recipientIds("assigned", people, "acc1")).toEqual(["log"]);
-    expect(recipientIds("assigned", { ...people, logisticsId: null }, "acc1")).toEqual([]);
+  it("dispatched: retailer and sales person", () => {
+    expect(recipientIds("dispatched", people, "log1")).toEqual(["shop", "rep"]);
   });
-  it("assigned: logistics is not told when they assigned it to themselves", () => {
-    expect(recipientIds("assigned", people, "log")).toEqual([]);
+  it("rate changed: accounts, sales person, admin (not the person who changed it)", () => {
+    expect(recipientIds("rate_edited", people, "log1")).toEqual(["acc1", "acc2", "rep", "adm"]);
+    expect(recipientIds("rate_edited", people, "adm")).toEqual(["acc1", "acc2", "rep"]);
   });
-  it("rate edited: accounts, admin, sales rep (not the editor)", () => {
-    expect(recipientIds("rate_edited", people, "log")).toEqual(["acc1", "acc2", "adm", "rep"]);
-    expect(recipientIds("rate_edited", people, "acc2")).toEqual(["acc1", "adm", "rep"]);
+  it("cancelled: placer, sales person and the shop", () => {
+    expect(recipientIds("cancelled", people, "adm")).toEqual(["placer", "rep", "shop"]);
   });
-  it("rate edited: someone with two roles is told once", () => {
+  it("someone with two roles is told once", () => {
     const p = { ...people, accountsIds: ["rep", "acc1"], adminIds: ["acc1"] };
     expect(recipientIds("rate_edited", p, null)).toEqual(["rep", "acc1"]);
   });
   it("skips empty people and duplicates", () => {
-    const p = { ...people, salesRepId: "placer", retailerUserId: null, adminIds: ["placer"] };
+    const p = { ...people, salesRepId: "placer", retailerUserId: null, logisticsIds: [] };
     expect(recipientIds("approved", p, null)).toEqual(["placer"]);
     expect(recipientIds("dispatched", p, null)).toEqual(["placer"]);
+  });
+  it("a retailer is never told about the rate", () => {
+    const shopPlaced = { ...people, placedBy: "shop" };
+    for (const event of ["rate_filled", "rate_edited"] as const) {
+      expect(recipientIds(event, shopPlaced, null)).not.toContain("shop");
+    }
   });
 });
 
@@ -65,28 +75,21 @@ describe("buildNotifications", () => {
   const base = { retailerName: "Raju Stores", bags: 1, people, actorId: "placer" };
   it("names the event and has no price", () => {
     const list = buildNotifications({ ...base, event: "placed" });
-    expect(list).toHaveLength(3);
+    expect(list).toHaveLength(2);
     expect(list[0].title).toBe("New order");
     expect(list[0].body).toBe("Raju Stores, 1 bag placed.");
-    for (const n of buildNotifications({ ...base, event: "rate_filled", bags: 5 })) {
-      expect(n.body).not.toMatch(/₹|rs\.?\s?\d/i);
-    }
   });
   it("writes a message for every event", () => {
-    for (const event of ["approved", "rejected", "dispatched", "delivered", "cancelled"] as const) {
-      const list = buildNotifications({ ...base, event, bags: 10 });
+    for (const event of NOTIFICATION_EVENTS) {
+      const list = buildNotifications({ ...base, event, bags: 10, actorId: null });
       expect(list.length).toBeGreaterThan(0);
       expect(list[0].type).toBe(event);
     }
   });
-  it("assigned and rate edited messages, without a price", () => {
-    const a = buildNotifications({ ...base, event: "assigned", bags: 10 });
-    expect(a).toEqual([
-      { userId: "log", type: "assigned", title: "Order assigned", body: "Raju Stores, 10 bags to dispatch.", link: null },
-    ]);
-    const r = buildNotifications({ ...base, event: "rate_edited", bags: 10, actorId: "log" });
-    expect(r.map((n) => n.userId)).toEqual(["acc1", "acc2", "adm", "rep"]);
-    expect(r[0].title).toBe("Rate edited");
+  it("rate changed message, without a price", () => {
+    const r = buildNotifications({ ...base, event: "rate_edited", bags: 10, actorId: "log1" });
+    expect(r.map((n) => n.userId)).toEqual(["acc1", "acc2", "rep", "adm"]);
+    expect(r[0].title).toBe("Rate changed");
     expect(r[0].body).toBe("Raju Stores, 10 bags.");
   });
   it("no order message ever contains a price or money sign", () => {
