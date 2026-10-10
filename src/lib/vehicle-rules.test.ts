@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isDuplicateVehicle,
-  isValidVehicleNumber,
-  normalizeVehicleNumber,
-  validateVehicle,
-} from "./vehicle-rules";
+import { checkTruck, checkTruckNumber, isValidVehicleNumber, normalizeVehicleNumber, truckNote } from "./vehicle-rules";
 
 describe("normalizeVehicleNumber", () => {
   it("uppercases and removes spaces and dashes", () => {
@@ -20,34 +15,44 @@ describe("isValidVehicleNumber", () => {
   it("rejects lowercase (normalise first)", () => expect(isValidVehicleNumber("br01ab1234")).toBe(false));
 });
 
-describe("validateVehicle", () => {
+describe("checkTruckNumber", () => {
+  it("cleans the number", () => expect(checkTruckNumber(" br 01-ab 1234")).toEqual({ ok: true, number: "BR01AB1234" }));
+  it("asks for a missing number", () => expect(checkTruckNumber("  ")).toEqual({ ok: false, error: "Enter the truck number." }));
+  it("refuses a bad number", () => {
+    expect(checkTruckNumber("123")).toEqual({ ok: false, error: "Enter a valid truck number, e.g. BR01AB1234." });
+  });
+});
+
+describe("checkTruck", () => {
   it("normalises everything", () => {
-    expect(validateVehicle({ number: "br 01 ab 1234", driverName: "  Ravi  Kumar ", driverPhone: "+91 98765 43210" })).toEqual({
+    expect(checkTruck({ number: "br 01 ab 1234", driverName: "  Ravi  Kumar ", driverPhone: "+91 98765 43210" })).toEqual({
       ok: true,
       value: { number: "BR01AB1234", driverName: "Ravi Kumar", driverPhone: "9876543210" },
     });
   });
   it("allows an empty driver phone", () => {
-    const r = validateVehicle({ number: "BR01AB1234", driverName: "Ravi" });
-    expect(r).toEqual({ ok: true, value: { number: "BR01AB1234", driverName: "Ravi", driverPhone: "" } });
+    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi" })).toEqual({
+      ok: true,
+      value: { number: "BR01AB1234", driverName: "Ravi", driverPhone: "" },
+    });
   });
-  it("rejects a bad number, name and phone", () => {
-    const r = validateVehicle({ number: "123", driverName: " ", driverPhone: "12345" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.errors.number).toBeDefined();
-      expect(r.errors.driverName).toBeDefined();
-      expect(r.errors.driverPhone).toBeDefined();
-    }
+  it("needs a valid number, a driver name and a valid phone when given", () => {
+    expect(checkTruck({ number: "123", driverName: "Ravi" }).ok).toBe(false);
+    expect(checkTruck({ number: "BR01AB1234", driverName: " " })).toEqual({ ok: false, error: "Enter the driver name." });
+    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi", driverPhone: "12345" })).toEqual({
+      ok: false,
+      error: "Enter a 10-digit driver mobile.",
+    });
   });
 });
 
-describe("isDuplicateVehicle", () => {
-  const list = [
-    { id: "1", number: "BR01AB1234" },
-    { id: "2", number: "BR02CD5678" },
-  ];
-  it("finds a clash", () => expect(isDuplicateVehicle("BR01AB1234", list)).toBe(true));
-  it("ignores itself when editing", () => expect(isDuplicateVehicle("BR01AB1234", list, "1")).toBe(false));
-  it("passes a new number", () => expect(isDuplicateVehicle("BR03EF9999", list)).toBe(false));
+describe("truckNote", () => {
+  const truck = { number: "BR01AB1234", driverName: "Ravi", driverPhone: "9876543210" };
+  it("joins the note, truck and driver", () => {
+    expect(truckNote(" Supplier X ", truck)).toBe("Supplier X · Truck BR01AB1234 · Ravi 9876543210");
+  });
+  it("leaves out empty parts", () => {
+    expect(truckNote("", { ...truck, driverPhone: "" })).toBe("Truck BR01AB1234 · Ravi");
+  });
+  it("stays within 200 characters", () => expect(truckNote("x".repeat(300), truck)).toHaveLength(200));
 });

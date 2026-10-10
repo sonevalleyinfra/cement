@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
 import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
-import { dispatches, orders, products, retailers, user as users, vehicles } from "@/db/schema";
+import { dispatches, orders, products, retailers, user as users } from "@/db/schema";
 import { ordersUserMayDispatch } from "@/lib/dispatch-rules";
 import { firmPeople } from "@/lib/logistics";
 import { getBalances } from "@/lib/stock";
@@ -17,7 +17,7 @@ export default async function DispatchPage() {
   if (selection.mode === "all") return <EmptyState title="Pick one firm to dispatch" />;
   const firmId = selection.firmId;
 
-  const [rows, vehicleRows, balances, people] = await Promise.all([
+  const [rows, balances, people] = await Promise.all([
     db
       .select({
         id: orders.id,
@@ -44,17 +44,25 @@ export default async function DispatchPage() {
       )
       .orderBy(asc(orders.createdAt))
       .limit(100),
-    db.select().from(vehicles).orderBy(asc(vehicles.number)),
     getBalances(firmId),
     firmPeople(db, [firmId]),
   ]);
-  // Places this firm has stock history at (godown or vehicle still switched on), godowns first.
+  // Places this firm has stock history at (godown still switched on), godowns first.
+  // Trucks are hired, so only the ones holding this firm's bags right now are listed.
+  const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.locationId));
   const locations = [
     ...new Map(
       balances
-        .filter((b) => b.placeActive)
+        .filter((b) => b.placeActive && (b.kind !== "vehicle" || loadedTrucks.has(b.locationId)))
         .sort((a, b) => a.kind.localeCompare(b.kind) || a.locationName.localeCompare(b.locationName))
-        .map((b) => [b.locationId, { id: b.locationId, name: b.kind === "vehicle" ? `Vehicle ${b.locationName}` : b.locationName }]),
+        .map((b) => [
+          b.locationId,
+          {
+            id: b.locationId,
+            name: b.kind === "vehicle" ? `Truck ${b.locationName}` : b.locationName,
+            truck: b.kind === "vehicle" ? b.locationName : null,
+          },
+        ]),
     ).values(),
   ];
   // Only the orders this person may dispatch: their own, unassigned, or orphaned (admin: all).
@@ -76,9 +84,6 @@ export default async function DispatchPage() {
         assignee: r.assignee,
       }))}
       locations={locations}
-      vehicles={vehicleRows
-        .filter((v) => v.active)
-        .map((v) => ({ id: v.id, number: v.number, driverName: v.driverName, driverPhone: v.driverPhone }))}
       balances={balances.map((b) => ({ productId: b.productId, locationId: b.locationId, bags: b.bags }))}
       userId={user.id}
     />

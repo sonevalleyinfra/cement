@@ -5,7 +5,7 @@ Checked in the browser pane at a 375px phone width, using `pnpm seed:demo` accou
 ## What passed
 - Sales: place order (firm A), fill rate (total shown), send for approval.
 - Accounts: approvals list shows total and dues; approve bills the ledger (checked in the database and the ledger screen).
-- Logistics: over-dispatch refused ("Only 16 bags are left"); partial dispatch 20 then 16; driver auto-fills from the vehicle; stock fell 500 -> 464.
+- Logistics: over-dispatch refused ("Only 16 bags are left"); partial dispatch 20 then 16; truck number fills in when taking bags from a truck; stock fell 500 -> 464.
 - Receipt: Rs 15,000 cash auto-split Firm A 12,600 + Firm B 2,400; ledger Firm A 0, Firm B 4,600 as expected.
 - Cancel a partly dispatched order (40 bags out): stock rose back 410 -> 450, ledger got a compensating entry.
 - Firm switcher changes the order list; the firm name in the header follows.
@@ -47,5 +47,5 @@ Same setup. Accounts, logistics, sales, retailer and admin demo accounts were ea
 ## Notes
 - Cancelling or rejecting needs the browser confirm box; the browser pane cannot show it (confirm was auto-accepted in the test script).
 - Admin is not told about approvals of retailer orders beyond the spec list; the retailer gets no "approved" notification (spec: dispatched and delivered only).
-- Retailers and vehicles lists still show Edit/Turn off in "All firms"; they are not tied to one firm.
+- Retailers list still shows Edit/Turn off in "All firms"; they are not tied to one firm.
 - Not walked: stock purchase/adjust saving, delivered notification, email sending (log only).

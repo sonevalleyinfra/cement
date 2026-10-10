@@ -1,6 +1,7 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { godowns, stockLocations, stockMovements, vehicles } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { placeKey, type PlaceKind, type PlaceRef } from "@/lib/stock-rules";
 
 /** An open database transaction. */
@@ -8,18 +9,25 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export type Place = { key: string; kind: PlaceKind; id: string; name: string; active: boolean };
 
-/** Every godown (by name) and vehicle (by number), shared by all firms. Server-only. */
-export async function getPlaces({ activeOnly }: { activeOnly: boolean }): Promise<Place[]> {
+/**
+ * Places for a firm's stock forms: every active godown (by name), then the trucks (by number)
+ * that hold this firm's bags right now. Trucks are hired and typed each time, so empty ones are left out. Server-only.
+ */
+export async function getPlaces({ firmId }: { firmId: string }): Promise<Place[]> {
   const [g, v] = await Promise.all([
     db
       .select({ id: godowns.id, name: godowns.name, active: godowns.active })
       .from(godowns)
-      .where(activeOnly ? eq(godowns.active, true) : undefined)
+      .where(eq(godowns.active, true))
       .orderBy(asc(godowns.name)),
     db
       .select({ id: vehicles.id, name: vehicles.number, active: vehicles.active })
       .from(vehicles)
-      .where(activeOnly ? eq(vehicles.active, true) : undefined)
+      .innerJoin(stockLocations, and(eq(stockLocations.vehicleId, vehicles.id), eq(stockLocations.firmId, firmId)))
+      .innerJoin(stockMovements, eq(stockMovements.locationId, stockLocations.id))
+      .where(eq(vehicles.active, true))
+      .groupBy(vehicles.id, vehicles.number, vehicles.active)
+      .having(gt(sql`sum(${stockMovements.bags})`, 0))
       .orderBy(asc(vehicles.number)),
   ]);
   return [
@@ -83,4 +91,26 @@ export async function bagsAtPlace(tx: Tx, place: PlaceRef): Promise<number> {
     .innerJoin(stockLocations, eq(stockLocations.id, stockMovements.locationId))
     .where(place.kind === "godown" ? eq(stockLocations.godownId, place.id) : eq(stockLocations.vehicleId, place.id));
   return row?.bags ?? 0;
+}
+
+/**
+ * The truck with this (already cleaned) number: made the first time it is typed, switched back on
+ * if it was off. Nothing else is kept on it; the driver goes with each purchase or dispatch.
+ */
+export async function truckByNumber(tx: Tx, number: string, actorId: string): Promise<string> {
+  const [made] = await tx
+    .insert(vehicles)
+    .values({ number, driverName: "" })
+    .onConflictDoNothing({ target: vehicles.number })
+    .returning({ id: vehicles.id });
+  if (made) {
+    await writeAudit(tx, { actorId, entity: "vehicle", entityId: made.id, action: "create", details: { number } });
+    return made.id;
+  }
+  const [row] = await tx
+    .update(vehicles)
+    .set({ active: true, updatedAt: new Date() })
+    .where(eq(vehicles.number, number))
+    .returning({ id: vehicles.id });
+  return row.id;
 }

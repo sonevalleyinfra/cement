@@ -11,6 +11,7 @@ import {
   adjustmentMovement,
   canSetOpening,
   inMovement,
+  NEW_TRUCK_PLACE,
   parsePlaceKey,
   placeKey,
   transferMovements,
@@ -20,7 +21,8 @@ import {
 import { isUuid } from "@/lib/ids";
 import { can, rolesFor } from "@/lib/permissions";
 import { requireFirm, requireRole, writeBlock } from "@/lib/session";
-import { getLocation, type Tx } from "@/lib/stock-places";
+import { getLocation, truckByNumber, type Tx } from "@/lib/stock-places";
+import { checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
 
 export type StockResult = { ok: true } | { ok: false; error: string };
 
@@ -31,8 +33,13 @@ export type StockInput = {
   channel: string;
   typeId: string;
   gradeId: string;
-  /** The godown or vehicle, as a place key from the drop-down ("godown:<id>" / "vehicle:<id>"). */
+  /**
+   * The godown or truck, as a place key from the drop-down ("godown:<id>" / "vehicle:<id>"),
+   * or `NEW_TRUCK_PLACE` for a purchase into a truck typed in `truck`.
+   */
   place: string;
+  /** The quick truck form, used when `place` is `NEW_TRUCK_PLACE`. */
+  truck?: { number: string; driverName: string; driverPhone: string };
   bags: number;
   /** Supplier / note for a purchase, or the reason for an adjustment. */
   note: string;
@@ -59,10 +66,10 @@ async function inTransaction(fn: (tx: Tx) => Promise<StockResult>): Promise<Stoc
   }
 }
 
-/** Admin only, and one firm picked (not "All firms"). */
-async function prepare(input: StockInput) {
+/** Admin only, and one firm picked (not "All firms"). Only a purchase may use a typed-in truck. */
+async function prepare(input: StockInput, allowNewTruck = false) {
   const session = await requireRole(...rolesFor("manageStock"));
-  const place = parsePlaceKey(input.place);
+  const place = allowNewTruck && input.place === NEW_TRUCK_PLACE ? NEW_TRUCK_PLACE : parsePlaceKey(input.place);
   const partsOk =
     isUuid(input.brandId) && isProductChannel(input.channel) && isUuid(input.typeId) && isUuid(input.gradeId);
   if (!isUuid(input.firmId) || !partsOk || !place) {
@@ -152,14 +159,27 @@ function done(): StockResult {
 }
 
 export async function recordPurchase(input: StockInput): Promise<StockResult> {
-  const p = await prepare(input);
+  const p = await prepare(input, true);
   if (p.error !== null) return { ok: false, error: p.error };
-  const note = String(input.note ?? "").trim().slice(0, 200);
+  let note = String(input.note ?? "").trim().slice(0, 200);
+  let truck: Truck | null = null;
+  if (p.place === NEW_TRUCK_PLACE) {
+    const check = checkTruck(input.truck ?? {});
+    if (!check.ok) return check;
+    truck = check.value;
+    note = truckNote(note, truck);
+  }
+  const chosen = p.place;
   const allowCreate = can(p.session.user.role, "manageCatalogue");
   const res = await inTransaction(async (tx) => {
     const picked = await pickProduct(tx, input, p.session.user.id, allowCreate);
     if (!picked.ok) return picked;
-    const loc = await locate(tx, input.firmId, picked.productId, p.place);
+    // A typed-in truck is found (or made) by its number, so the same truck always lands on the same stock row.
+    const place: PlaceRef =
+      chosen === NEW_TRUCK_PLACE
+        ? { kind: "vehicle", id: await truckByNumber(tx, truck?.number ?? "", p.session.user.id) }
+        : chosen;
+    const loc = await locate(tx, input.firmId, picked.productId, place);
     if (!loc.ok) return loc;
     const key = { firmId: input.firmId, productId: picked.productId, locationId: loc.locationId };
     const m = inMovement("purchase", key, input.bags, note);
@@ -173,10 +193,12 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
 export async function recordOpening(input: StockInput): Promise<StockResult> {
   const p = await prepare(input);
   if (p.error !== null) return { ok: false, error: p.error };
+  const place = p.place;
+  if (place === NEW_TRUCK_PLACE) return { ok: false, error: "Pick a product and a place." };
   const res = await inTransaction(async (tx) => {
     const picked = await pickProduct(tx, input, p.session.user.id, false);
     if (!picked.ok) return picked;
-    const loc = await locate(tx, input.firmId, picked.productId, p.place);
+    const loc = await locate(tx, input.firmId, picked.productId, place);
     if (!loc.ok) return loc;
     const key = { firmId: input.firmId, productId: picked.productId, locationId: loc.locationId };
     const m = inMovement("opening", key, input.bags, "Opening stock");
@@ -193,10 +215,12 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
 export async function recordAdjustment(input: StockInput): Promise<StockResult> {
   const p = await prepare(input);
   if (p.error !== null) return { ok: false, error: p.error };
+  const place = p.place;
+  if (place === NEW_TRUCK_PLACE) return { ok: false, error: "Pick a product and a place." };
   const res = await inTransaction(async (tx) => {
     const picked = await pickProduct(tx, input, p.session.user.id, false);
     if (!picked.ok) return picked;
-    const loc = await locate(tx, input.firmId, picked.productId, p.place);
+    const loc = await locate(tx, input.firmId, picked.productId, place);
     if (!loc.ok) return loc;
     const key = { firmId: input.firmId, productId: picked.productId, locationId: loc.locationId };
     const m = adjustmentMovement(

@@ -24,6 +24,7 @@ import { canUserTransition, isOrderStatus } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
 import { checkRateDigits } from "@/lib/rate-rules";
 import { requireFirm, requireRole, writeBlock } from "@/lib/session";
+import { truckByNumber } from "@/lib/stock-places";
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
 
@@ -38,7 +39,8 @@ function refresh(orderId: string) {
 export async function dispatchOrder(input: {
   orderId: string;
   bags: number;
-  vehicleId: string | null;
+  /** The truck number as typed; trucks are hired, so none are saved. */
+  vehicleNumber: string;
   locationId: string | null;
   driverName: string;
   driverPhone: string;
@@ -50,7 +52,7 @@ export async function dispatchOrder(input: {
   const blocked = await writeBlock();
   if (blocked) return { ok: false, error: blocked };
   if (!isUuid(input.orderId)) return { ok: false, error: "Order not found." };
-  if ((input.vehicleId && !isUuid(input.vehicleId)) || (input.locationId && !isUuid(input.locationId))) {
+  if (input.locationId && !isUuid(input.locationId)) {
     return { ok: false, error: "Refresh the page and try again." };
   }
   const [found] = await db
@@ -64,7 +66,7 @@ export async function dispatchOrder(input: {
 
   const fields = checkDispatchFields({
     readOnlyMode: selection.readOnly || selection.firmId !== found.firmId,
-    vehicleId: input.vehicleId,
+    vehicleNumber: String(input.vehicleNumber ?? ""),
     locationId: input.locationId,
     driverName: String(input.driverName ?? ""),
     driverPhone: String(input.driverPhone ?? ""),
@@ -104,12 +106,8 @@ export async function dispatchOrder(input: {
     if (!loc || loc.firmId !== order.firmId || !loc.active) {
       return { ok: false, error: "Pick a stock place of this firm." };
     }
-    const [vehicle] = await tx
-      .select()
-      .from(vehicles)
-      .where(eq(vehicles.id, input.vehicleId as string))
-      .limit(1);
-    if (!vehicle || !vehicle.active) return { ok: false, error: "Pick an active vehicle." };
+    // The truck is found (or made) by its number; the driver goes on this dispatch only.
+    const vehicle = { id: await truckByNumber(tx, fields.vehicleNumber, me.id), number: fields.vehicleNumber };
 
     const [sent] = await tx
       .select({ bags: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
@@ -159,7 +157,7 @@ export async function dispatchOrder(input: {
       type: "dispatch",
       bags: -input.bags,
       orderId: order.id,
-      reason: `Vehicle ${vehicle.number}`,
+      reason: `Truck ${vehicle.number}`,
       actorId: me.id,
     });
 

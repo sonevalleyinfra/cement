@@ -45,8 +45,6 @@ export const ACTION_ROLES = {
   linkRetailerLogin: ["admin"],
   /** Pick (or change) the sales person who looks after a retailer. */
   assignSalesRep: ["admin"],
-  viewVehicles: STAFF,
-  editVehicles: ["logistics"],
   manageUsers: ["admin"],
   manageFirms: ["admin"],
   /** Brands, types, grades and products (the drop-down lists). */

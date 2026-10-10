@@ -192,7 +192,7 @@ describe("placeGroups", () => {
       ]),
     ).toEqual([
       { label: "Godowns", options: [{ value: "godown:2", label: "Main Godown" }] },
-      { label: "Vehicles", options: [{ value: "vehicle:1", label: "BR01AB1234" }] },
+      { label: "Trucks", options: [{ value: "vehicle:1", label: "BR01AB1234" }] },
     ]);
     expect(placeGroups([{ key: "godown:2", kind: "godown", name: "Main Godown" }])).toHaveLength(1);
   });

@@ -15,7 +15,7 @@ import {
   findProductByParts,
   PRODUCT_CHANNELS,
 } from "@/lib/catalogue-rules";
-import { placeGroups } from "@/lib/stock-rules";
+import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
 import { ListEditorSheet } from "./list-editor-sheet";
 
@@ -61,10 +61,13 @@ export function StockForm({
   const [typePick, setTypePick] = useState(lists.grades.find((g) => g.id === first?.gradeId)?.typeId ?? "");
   const [gradePick, setGradePick] = useState(first?.gradeId ?? "");
   const [editing, setEditing] = useState<CatalogueList | null>(null);
-  const [place, setPlace] = useState(places[0]?.key ?? "");
+  const [place, setPlace] = useState(places[0]?.key ?? (mode === "purchase" ? NEW_TRUCK_PLACE : ""));
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
+  // The quick truck form (purchase into a hired truck): nothing about the truck is saved for next time.
+  const [truck, setTruck] = useState({ number: "", driverName: "", driverPhone: "" });
+  const newTruck = mode === "purchase" && place === NEW_TRUCK_PLACE;
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   // A pick that left the list (removed, or a grade of another type) falls back to the first one.
@@ -89,6 +92,7 @@ export function StockForm({
       typeId,
       gradeId,
       place,
+      truck: newTruck ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
       note,
     };
@@ -99,12 +103,13 @@ export function StockForm({
         setMessage({ ok: true, text: copy[mode].done });
         setDigits("");
         setNote("");
+        setTruck({ number: "", driverName: "", driverPhone: "" });
         router.refresh();
       } else setMessage({ ok: false, text: res.error });
     });
   }
 
-  if (places.length === 0 || (products.length === 0 && !canManageCatalogue)) {
+  if ((places.length === 0 && mode !== "purchase") || (products.length === 0 && !canManageCatalogue)) {
     return (
       <p className="rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
         {places.length === 0 ? "Add a godown or vehicle first." : "Add a product first."}
@@ -163,8 +168,46 @@ export function StockForm({
           {mode === "purchase" ? "New product" : "Not in catalogue"}
         </p>
       )}
-      <SelectField label="Place" value={place} onChange={setPlace} groups={placeGroups(places)} />
-      <p className="text-sm text-muted-foreground">In stock here now: {current} bags</p>
+      <SelectField
+        label="Place"
+        value={place}
+        onChange={setPlace}
+        placeholder={places.length === 0 && mode !== "purchase" ? "Add a godown first" : undefined}
+        groups={[
+          ...placeGroups(places),
+          ...(mode === "purchase" ? [{ label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] }] : []),
+        ]}
+      />
+      {newTruck ? (
+        <div className="animate-in-up flex flex-col gap-2 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
+          <Input
+            value={truck.number}
+            onChange={(e) => setTruck({ ...truck, number: e.target.value.toUpperCase() })}
+            placeholder="Truck number, e.g. BR01AB1234"
+            aria-label="Truck number"
+            autoCapitalize="characters"
+            autoComplete="off"
+            maxLength={14}
+          />
+          <Input
+            value={truck.driverName}
+            onChange={(e) => setTruck({ ...truck, driverName: e.target.value })}
+            placeholder="Driver name"
+            aria-label="Driver name"
+            maxLength={80}
+          />
+          <Input
+            value={truck.driverPhone}
+            onChange={(e) => setTruck({ ...truck, driverPhone: e.target.value })}
+            placeholder="Driver phone (optional)"
+            aria-label="Driver phone"
+            inputMode="tel"
+            maxLength={14}
+          />
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">In stock here now: {current} bags</p>
+      )}
       {mode === "adjust" && (
         <div className="grid grid-cols-2 gap-2">
           <Button type="button" variant={minus ? "outline" : "default"} onClick={() => setMinus(false)}>
@@ -201,6 +244,8 @@ export function StockForm({
             pending ||
             bags === 0 ||
             !picked ||
+            !place ||
+            (newTruck && (!truck.number.trim() || !truck.driverName.trim())) ||
             (missing && mode !== "purchase") ||
             (mode === "adjust" && !note.trim())
           }
