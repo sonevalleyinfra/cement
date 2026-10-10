@@ -3,12 +3,16 @@
  * Plain functions (no database, no request) so they are easy to test.
  * Source: docs/idea.md section 3 (Order flow).
  *
+ * Owner's rule: "sales put the rate, logistics and admin can alter it".
  * - Staff placing an order type the rate. A retailer never sees or sends one: the order waits
  *   for the shop's sales person to fill it.
- * - While "placed": the order's sales person (or admin) fills or changes the rate. No reason needed.
+ * - Sales only fill a rate that is empty: on the order they place, or on a retailer's order for
+ *   their own shop (admin may fill an empty rate too). No reason needed.
+ * - Once a rate is set, only logistics or admin change it, at any step before the order is fully
+ *   dispatched (placed, approved, partly dispatched), always with a reason. It is logged as a rate
+ *   change (old → new) and accounts, the shop's sales person and admin are told. The new rate is
+ *   billed on the bags dispatched from then on.
  * - Accounts approve only once the rate is filled. Rejecting needs a reason.
- * - After approval (approved / partly dispatched): logistics or admin change the rate, with a
- *   reason. The new rate is billed on the bags dispatched from then on.
  * - History rows about the rate never contain the price (retailers read the history).
  *
  * Choices where the spec is silent:
@@ -51,24 +55,31 @@ export function rateOnPlace(
   return rate.ok ? { ok: true, ratePaise: rate.paise } : rate;
 }
 
-/** While "placed": the order's sales person or admin may fill or change the rate. */
+/** A placed order with no rate yet: its sales person (or admin) may fill it. A rate that is set is never "filled" again. */
 export function canFillRate(
   role: string | null | undefined,
   userId: string,
-  order: { status: string; salesRepId: string | null },
+  order: { status: string; salesRepId: string | null; ratePaise: number | null },
 ): boolean {
-  if (order.status !== "placed") return false;
+  if (order.status !== "placed" || order.ratePaise !== null) return false;
   return isAdmin(role) || (hasRole(role, "sales") && order.salesRepId === userId);
 }
 
-/** After approval (approved / partly dispatched): logistics or admin may change the rate. */
-export function canChangeRate(role: string | null | undefined, status: string): boolean {
-  return (status === "approved" || status === "partly_dispatched") && hasAnyRole(role, ["logistics"]);
+/** Steps at which a set rate may still change: anything before fully dispatched (and not rejected or cancelled). */
+const RATE_CHANGE_STATUSES: readonly string[] = ["placed", "approved", "partly_dispatched"];
+
+/** A rate that is set: logistics or admin may change it (with a reason) until the order is fully dispatched. */
+export function canChangeRate(
+  role: string | null | undefined,
+  order: { status: string; ratePaise: number | null },
+): boolean {
+  if (order.ratePaise === null || !RATE_CHANGE_STATUSES.includes(order.status)) return false;
+  return hasAnyRole(role, ["logistics"]);
 }
 
 export type RateChangeCheck = { ok: true; ratePaise: number; reason: string } | { ok: false; error: string };
 
-/** A rate change after approval: a valid, different rate and a reason. */
+/** A rate change: a valid, different rate and a reason. */
 export function checkRateChange(
   currentRatePaise: number | null,
   rupeeDigits: string | null | undefined,
@@ -124,7 +135,7 @@ export function checkRejectReason(reason: string | null | undefined): RejectChec
 export const RATE_FILLED = "Rate filled";
 const RATE_EDIT_PREFIX = "Rate edited:";
 
-/** History reason for a rate change after approval. */
+/** History reason for a rate change (a rate that was already set). */
 export function rateEditReason(reason: string): string {
   return `${RATE_EDIT_PREFIX} ${reason}`;
 }

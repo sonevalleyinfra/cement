@@ -128,8 +128,9 @@ export async function placeOrder(input: {
 }
 
 /**
- * The order's sales person (or admin) fills or changes the rate while the order is placed.
+ * The order's sales person (or admin) fills the empty rate of a placed order (rate-rules.ts).
  * `rupeeDigits` = whole rupees per bag. The status stays "placed"; accounts can now approve it.
+ * A rate that is set is changed with changeRate (logistics or admin, reason needed).
  */
 export async function fillRate(orderId: string, rupeeDigits: string): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("fillRate"));
@@ -140,8 +141,8 @@ export async function fillRate(orderId: string, rupeeDigits: string): Promise<Pl
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!o) return { ok: false, error: "Order not found." };
+    if (o.status === "placed" && o.ratePaise !== null) return { ok: false, error: "The rate is already filled." };
     if (!canFillRate(me.role, me.id, o)) return { ok: false, error: "You cannot fill the rate on this order." };
-    if (o.ratePaise === rate.paise) return { ok: true };
     await tx.update(orders).set({ ratePaise: rate.paise, updatedAt: new Date() }).where(eq(orders.id, orderId));
     // The reason never shows the price (retailers read the history); the rates are kept for staff only.
     await tx.insert(orderEvents).values({
@@ -168,8 +169,9 @@ export async function fillRate(orderId: string, rupeeDigits: string): Promise<Pl
 }
 
 /**
- * Logistics or admin changes the rate of an approved or partly dispatched order (reason needed).
- * It is billed on the bags dispatched from now on; bags already sent keep their rate.
+ * Logistics or admin changes a rate that is set, at any step before the order is fully dispatched
+ * (reason needed; rate-rules.ts). It is billed on the bags dispatched from now on; bags already sent
+ * keep their rate. Accounts, the shop's sales person and admin are told (old → new rate and why).
  */
 export async function changeRate(orderId: string, rupeeDigits: string, reason: string): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("changeRate"));
@@ -178,7 +180,7 @@ export async function changeRate(orderId: string, rupeeDigits: string, reason: s
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!o) return { ok: false, error: "Order not found." };
-    if (!canChangeRate(me.role, o.status)) return { ok: false, error: "The rate of this order cannot be changed." };
+    if (!canChangeRate(me.role, o)) return { ok: false, error: "The rate of this order cannot be changed." };
     const check = checkRateChange(o.ratePaise, rupeeDigits, reason);
     if (!check.ok) return check;
     await tx.update(orders).set({ ratePaise: check.ratePaise, updatedAt: new Date() }).where(eq(orders.id, orderId));

@@ -34,13 +34,16 @@ Placed → Approved / Rejected → Partly dispatched → Dispatched        (Canc
 1. **Placed** by a retailer or sales. Each shop has one sales person (admin sets it when adding the shop); the order
    goes to them. An older shop with no sales person: admins are told about its new orders.
    Sales placing the order types the rate; a retailer order waits for its sales person to fill the rate.
+   Sales only ever fill an **empty** rate (their own new order, or a retailer's order for their shop).
 2. **Approve / reject**: accounts, only when the rate is filled. Screen shows order total and the retailer's current dues.
    Reject needs a reason. If the rate changed after the screen was opened, the decision is refused ("check again").
 3. **Dispatch**: any logistics person (or admin), from a godown or truck that holds enough bags. Truck no., driver,
    phone, bags. Several dispatches per order allowed until all bags are out. Each dispatch posts bags × rate to the
    retailer's dues.
-4. **Rate change**: logistics or admin, reason required, logged (staff see old → new rate and the reason in the
-   history and the notification). Applies to bags not yet dispatched.
+4. **Rate change**: once a rate is set, only logistics or admin can change it, at any step before the order is fully
+   dispatched (placed, approved or partly dispatched). Reason required; logged as a rate change (staff see ₹old → ₹new
+   and the reason in the history and the notification); accounts, the shop's sales person and admin are told.
+   Applies to bags not yet dispatched.
 5. **Cancel**: admin, reason required. Only the bags not yet dispatched are cancelled.
 
 No round robin, no separate "rate filled" / "assigned" / "delivered" steps.

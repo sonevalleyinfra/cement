@@ -98,7 +98,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const cancelled = cancelledNote(o.status, o.bags, sentBags);
 
   const canCancel = canCancelOrder(user.role, o.status);
-  const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o.status) ? "change" : null;
+  const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o) ? "change" : null;
 
   return (
     <div className="flex flex-col gap-4">

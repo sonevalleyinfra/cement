@@ -14,9 +14,9 @@ import { changeRate, fillRate } from "../actions";
 
 /**
  * Rate per bag in whole rupees (typed with the shared `RateField`).
- * `mode="fill"`: the sales person (or admin) fills / changes it while the order is placed.
- * `mode="change"`: logistics or admin change it after approval, with a reason; it applies to the
- * `bags` not dispatched yet.
+ * `mode="fill"`: the sales person (or admin) fills an empty rate while the order is placed.
+ * `mode="change"`: logistics or admin change a rate that is set (any step before fully dispatched),
+ * with a reason; it applies to the `bags` not dispatched yet.
  */
 export function RateForm({
   orderId,

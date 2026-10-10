@@ -22,12 +22,12 @@ const STAFF: readonly Role[] = ["sales", "accounts", "logistics"];
 export const ACTION_ROLES = {
   // Orders (docs/idea.md section 3)
   placeOrder: ["sales", "retailer"],
-  /** Fill or change the rate while the order is placed (only the shop's own sales person). */
+  /** Fill an empty rate on a placed order (only the shop's own sales person). */
   fillRate: ["sales"],
   decideOrder: ["accounts"],
   viewApprovals: ["accounts"],
   dispatch: ["logistics"],
-  /** Change the rate after approval, with a reason. */
+  /** Change a rate that is set, before the order is fully dispatched, with a reason. */
   changeRate: ["logistics"],
   /** Cancel the bags not dispatched yet, with a reason. */
   cancelOrder: ["admin"],

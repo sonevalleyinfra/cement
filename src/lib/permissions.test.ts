@@ -54,6 +54,13 @@ describe("permission matrix", () => {
     });
   }
 
+  it("rates: sales fill (an empty rate), only logistics and admin change a set rate", () => {
+    expect(can("sales", "fillRate")).toBe(true);
+    expect(can("sales", "changeRate")).toBe(false);
+    expect(can("logistics", "changeRate")).toBe(true);
+    expect(can("logistics", "fillRate")).toBe(false);
+  });
+
   it("a person with two roles gets both sets", () => {
     expect(can("sales,logistics", "dispatch")).toBe(true);
     expect(can("sales,logistics", "fillRate")).toBe(true);

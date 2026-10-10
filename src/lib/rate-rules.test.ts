@@ -55,14 +55,18 @@ describe("rateOnPlace", () => {
   });
 });
 
-describe("canFillRate", () => {
-  const placed = { status: "placed", salesRepId: "u1" };
-  it("the order's sales person can fill or change it while placed", () => {
+describe("canFillRate (sales only fill an empty rate)", () => {
+  const placed = { status: "placed", salesRepId: "u1", ratePaise: null };
+  it("the order's sales person can fill an empty rate while placed", () => {
     expect(canFillRate("sales", "u1", placed)).toBe(true);
   });
+  it("once a rate is set, nobody fills it again (sales cannot change it)", () => {
+    expect(canFillRate("sales", "u1", { ...placed, ratePaise: 35000 })).toBe(false);
+    expect(canFillRate("admin", "a", { ...placed, ratePaise: 35000 })).toBe(false);
+  });
   it("another sales person cannot", () => expect(canFillRate("sales", "u2", placed)).toBe(false));
-  it("admin can", () => expect(canFillRate("admin", "a", placed)).toBe(true));
-  it("not after approval (that is a rate change with a reason)", () => {
+  it("admin can fill an empty rate", () => expect(canFillRate("admin", "a", placed)).toBe(true));
+  it("not after approval or once finished", () => {
     for (const status of ["approved", "partly_dispatched", "dispatched", "rejected", "cancelled"]) {
       expect(canFillRate("sales", "u1", { ...placed, status })).toBe(false);
       expect(canFillRate("admin", "a", { ...placed, status })).toBe(false);
@@ -72,26 +76,32 @@ describe("canFillRate", () => {
     for (const role of ["accounts", "logistics", "retailer"]) expect(canFillRate(role, "u1", placed)).toBe(false);
   });
   it("nobody but admin when the shop has no sales person", () => {
-    expect(canFillRate("sales", "u1", { status: "placed", salesRepId: null })).toBe(false);
-    expect(canFillRate("admin", "a", { status: "placed", salesRepId: null })).toBe(true);
+    expect(canFillRate("sales", "u1", { ...placed, salesRepId: null })).toBe(false);
+    expect(canFillRate("admin", "a", { ...placed, salesRepId: null })).toBe(true);
   });
 });
 
-describe("canChangeRate", () => {
-  it("logistics and admin, after approval", () => {
-    for (const status of ["approved", "partly_dispatched"]) {
-      expect(canChangeRate("logistics", status)).toBe(true);
-      expect(canChangeRate("admin", status)).toBe(true);
+describe("canChangeRate (logistics and admin alter a set rate)", () => {
+  it("logistics and admin, at any step before fully dispatched", () => {
+    for (const status of ["placed", "approved", "partly_dispatched"]) {
+      expect(canChangeRate("logistics", { status, ratePaise: 35000 })).toBe(true);
+      expect(canChangeRate("admin", { status, ratePaise: 35000 })).toBe(true);
     }
   });
-  it("not before approval or once finished", () => {
-    for (const status of ["placed", "rejected", "dispatched", "cancelled"]) {
-      expect(canChangeRate("logistics", status)).toBe(false);
-      expect(canChangeRate("admin", status)).toBe(false);
+  it("not once fully dispatched, rejected or cancelled", () => {
+    for (const status of ["rejected", "dispatched", "cancelled"]) {
+      expect(canChangeRate("logistics", { status, ratePaise: 35000 })).toBe(false);
+      expect(canChangeRate("admin", { status, ratePaise: 35000 })).toBe(false);
     }
   });
-  it("sales, accounts and retailers cannot", () => {
-    for (const role of ["sales", "accounts", "retailer", null]) expect(canChangeRate(role, "approved")).toBe(false);
+  it("an empty rate is filled, not changed", () => {
+    expect(canChangeRate("logistics", { status: "placed", ratePaise: null })).toBe(false);
+    expect(canChangeRate("admin", { status: "placed", ratePaise: null })).toBe(false);
+  });
+  it("sales (even the order's own), accounts and retailers cannot", () => {
+    for (const role of ["sales", "accounts", "retailer", null]) {
+      for (const status of ["placed", "approved"]) expect(canChangeRate(role, { status, ratePaise: 35000 })).toBe(false);
+    }
   });
 });
 
