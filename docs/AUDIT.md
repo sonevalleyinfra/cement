@@ -1,5 +1,8 @@
 # Permission and correctness audit (task 16a, Oct 2026)
 
+> Historical record, written before firms were removed (spec v1.0: one business, no firms).
+> Anything below about firms, firm access or split receipts no longer applies.
+
 Checked every page (`src/app/**/page.tsx`) and every exported server action
 (`"use server"` files) against `docs/idea.md` (roles) and `CLAUDE.md` (rules).
 

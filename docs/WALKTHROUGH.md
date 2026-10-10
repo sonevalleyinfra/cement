@@ -1,5 +1,8 @@
 # Phase 1 walkthrough (phone width, local dev app, demo data)
 
+> Historical record, written before firms were removed (spec v1.0: one business, no firms).
+> Anything below about firms, firm access or split receipts no longer applies.
+
 Checked in the browser pane at a 375px phone width, using `pnpm seed:demo` accounts.
 
 ## What passed
