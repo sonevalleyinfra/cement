@@ -93,6 +93,7 @@ async function main() {
         place,
         phone: `900000000${i + 1}`,
         userId: i === 0 ? ids.retailer : null,
+        salesRepId: ids.sales,
       })),
     )
     .returning();

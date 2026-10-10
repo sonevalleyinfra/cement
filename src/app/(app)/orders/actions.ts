@@ -1,6 +1,6 @@
 "use server";
 
-import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import {
@@ -11,8 +11,6 @@ import {
   orders,
   products,
   retailers,
-  user,
-  userFirms,
 } from "@/db/schema";
 import { logisticsCandidates, stepTimes } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
@@ -31,8 +29,8 @@ import {
   planCancel,
 } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
-import { hasRole } from "@/lib/roles";
 import { canDecide, canFillRate, checkRateDigits, checkRejectReason } from "@/lib/rate-rules";
+import { orderSalesRep } from "@/lib/sales-rep-rules";
 import { postEntry } from "@/lib/ledger";
 import { cancelEntry, orderDebitEntry, sumPaise } from "@/lib/ledger-rules";
 import { firmPeople } from "@/lib/logistics";
@@ -85,23 +83,8 @@ export async function placeOrder(input: {
     .limit(1);
   if (!product || !product.active) return { ok: false, error: "Product not available." };
 
-  // Round robin among active sales people who work on this firm.
-  const people = await db
-    .select({ id: user.id, role: user.role, banned: user.banned })
-    .from(userFirms)
-    .innerJoin(user, eq(userFirms.userId, user.id))
-    .where(eq(userFirms.firmId, firm.id))
-    .orderBy(asc(user.id));
-  const candidates = people
-    .filter((p) => hasRole(p.role, "sales"))
-    .map((p) => ({ id: p.id, active: !p.banned }));
-  const [last] = await db
-    .select({ salesRepId: orders.salesRepId })
-    .from(orders)
-    .where(eq(orders.firmId, firm.id))
-    .orderBy(desc(orders.createdAt))
-    .limit(1);
-  const salesRepId = pickNextAssignee(candidates, last?.salesRepId);
+  // The shop's own sales person gets the order (rules in sales-rep-rules.ts).
+  const salesRepId = orderSalesRep(retailer.salesRepId, { id: me.id, role: me.role });
 
   await db.transaction(async (tx) => {
     const [order] = await tx
