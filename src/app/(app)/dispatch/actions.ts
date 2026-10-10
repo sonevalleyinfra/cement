@@ -4,6 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, stockMovements } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { checkDispatchFields, planDispatch } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
@@ -73,7 +74,7 @@ export async function dispatchOrder(input: {
     const vehicleId = await truckByNumber(tx, fields.vehicleNumber, me.id);
     const load = `${input.bags} bags in ${fields.vehicleNumber}`;
     const source = placeColumns(placeKey(fields.from));
-    await tx.insert(dispatches).values({
+    const [sentRow] = await tx.insert(dispatches).values({
       orderId: order.id,
       bags: input.bags,
       vehicleId,
@@ -83,7 +84,7 @@ export async function dispatchOrder(input: {
       fromVehicleId: source.vehicleId,
       ratePaise: plan.ratePaise,
       dispatchedBy: me.id,
-    });
+    }).returning({ id: dispatches.id });
     await tx.insert(stockMovements).values({
       productId: order.productId,
       ...source,
@@ -94,6 +95,22 @@ export async function dispatchOrder(input: {
       actorId: me.id,
     });
     await postEntry(tx, debit.entry, me.id, load);
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "dispatch",
+      entityId: sentRow.id,
+      action: "create",
+      details: {
+        orderId: order.id,
+        retailerId: order.retailerId,
+        productId: order.productId,
+        bags: input.bags,
+        ratePaise: plan.ratePaise,
+        amountPaise: debit.entry.amountPaise,
+        from: placeKey(fields.from),
+        truck: fields.vehicleNumber,
+      },
+    });
     await tx.insert(orderEvents).values({
       orderId: order.id,
       fromStatus: order.status,

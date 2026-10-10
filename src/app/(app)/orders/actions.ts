@@ -24,6 +24,11 @@ import { orderSalesRep } from "@/lib/sales-rep-rules";
 import { notify } from "@/lib/notify";
 import { requireRole } from "@/lib/session";
 
+/** The facts every order row in the activity log carries. */
+function orderFacts(o: { retailerId: string; productId: string; bags: number }) {
+  return { retailerId: o.retailerId, productId: o.productId, bags: o.bags };
+}
+
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
 
 function refresh(orderId?: string) {
@@ -101,6 +106,13 @@ export async function placeOrder(input: {
       toStatus: "placed",
       actorId: me.id,
     });
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "order",
+      entityId: order.id,
+      action: "place",
+      details: { retailerId, productId: product.id, bags: input.bags, ratePaise: rate.ratePaise },
+    });
     await notify(tx, order.id, "placed", me.id);
   });
   refresh();
@@ -136,7 +148,7 @@ export async function fillRate(orderId: string, rupeeDigits: string): Promise<Pl
       entity: "order",
       entityId: orderId,
       action: "fill_rate",
-      details: { ratePaise: { before: o.ratePaise, after: rate.paise } },
+      details: { ...orderFacts(o), ratePaise: { before: o.ratePaise, after: rate.paise } },
     });
     await notify(tx, orderId, "rate_filled", me.id);
     return { ok: true };
@@ -172,7 +184,7 @@ export async function changeRate(orderId: string, rupeeDigits: string, reason: s
       entity: "order",
       entityId: orderId,
       action: "change_rate",
-      details: { ratePaise: { before: o.ratePaise, after: check.ratePaise }, reason: check.reason },
+      details: { ...orderFacts(o), ratePaise: { before: o.ratePaise, after: check.ratePaise }, reason: check.reason },
     });
     await notify(tx, orderId, "rate_edited", me.id);
     return { ok: true };
@@ -205,6 +217,13 @@ export async function decideOrder(
     if (!allowed.ok) return allowed;
     await tx.update(orders).set({ status: decision, updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(orderEvents).values({ orderId, fromStatus: o.status, toStatus: decision, actorId: me.id, reason: why });
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "order",
+      entityId: orderId,
+      action: decision === "approved" ? "approve" : "reject",
+      details: { ...orderFacts(o), ratePaise: o.ratePaise, ...(why ? { reason: why } : {}) },
+    });
     await notify(tx, orderId, decision, me.id);
     return { ok: true };
   });
@@ -242,6 +261,13 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
       toStatus: "cancelled",
       actorId: me.id,
       reason: plan.reason,
+    });
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "order",
+      entityId: orderId,
+      action: "cancel",
+      details: { ...orderFacts(o), cancelledBags: plan.cancelledBags, reason: plan.reason },
     });
     await notify(tx, orderId, "cancelled", me.id, plan.cancelledBags);
     return { ok: true };

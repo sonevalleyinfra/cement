@@ -8,12 +8,15 @@ import type { PrismEntry } from "@/lib/prism-rules";
 /**
  * Appends one row to the Prism account and writes it to the activity log, in the same
  * transaction. Rows are never edited or deleted. Server-only.
+ * A purchase passes `audit: false`: its one activity row is the stock purchase (which names the
+ * amount owed to Prism), so one action gives one row.
  */
 export async function postPrismEntry(
   tx: DbOrTx,
   entry: PrismEntry,
   actorId: string,
   stockMovementId: string | null = null,
+  { audit = true }: { audit?: boolean } = {},
 ): Promise<string> {
   const [row] = await tx
     .insert(prismLedgerEntries)
@@ -28,6 +31,7 @@ export async function postPrismEntry(
       actorId,
     })
     .returning({ id: prismLedgerEntries.id });
+  if (!audit) return row.id;
   await writeAudit(tx, {
     actorId,
     entity: "prism_entry",

@@ -192,7 +192,7 @@ export async function setRetailerSalesRep(retailerId: string, salesRepId: string
       actorId: session.user.id,
       entity: "retailer",
       entityId: retailerId,
-      action: "update",
+      action: "assign_sales_rep",
       details: { salesRepId: { before: before.salesRepId, after: salesRepId }, ordersMoved: moved.length },
     });
     return { ok: true };

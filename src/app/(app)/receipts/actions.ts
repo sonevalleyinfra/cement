@@ -4,6 +4,7 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { receipts, retailers, user, walletMovements } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { isUuid } from "@/lib/ids";
 import { getBalance, postEntry, type DbOrTx } from "@/lib/ledger";
@@ -34,6 +35,18 @@ function refresh(retailerId: string, receiptId?: string) {
   revalidatePath("/ledger");
   revalidatePath(`/ledger/${retailerId}`);
   revalidatePath("/dashboard");
+}
+
+/** The facts every payment row in the activity log carries. */
+function paymentFacts(r: { receiptNo: number; retailerId: string; mode: string; totalPaise: number; receivedBy: string; utr: string | null }) {
+  return {
+    receiptNo: r.receiptNo,
+    retailerId: r.retailerId,
+    mode: r.mode,
+    amountPaise: r.totalPaise,
+    collectorId: r.receivedBy,
+    ...(r.utr ? { utr: r.utr } : {}),
+  };
 }
 
 /** Locks one retailer row (same lock order everywhere: payment, then retailer, then staff member). */
@@ -96,6 +109,19 @@ export async function saveReceipt(input: {
         })
         .returning({ id: receipts.id, receiptNo: receipts.receiptNo });
       if (plan.ledger) await postEntry(tx, plan.ledger, session.user.id, `Payment #${receipt.receiptNo}`, receipt.id);
+      await writeAudit(tx, {
+        actorId: session.user.id,
+        entity: "payment",
+        entityId: receipt.id,
+        action: "record",
+        details: {
+          receiptNo: receipt.receiptNo,
+          retailerId: input.retailerId,
+          mode: input.mode,
+          amountPaise: input.totalPaise,
+          ...(plan.utr ? { utr: plan.utr } : {}),
+        },
+      });
       if (plan.walletPaise > 0) {
         await tx.insert(walletMovements).values({
           collectorId: session.user.id,
@@ -143,6 +169,7 @@ export async function verifyOnline(receiptId: string): Promise<PaymentResult> {
       .update(receipts)
       .set({ status: "verified", checkedBy: session.user.id, checkedAt: now, updatedAt: now })
       .where(eq(receipts.id, receiptId));
+    await writeAudit(tx, { actorId: session.user.id, entity: "payment", entityId: receipt.id, action: "verify", details: paymentFacts(receipt) });
     await notifyMoney(tx, {
       event: "online_verified",
       retailerName: retailer?.name ?? null,
@@ -173,6 +200,13 @@ export async function rejectOnline(receiptId: string, reason: string): Promise<P
       .update(receipts)
       .set({ status: "rejected", checkedBy: session.user.id, checkedAt: now, rejectReason: plan.reason, updatedAt: now })
       .where(eq(receipts.id, receiptId));
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "payment",
+      entityId: receipt.id,
+      action: "reject",
+      details: { ...paymentFacts(receipt), reason: plan.reason },
+    });
     const [shop] = await tx.select({ name: retailers.name }).from(retailers).where(eq(retailers.id, receipt.retailerId));
     await notifyMoney(tx, {
       event: "online_rejected",
@@ -236,6 +270,13 @@ export async function reverseReceipt(receiptId: string, reason: string): Promise
       .update(receipts)
       .set({ status: "reversed", reversedAt: now, reversedBy: session.user.id, reversalReason: plan.reason, updatedAt: now })
       .where(eq(receipts.id, receipt.id));
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "payment",
+      entityId: receipt.id,
+      action: "reverse",
+      details: { ...paymentFacts(receipt), reason: plan.reason },
+    });
     await notifyMoney(tx, {
       event: "receipt_reversed",
       retailerName: retailer.name,

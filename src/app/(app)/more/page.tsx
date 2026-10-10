@@ -3,6 +3,7 @@ import {
   BookOpen,
   ChevronRight,
   Factory,
+  History,
   KeyRound,
   Package,
   Receipt,
@@ -23,6 +24,7 @@ import { signOut } from "../dashboard/actions";
 type Row = { href: string; label: string; icon: LucideIcon; tone: Tone; permission?: Action };
 
 const rows: Row[] = [
+  { href: "/activity", label: "Activity", icon: History, tone: "slate", permission: "viewActivity" },
   { href: "/users", label: "Users", icon: Users, tone: "violet", permission: "manageUsers" },
   { href: "/catalogue", label: "Catalogue", icon: Tags, tone: "blue", permission: "manageCatalogue" },
   { href: "/approvals", label: "Approvals", icon: BadgeCheck, tone: "violet", permission: "viewApprovals" },

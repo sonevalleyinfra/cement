@@ -66,6 +66,9 @@ export const ACTION_ROLES = {
   manageUsers: ["admin"],
   /** Types, grades and products (the drop-down lists). The brand is always Prism. */
   manageCatalogue: ["admin"],
+  // Reports and the activity log (docs/idea.md section 9): admin only
+  viewReports: ["admin"],
+  viewActivity: ["admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Action = keyof typeof ACTION_ROLES;

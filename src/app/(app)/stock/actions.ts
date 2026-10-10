@@ -159,6 +159,11 @@ function toRow(m: Movement, actorId: string) {
   };
 }
 
+/** The facts every stock row in the activity log carries. */
+function movementFacts(m: Movement) {
+  return { productId: m.productId, bags: m.bags, place: m.placeKey };
+}
+
 function done(): StockResult {
   revalidatePath("/stock");
   revalidatePath("/dispatch");
@@ -209,7 +214,19 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
       .insert(stockMovements)
       .values({ ...toRow(m.movement, p.session.user.id), unitCostPaise: cost.costPaise })
       .returning({ id: stockMovements.id });
-    await postPrismEntry(tx, owed.entry, p.session.user.id, moved.id);
+    await postPrismEntry(tx, owed.entry, p.session.user.id, moved.id, { audit: false });
+    await writeAudit(tx, {
+      actorId: p.session.user.id,
+      entity: "stock",
+      entityId: moved.id,
+      action: "purchase",
+      details: {
+        ...movementFacts(m.movement),
+        unitCostPaise: cost.costPaise,
+        amountPaise: owed.entry.amountPaise,
+        ...(owed.entry.reference ? { invoiceNo: owed.entry.reference } : {}),
+      },
+    });
     return { ok: true };
   });
   if (res.ok) {
@@ -233,7 +250,17 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
     if (!m.ok) return m;
     const once = canSetOpening(await currentMovements(tx, loc.key), loc.key);
     if (!once.ok) return once;
-    await tx.insert(stockMovements).values(toRow(m.movement, p.session.user.id));
+    const [row] = await tx
+      .insert(stockMovements)
+      .values(toRow(m.movement, p.session.user.id))
+      .returning({ id: stockMovements.id });
+    await writeAudit(tx, {
+      actorId: p.session.user.id,
+      entity: "stock",
+      entityId: row.id,
+      action: "opening",
+      details: movementFacts(m.movement),
+    });
     return { ok: true };
   });
   return res.ok ? done() : res;
@@ -258,7 +285,17 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
       p.session.user.role,
     );
     if (!m.ok) return m;
-    await tx.insert(stockMovements).values(toRow(m.movement, p.session.user.id));
+    const [row] = await tx
+      .insert(stockMovements)
+      .values(toRow(m.movement, p.session.user.id))
+      .returning({ id: stockMovements.id });
+    await writeAudit(tx, {
+      actorId: p.session.user.id,
+      entity: "stock",
+      entityId: row.id,
+      action: "adjustment",
+      details: { ...movementFacts(m.movement), reason: m.movement.reason ?? "" },
+    });
     return { ok: true };
   });
   return res.ok ? done() : res;
@@ -294,7 +331,23 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
     const fromKey: StockKey = { productId: input.productId, placeKey: placeKey(from) };
     const plan = transferMovements(await currentMovements(tx, fromKey), fromKey, placeKey(to), input.bags, note);
     if (!plan.ok) return plan;
-    await tx.insert(stockMovements).values(plan.movements.map((m) => toRow(m, session.user.id)));
+    const [out] = await tx
+      .insert(stockMovements)
+      .values(plan.movements.map((m) => toRow(m, session.user.id)))
+      .returning({ id: stockMovements.id });
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "stock",
+      entityId: out.id,
+      action: "transfer",
+      details: {
+        productId: input.productId,
+        bags: input.bags,
+        from: fromKey.placeKey,
+        to: placeKey(to),
+        ...(note ? { reason: note } : {}),
+      },
+    });
     return { ok: true };
   });
   return res.ok ? done() : res;

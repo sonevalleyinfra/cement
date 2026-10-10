@@ -35,6 +35,8 @@ export const dispatches = pgTable(
   },
   (t) => [
     index("dispatches_order_idx").on(t.orderId),
+    // Reports read dispatches by date.
+    index("dispatches_created_idx").on(t.createdAt),
     check("dispatches_bags_positive", sql`${t.bags} > 0`),
     check("dispatches_rate_positive", sql`${t.ratePaise} > 0`),
     check("dispatches_one_source", sql`num_nonnulls(${t.fromGodownId}, ${t.fromVehicleId}) = 1`),

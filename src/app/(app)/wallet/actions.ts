@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { user, walletMovements } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { isUuid } from "@/lib/ids";
 import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
@@ -27,11 +28,21 @@ export async function requestHandover(input: { amountPaise: number }): Promise<W
     const rows = await tx.select().from(walletMovements).where(eq(walletMovements.collectorId, session.user.id));
     const check = validateHandoverRequest(amount, walletBalance(rows).availablePaise);
     if (!check.ok) return check;
-    await tx.insert(walletMovements).values({
-      collectorId: session.user.id,
-      kind: "handover_request",
-      amountPaise: amount,
+    const [request] = await tx
+      .insert(walletMovements)
+      .values({
+        collectorId: session.user.id,
+        kind: "handover_request",
+        amountPaise: amount,
+        actorId: session.user.id,
+      })
+      .returning({ id: walletMovements.id });
+    await writeAudit(tx, {
       actorId: session.user.id,
+      entity: "handover",
+      entityId: request.id,
+      action: "request",
+      details: { collectorId: session.user.id, amountPaise: amount },
     });
     await notifyMoney(tx, {
       event: "handover_requested",
@@ -85,6 +96,18 @@ export async function answerHandover(requestId: string, answer: HandoverAnswer):
       refId: request.id,
       note: plan.note,
       actorId: session.user.id,
+    });
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "handover",
+      entityId: request.id,
+      action: plan.kind === "handover_confirmed" ? "confirm" : "reject",
+      details: {
+        collectorId: request.collectorId,
+        amountPaise: plan.kind === "handover_confirmed" ? plan.amountPaise : request.amountPaise,
+        requestedPaise: request.amountPaise,
+        ...(plan.note ? { reason: plan.note } : {}),
+      },
     });
     await notifyMoney(tx, {
       event: plan.kind,

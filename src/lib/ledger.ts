@@ -6,15 +6,15 @@ import type { LedgerEntry } from "@/lib/ledger-rules";
 /** A database or a transaction. */
 export type DbOrTx = Pick<typeof db, "insert" | "select">;
 
-/** Appends one row. Rows are never edited or deleted. */
+/** Appends one row and returns its id. Rows are never edited or deleted. */
 export async function postEntry(
   tx: DbOrTx,
   entry: LedgerEntry,
   actorId: string,
   note = "",
   receiptId: string | null = null,
-): Promise<void> {
-  await tx.insert(ledgerEntries).values({
+): Promise<string> {
+  const [row] = await tx.insert(ledgerEntries).values({
     retailerId: entry.retailerId,
     kind: entry.kind,
     amountPaise: entry.amountPaise,
@@ -22,7 +22,8 @@ export async function postEntry(
     receiptId,
     note: note.slice(0, 300),
     actorId,
-  });
+  }).returning({ id: ledgerEntries.id });
+  return row.id;
 }
 
 /** Net balance per retailer (for the list cards; positive = retailer owes). Server-only. */

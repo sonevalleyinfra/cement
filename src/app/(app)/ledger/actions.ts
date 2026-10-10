@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ledgerEntries, retailers } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { adjustmentEntry, openingEntry } from "@/lib/ledger-rules";
@@ -36,7 +37,14 @@ export async function setOpeningBalance(input: {
       .where(and(eq(ledgerEntries.retailerId, input.retailerId), eq(ledgerEntries.kind, "opening")));
     const entry = openingEntry(existing, input.retailerId, signed);
     if (!entry.ok) return entry;
-    await postEntry(tx, entry.entry, session.user.id, "Opening balance");
+    const id = await postEntry(tx, entry.entry, session.user.id, "Opening balance");
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "ledger",
+      entityId: id,
+      action: "opening",
+      details: { retailerId: input.retailerId, amountPaise: signed },
+    });
     return { ok: true };
   });
   if (res.ok) {
@@ -67,7 +75,14 @@ export async function addAdjustment(input: {
       .where(eq(retailers.id, input.retailerId))
       .for("no key update");
     if (!retailer) return { ok: false, error: "Retailer not found." };
-    await postEntry(tx, plan.entry, session.user.id, plan.note);
+    const id = await postEntry(tx, plan.entry, session.user.id, plan.note);
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "ledger",
+      entityId: id,
+      action: "adjustment",
+      details: { retailerId: input.retailerId, amountPaise: plan.entry.amountPaise, reason: plan.note },
+    });
     return { ok: true };
   });
   if (res.ok) {
