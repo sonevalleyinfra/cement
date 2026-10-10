@@ -33,7 +33,7 @@ Each firm runs as its own independent book.
 
 | Role | Can do |
 |---|---|
-| Admin | Add firms, retailers, users, firm access. Purchase entry. Verify online payments. Confirm cash handover. Stock adjustments. Firm-wise and consolidated reports. |
+| Admin | Add firms, retailers, users, firm access. Catalogue (brands, types, grades, products) and godowns. Purchase entry. Verify online payments. Confirm cash handover. Stock adjustments. Firm-wise and consolidated reports. |
 | Sales | Place orders (choose firm), fill rate, track orders, collect payments |
 | Retailer | Place orders with any firm (quantity only, no price), track dispatch, view dues per firm |
 | Accounts | Approve / reject orders with reason, seeing the retailer's dues **with that firm** (and total across firms for context) |
@@ -61,6 +61,19 @@ Placed (firm selected) → Rate filled → Approved / Rejected → Assigned → 
 ---
 
 ## 5. Inventory (per firm)
+
+**Catalogue (admin, More → Catalogue).** Every product is picked from drop-downs, never typed:
+Brand (Prism) → Trade / Non-trade → Type (OPC / PPC) → Grade (33 / 43 / 53) → Bag size (50 kg).
+The product name is built from these (e.g. "Prism Non-trade PPC 43"). Admin can add brands, types and grades;
+products are switched off, never edited or deleted, because stock and orders point at them. A product with bags
+in stock cannot be switched off. Stock is counted in bags; screens also show tonnes (20 bags = 1 MT).
+
+**Places (admin, More → Godowns; Vehicles).** Godowns and vehicles are one shared list for all firms. Each firm's
+bags at a place are kept separately (the firm's stock row there is made automatically). A godown or vehicle cannot
+be switched off while any firm has bags there.
+
+**Stock screen:** By product (Trade / Non-trade sections, each product with its places) or By place (each godown
+or vehicle with its products), filtered by Trade / Non-trade and type.
 
 - **Purchase (admin):** select firm → add stock to godown or directly to a vehicle. Posts to that firm's stock and that firm's Prism ledger.
 - **Vehicle = location.** A truck can carry bags of more than one firm; the system keeps each firm's count on that vehicle separately.

@@ -649,6 +649,14 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 - **Logistics**: dispatches (partly or fully), marks delivered, looks after vehicles.
 - **Retailer**: places own orders and sees own orders and dues. Never sees prices on orders.
 
+### Products and places (admin)
+- **More → Catalogue**: products are made from drop-downs: Brand → Trade / Non-trade → Type (OPC / PPC) → Grade
+  (33 / 43 / 53). All 12 Prism products are ready; turn off the ones you don't sell. Add a new grade or type under
+  the Types tab.
+- **More → Godowns**: one list for all firms. Each firm's bags in a godown or vehicle stay separate.
+  A godown or vehicle with bags in it cannot be turned off.
+- **Stock**: switch between *By product* and *By place*, and filter by Trade / Non-trade and type.
+
 ### The daily flow
 1. Sales (or the retailer) places an order for one firm.
 2. Sales fills the rate per bag and sends it for approval.
@@ -663,7 +671,7 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 1. `pnpm dev` (creates the tables and the admin), then in another terminal `pnpm seed:demo`.
 2. Sign in with password `Demo@12345` and one of: `admin@demo.test`, `sales@demo.test`, `accounts@demo.test`,
    `logistics@demo.test`, `retailer@demo.test`.
-3. It adds 6 retailers, 2 vehicles, a godown with 500 bags of every product per firm, 6 orders in different
+3. It adds 6 retailers, 2 vehicles, one shared godown with 500 bags of every product for each firm, 6 orders in different
    statuses and one cash receipt. Running it twice is safe.
 4. It refuses to run on production or on a database that is not on localhost. This password is public: never
    use these accounts anywhere real.
