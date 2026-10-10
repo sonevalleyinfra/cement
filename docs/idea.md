@@ -1,6 +1,6 @@
 # Cement Wholesale App — Spec (v1.0, simplified)
 
-Internal tool for **one** Prism Cement wholesaler. It runs inventory, orders, dispatch, payments and the Prism
+Internal tool for **one** cement wholesaler (Prism brand today, more brands possible later). It runs inventory, orders, dispatch, payments and the supplier
 account, and keeps a log of who did what. **No firms** (one business, one stock, one set of books).
 Out of scope: GST, e-way bills, invoices, cheques.
 
@@ -12,14 +12,15 @@ Out of scope: GST, e-way bills, invoices, cheques.
 | Sales | Places orders for own shops and fills the rate. Records cash and online payments. |
 | Accounts | Approves / rejects orders (with reason), seeing the retailer's dues. Verifies online payments against the bank statement. Confirms cash handed over by staff. |
 | Logistics | Dispatches approved orders from a godown or a truck. Can change the rate (reason required). Records payments. |
-| Admin | Everything: users, retailers (and each shop's sales person), products, godowns, purchases, Prism account, stock corrections, cancel orders, change rate, reports, activity log. |
+| Admin | Everything: users, retailers (and each shop's sales person), products, godowns, purchases, supplier accounts, stock corrections, cancel orders, change rate, reports, activity log. |
 
 Any staff member (not retailer) can record a payment. A user may hold more than one role.
 
 ## 2. Products and places
 
-- Products are Prism only, picked from drop-downs: Trade / Non-trade → Type (OPC / PPC) → Grade (33 / 43 / 53),
-  bag size 50 kg. Name is built from these. Switched off, never deleted. Counted in bags (20 bags = 1 tonne).
+- Products are picked from drop-downs: **Brand** (Prism today; admin can add more brands later) → Trade / Non-trade →
+  Type (OPC / PPC) → Grade (33 / 43 / 53), bag size 50 kg. Name is built from these (e.g. "Prism Trade OPC 43").
+  Switched off, never deleted. Counted in bags (20 bags = 1 tonne).
 - Places: **godowns** (admin list) and **trucks**. Trucks are hired: truck number + driver + phone are typed on each
   purchase / dispatch / move; a truck is listed while it holds bags. Bags on a truck are stock.
 
@@ -63,11 +64,13 @@ Dues = sum. Payments clear oldest dues first (for aging).
 - A verified / recorded payment can be **reversed** by accounts or admin with a reason (dues go back up; cash leaves
   the holder's balance if not yet handed over).
 
-## 7. Prism account (supplier)
+## 7. Supplier accounts (one per brand)
 
-Append-only ledger of what the business owes Prism:
-opening balance, **purchase** (+ bags × cost per bag, also adds stock), **payment to Prism** (−, mode + reference),
-**scheme / discount credit** (−, reason). Admin only. Balance = amount owed to Prism.
+Each brand is bought from its own company, so each brand has its own supplier account ("Prism account",
+later e.g. "UltraTech account"). A purchase of a product posts to the account of that product's brand.
+Append-only ledger per brand of what the business owes that supplier:
+opening balance, **purchase** (+ bags × cost per bag, also adds stock), **payment to the supplier** (−, mode + reference),
+**scheme / discount credit** (−, reason). Admin only. Balance = amount owed to that supplier.
 
 ## 8. Notifications (in-app)
 
@@ -81,14 +84,14 @@ Online payment recorded → accounts. Cash handover request → accounts. Handov
 - Retailer dues with aging (0–30, 31–60, 61–90, 90+ days) and a retailer statement.
 - Stock: by product and by place (godowns + trucks).
 - Cash held by each staff member; online payments waiting for verification.
-- Prism account statement.
+- Supplier account statement (per brand).
 - Profit: sales value − cost (average purchase cost per bag, per product), per bag and total.
 - Staff activity: orders placed, approvals, dispatches, payments recorded per person.
 - **Activity log**: every action (who, what, when, details), filter by person / type / date.
 
 ## 10. Home screens
 
-- Admin: today's sales, orders waiting approval / dispatch, stock, cash held by staff, online to verify, Prism balance.
+- Admin: today's sales, orders waiting approval / dispatch, stock, cash held by staff, online to verify, supplier balances (per brand).
 - Sales: my orders (rate to fill), my shops' dues, my cash held.
 - Accounts: approvals, online to verify, cash handovers to confirm.
 - Logistics: approved orders to dispatch, truck stock, my cash held.
