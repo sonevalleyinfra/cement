@@ -12,7 +12,6 @@ export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
       id: products.id,
       name: products.name,
       channel: products.channel,
-      brandId: products.brandId,
       gradeId: products.gradeId,
       typeId: grades.typeId,
       brand: brands.name,
@@ -38,10 +37,9 @@ export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
     );
 }
 
-/** Every brand, type and grade (switched-off ones too), in drop-down order. Server-only. */
+/** Every type and grade (switched-off ones too), in drop-down order. Server-only. */
 export async function getCatalogueLists() {
-  const [brandRows, typeRows, gradeRows] = await Promise.all([
-    db.select({ id: brands.id, name: brands.name, active: brands.active }).from(brands).orderBy(asc(brands.name)),
+  const [typeRows, gradeRows] = await Promise.all([
     db
       .select({ id: cementTypes.id, code: cementTypes.code, name: cementTypes.name, active: cementTypes.active })
       .from(cementTypes)
@@ -51,5 +49,5 @@ export async function getCatalogueLists() {
       .from(grades)
       .orderBy(asc(grades.sortOrder), asc(grades.name)),
   ]);
-  return { brands: brandRows, types: typeRows, grades: gradeRows };
+  return { types: typeRows, grades: gradeRows };
 }

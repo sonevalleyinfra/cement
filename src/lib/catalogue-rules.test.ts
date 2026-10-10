@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bagsToKg,
+  businessBrand,
   canSwitchOffProduct,
   cleanListName,
   cleanTypeCode,
@@ -71,11 +72,11 @@ describe("validateNewProduct", () => {
       { id: "ppc43", typeId: "ppc", name: "43", active: true },
       { id: "ppc33", typeId: "ppc", name: "33", active: false },
     ],
-    products: [{ brandId: "b1", channel: "trade", gradeId: "opc53", bagKg: 50 }],
+    products: [{ channel: "trade", gradeId: "opc53", bagKg: 50 }],
   };
-  const good = { brandId: "b1", channel: "non_trade", typeId: "ppc", gradeId: "ppc43", bagKg: 50 };
+  const good = { channel: "non_trade", typeId: "ppc", gradeId: "ppc43", bagKg: 50 };
 
-  it("builds the product and its name", () => {
+  it("builds the product and its name, always with the Prism brand", () => {
     expect(validateNewProduct(good, lookups)).toEqual({
       ok: true,
       value: { brandId: "b1", channel: "non_trade", gradeId: "ppc43", bagKg: 50, name: "Prism Non-trade PPC 43" },
@@ -94,9 +95,10 @@ describe("validateNewProduct", () => {
       error: "Pick a grade.",
     });
   });
+  it("needs the Prism brand to exist", () => {
+    expect(validateNewProduct(good, { ...lookups, brands: [] })).toEqual({ ok: false, error: "Add the Prism brand first." });
+  });
   it("refuses switched-off or unknown items", () => {
-    expect(validateNewProduct({ ...good, brandId: "b2" }, lookups).ok).toBe(false);
-    expect(validateNewProduct({ ...good, brandId: "nope" }, lookups).ok).toBe(false);
     expect(validateNewProduct({ ...good, typeId: "psc" }, lookups).ok).toBe(false);
     expect(validateNewProduct({ ...good, gradeId: "ppc33" }, lookups).ok).toBe(false);
   });
@@ -147,14 +149,31 @@ describe("canSwitchOffProduct", () => {
   });
 });
 
+describe("businessBrand", () => {
+  it("is the switched-on brand called Prism", () => {
+    const brands = [
+      { id: "b0", name: "Other", active: true },
+      { id: "b1", name: " prism ", active: true },
+    ];
+    expect(businessBrand(brands)?.id).toBe("b1");
+  });
+  it("falls back to the first switched-on brand (Prism renamed)", () => {
+    expect(businessBrand([{ id: "b2", name: "Old", active: false }, { id: "b3", name: "Prism Cement", active: true }])?.id).toBe("b3");
+  });
+  it("is null when no brand is switched on", () => {
+    expect(businessBrand([{ id: "b1", name: "Prism", active: false }])).toBeNull();
+    expect(businessBrand([])).toBeNull();
+  });
+});
+
 describe("findProductByParts", () => {
   const products = [
-    { id: "p1", brandId: "b1", channel: "trade", gradeId: "g1", bagKg: 50 },
-    { id: "p2", brandId: "b1", channel: "non_trade", gradeId: "g1", bagKg: 50 },
+    { id: "p1", channel: "trade", gradeId: "g1", bagKg: 50 },
+    { id: "p2", channel: "non_trade", gradeId: "g1", bagKg: 50 },
   ];
-  it("matches all four parts", () => {
-    expect(findProductByParts(products, { brandId: "b1", channel: "non_trade", gradeId: "g1", bagKg: 50 })?.id).toBe("p2");
-    expect(findProductByParts(products, { brandId: "b2", channel: "trade", gradeId: "g1", bagKg: 50 })).toBeUndefined();
+  it("matches trade-type, grade and bag size (the brand is always Prism)", () => {
+    expect(findProductByParts(products, { channel: "non_trade", gradeId: "g1", bagKg: 50 })?.id).toBe("p2");
+    expect(findProductByParts(products, { channel: "trade", gradeId: "g2", bagKg: 50 })).toBeUndefined();
   });
 });
 
@@ -173,13 +192,12 @@ describe("resolveProduct", () => {
       { id: "ppc43", typeId: "ppc", name: "43", active: true },
     ],
     products: [
-      { id: "p1", brandId: "b1", channel: "trade", gradeId: "opc53", bagKg: 50, active: true },
-      { id: "p2", brandId: "b1", channel: "non_trade", gradeId: "opc53", bagKg: 50, active: false },
-      { id: "p3", brandId: "b2", channel: "trade", gradeId: "ppc43", bagKg: 50, active: true },
+      { id: "p1", channel: "trade", gradeId: "opc53", bagKg: 50, active: true },
+      { id: "p2", channel: "non_trade", gradeId: "opc53", bagKg: 50, active: false },
+      { id: "p3", channel: "trade", gradeId: "ppc43", bagKg: 50, active: true },
     ],
   };
-  const pick = (over: Partial<{ brandId: string; channel: string; typeId: string; gradeId: string }>) => ({
-    brandId: "b1",
+  const pick = (over: Partial<{ channel: string; typeId: string; gradeId: string }>) => ({
     channel: "trade",
     typeId: "opc",
     gradeId: "opc53",
@@ -191,8 +209,8 @@ describe("resolveProduct", () => {
     expect(resolveProduct(pick({}), lookups, false)).toEqual({ ok: true, kind: "existing", id: "p1" });
     expect(resolveProduct(pick({}), lookups, true)).toEqual({ ok: true, kind: "existing", id: "p1" });
   });
-  it("keeps using an active product even when its brand was removed", () => {
-    expect(resolveProduct(pick({ brandId: "b2", typeId: "ppc", gradeId: "ppc43" }), lookups, false)).toEqual({
+  it("finds a product of the other type", () => {
+    expect(resolveProduct(pick({ typeId: "ppc", gradeId: "ppc43" }), lookups, false)).toEqual({
       ok: true,
       kind: "existing",
       id: "p3",
@@ -201,6 +219,7 @@ describe("resolveProduct", () => {
   it("makes a missing product only when allowed", () => {
     const input = pick({ channel: "non_trade", typeId: "ppc", gradeId: "ppc43" });
     expect(resolveProduct(input, lookups, false)).toEqual({ ok: false, error: "Not in catalogue." });
+    // The new product gets the Prism brand ("b1"), never the switched-off one.
     expect(resolveProduct(input, lookups, true)).toEqual({
       ok: true,
       kind: "create",
@@ -216,8 +235,12 @@ describe("resolveProduct", () => {
     expect(resolveProduct(pick({ typeId: "ppc" }), lookups, true)).toEqual({ ok: false, error: "Pick a grade." });
     expect(resolveProduct(pick({ gradeId: "nope" }), lookups, true)).toEqual({ ok: false, error: "Pick a grade." });
   });
-  it("will not make a product from a removed brand", () => {
-    expect(resolveProduct(pick({ brandId: "b2" }), lookups, true)).toEqual({ ok: false, error: "Pick a brand." });
+  it("will not make a product when the Prism brand is switched off", () => {
+    const noBrand = { ...lookups, brands: [{ id: "b1", name: "Prism", active: false }] };
+    expect(resolveProduct(pick({ channel: "non_trade", typeId: "ppc", gradeId: "ppc43" }), noBrand, true)).toEqual({
+      ok: false,
+      error: "Add the Prism brand first.",
+    });
   });
   it("refuses an unknown trade-type", () => {
     expect(resolveProduct(pick({ channel: "retail" }), lookups, true)).toEqual({
@@ -228,9 +251,8 @@ describe("resolveProduct", () => {
 });
 
 describe("listsUsedBy", () => {
-  it("keeps only the brands, types and grades the products use", () => {
+  it("keeps only the types and grades the products use", () => {
     const lists = {
-      brands: [{ id: "b1" }, { id: "b2" }],
       types: [{ id: "opc" }, { id: "ppc" }],
       grades: [
         { id: "opc53", typeId: "opc" },
@@ -238,8 +260,7 @@ describe("listsUsedBy", () => {
         { id: "ppc43", typeId: "ppc" },
       ],
     };
-    expect(listsUsedBy(lists, [{ brandId: "b1", gradeId: "opc53" }])).toEqual({
-      brands: [{ id: "b1" }],
+    expect(listsUsedBy(lists, [{ gradeId: "opc53" }])).toEqual({
       types: [{ id: "opc" }],
       grades: [{ id: "opc53", typeId: "opc" }],
     });

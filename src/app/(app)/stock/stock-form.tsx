@@ -19,9 +19,8 @@ import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
 import { ListEditorSheet } from "./list-editor-sheet";
 
-type ProductOption = { id: string; name: string; channel: string; brandId: string; gradeId: string; bagKg: number };
+type ProductOption = { id: string; name: string; channel: string; gradeId: string; bagKg: number };
 type Lists = {
-  brands: { id: string; name: string }[];
   types: { id: string; code: string; name: string }[];
   grades: { id: string; typeId: string; name: string }[];
 };
@@ -46,7 +45,7 @@ export function StockForm({
   places: PlaceOption[];
   products: ProductOption[];
   balances: Balance[];
-  /** Brands, types and grades for the four product drop-downs. */
+  /** Types and grades for the product drop-downs (the brand is always Prism). */
   lists: Lists;
   /** Shows the edit buttons next to the drop-downs (purchase, admin only). */
   canManageCatalogue: boolean;
@@ -54,7 +53,6 @@ export function StockForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const first = products[0];
-  const [brandPick, setBrandPick] = useState(first?.brandId ?? "");
   const [channel, setChannel] = useState(first?.channel ?? PRODUCT_CHANNELS[0]);
   const [typePick, setTypePick] = useState(lists.grades.find((g) => g.id === first?.gradeId)?.typeId ?? "");
   const [gradePick, setGradePick] = useState(first?.gradeId ?? "");
@@ -69,13 +67,12 @@ export function StockForm({
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   // A pick that left the list (removed, or a grade of another type) falls back to the first one.
-  const brandId = lists.brands.some((b) => b.id === brandPick) ? brandPick : (lists.brands[0]?.id ?? "");
   const typeId = lists.types.some((t) => t.id === typePick) ? typePick : (lists.types[0]?.id ?? "");
   const typeGrades = lists.grades.filter((g) => g.typeId === typeId);
   const gradeId = typeGrades.some((g) => g.id === gradePick) ? gradePick : (typeGrades[0]?.id ?? "");
   const typeCode = lists.types.find((t) => t.id === typeId)?.code ?? "";
-  const picked = Boolean(brandId && typeId && gradeId);
-  const product = findProductByParts(products, { brandId, channel, gradeId, bagKg: DEFAULT_BAG_KG });
+  const picked = Boolean(typeId && gradeId);
+  const product = findProductByParts(products, { channel, gradeId, bagKg: DEFAULT_BAG_KG });
   const missing = picked && !product;
 
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
@@ -84,7 +81,6 @@ export function StockForm({
   function submit() {
     setMessage(null);
     const input = {
-      brandId,
       channel,
       typeId,
       gradeId,
@@ -128,21 +124,13 @@ export function StockForm({
 
   return (
     <div className="flex flex-col gap-4">
+      <SelectField
+        label="Trade-type"
+        value={channel}
+        onChange={setChannel}
+        options={PRODUCT_CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
+      />
       <div className="grid grid-cols-2 gap-3">
-        <SelectField
-          label="Brand"
-          value={brandId}
-          onChange={setBrandPick}
-          options={lists.brands.map((b) => ({ value: b.id, label: b.name }))}
-          placeholder={lists.brands.length === 0 ? "Add one" : undefined}
-          action={edit("brand", "brands")}
-        />
-        <SelectField
-          label="Trade-type"
-          value={channel}
-          onChange={setChannel}
-          options={PRODUCT_CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
-        />
         <SelectField
           label="Type"
           value={typeId}
@@ -252,14 +240,6 @@ export function StockForm({
       </PinnedAction>
       {canManageCatalogue && (
         <>
-          <ListEditorSheet
-            kind="brand"
-            title="Brands"
-            items={lists.brands}
-            open={editing === "brand"}
-            onOpenChange={(o) => setEditing(o ? "brand" : null)}
-            onAdded={setBrandPick}
-          />
           <ListEditorSheet
             kind="cement_type"
             title="Types"

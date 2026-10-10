@@ -18,7 +18,6 @@ async function loadData(action: "manageStock" | "transferStock") {
       id: p.id,
       name: p.name,
       channel: p.channel,
-      brandId: p.brandId,
       gradeId: p.gradeId,
       bagKg: p.bagKg,
     })),
@@ -28,8 +27,9 @@ async function loadData(action: "manageStock" | "transferStock") {
 }
 
 /**
- * For the three admin forms (purchase, opening, adjust), which pick a product with four drop-downs.
- * A purchase offers every switched-on brand, type and grade (a new combination becomes a new product);
+ * For the three admin forms (purchase, opening, adjust), which pick a product with three drop-downs
+ * (trade-type, type, grade; the brand is always Prism).
+ * A purchase offers every switched-on type and grade (a new combination becomes a new product);
  * opening and adjust offer only what existing products are made from.
  */
 export async function loadFormData(mode: "purchase" | "opening" | "adjust") {
@@ -38,7 +38,6 @@ export async function loadFormData(mode: "purchase" | "opening" | "adjust") {
   const lists =
     mode === "purchase"
       ? {
-          brands: all.brands.filter((b) => b.active),
           types: all.types.filter((t) => t.active),
           grades: all.grades.filter((g) => g.active),
         }
@@ -46,7 +45,6 @@ export async function loadFormData(mode: "purchase" | "opening" | "adjust") {
   return {
     ...data,
     lists: {
-      brands: lists.brands.map((b) => ({ id: b.id, name: b.name })),
       types: lists.types.map((t) => ({ id: t.id, code: t.code, name: t.name })),
       grades: lists.grades.map((g) => ({ id: g.id, typeId: g.typeId, name: g.name })),
     },

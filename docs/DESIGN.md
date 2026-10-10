@@ -22,8 +22,9 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Numbers: bold, large, `tabular`. Money in paise with `formatINR(p, { hidePaise: true })` in lists.
 - Cards: white, 16px radius, hairline ring plus soft `shadow-card`; tappable cards lift slightly on hover (`shadow-card-hover`).
 - Selected toggles (product, payment mode) use the primary orange.
-- Stock forms pick a product with four small drop-downs (Brand, Trade-type, Type, Grade). In purchase, admins get a pencil
-  next to Brand, Type and Grade to add, rename or remove items; a new combination becomes a new product on save.
+- Stock forms pick a product with three small drop-downs (Trade-type, Type, Grade); there is no brand step (Prism only).
+  In purchase, admins get a pencil next to Type and Grade to add, rename or remove items; a new combination becomes a new
+  product on save.
 
 ## Words
 - Labels, numbers and actions only. Titles are one or two words ("Orders", "New order").

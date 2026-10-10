@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   BAG_SIZES_KG,
+  BUSINESS_BRAND,
   CHANNEL_LABELS,
   DEFAULT_BAG_KG,
   PRODUCT_CHANNELS,
@@ -18,7 +19,6 @@ import {
   type ProductChannel,
 } from "@/lib/catalogue-rules";
 import {
-  addBrand,
   addCementType,
   addGrade,
   addProduct,
@@ -37,14 +37,12 @@ type Product = {
   bagKg: number;
   active: boolean;
 };
-type Brand = { id: string; name: string; active: boolean };
 type CementType = { id: string; code: string; name: string; active: boolean };
 type Grade = { id: string; typeId: string; name: string; active: boolean };
 
-type Tab = "products" | "brands" | "types";
+type Tab = "products" | "types";
 const TABS: { id: Tab; label: string }[] = [
   { id: "products", label: "Products" },
-  { id: "brands", label: "Brands" },
   { id: "types", label: "Types" },
 ];
 
@@ -82,35 +80,32 @@ function Row({
 
 export function CatalogueView({
   products,
-  brands,
   types,
   grades,
 }: {
   products: Product[];
-  brands: Brand[];
   types: CementType[];
   grades: Grade[];
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("products");
-  const [sheet, setSheet] = useState<null | "product" | "brand" | "type" | "grade">(null);
+  const [sheet, setSheet] = useState<null | "product" | "type" | "grade">(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
-  // Add-product drop-downs, in order: brand → channel → type → grade → bag size.
-  const activeBrands = brands.filter((b) => b.active);
+  // Add-product drop-downs, in order: channel → type → grade → bag size (the brand is always Prism).
   const activeTypes = types.filter((t) => t.active);
-  const [brandId, setBrandId] = useState(activeBrands[0]?.id ?? "");
   const [channel, setChannel] = useState<ProductChannel>("trade");
   const [typeId, setTypeId] = useState(activeTypes[0]?.id ?? "");
   const [gradeId, setGradeId] = useState("");
   const [bagKg, setBagKg] = useState(String(DEFAULT_BAG_KG));
   const typeGrades = grades.filter((g) => g.typeId === typeId && g.active);
   const preview = (() => {
-    const b = brands.find((x) => x.id === brandId);
     const t = types.find((x) => x.id === typeId);
     const g = grades.find((x) => x.id === gradeId);
-    return b && t && g ? productName({ brand: b.name, channel, typeCode: t.code, grade: g.name, bagKg: Number(bagKg) }) : "";
+    return t && g
+      ? productName({ brand: BUSINESS_BRAND, channel, typeCode: t.code, grade: g.name, bagKg: Number(bagKg) })
+      : "";
   })();
 
   function run(fn: () => Promise<CatalogueResult>, closeOnOk = false) {
@@ -143,13 +138,12 @@ export function CatalogueView({
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const text = (k: string) => String(f.get(k) ?? "");
-    if (sheet === "brand") run(() => addBrand(text("name")), true);
     if (sheet === "type") run(() => addCementType({ code: text("code"), name: text("name") }), true);
     if (sheet === "grade") run(() => addGrade({ typeId: text("typeId"), name: text("name") }), true);
   }
 
-  const addLabel = { products: "Add product", brands: "Add brand", types: "Add grade" }[tab];
-  const addSheet = ({ products: "product", brands: "brand", types: "grade" } as const)[tab];
+  const addLabel = { products: "Add product", types: "Add grade" }[tab];
+  const addSheet = ({ products: "product", types: "grade" } as const)[tab];
 
   return (
     <div className="flex flex-col gap-4">
@@ -189,14 +183,6 @@ export function CatalogueView({
             );
           })
         ))}
-
-      {tab === "brands" && (
-        <ul className="flex flex-col gap-2">
-          {brands.map((b) => (
-            <Row key={b.id} title={b.name} active={b.active} pending={pending} onToggle={() => toggleItem("brand", b.id, !b.active)} />
-          ))}
-        </ul>
-      )}
 
       {tab === "types" && (
         <div className="flex flex-col gap-4">
@@ -239,12 +225,6 @@ export function CatalogueView({
       <Sheet open={sheet === "product"} onOpenChange={close} title="New product">
         <div className="flex flex-col gap-4">
           <SelectField
-            label="Brand"
-            value={brandId}
-            onChange={setBrandId}
-            options={activeBrands.map((b) => ({ value: b.id, label: b.name }))}
-          />
-          <SelectField
             label="Trade / Non-trade"
             value={channel}
             onChange={(v) => setChannel(v as ProductChannel)}
@@ -275,8 +255,8 @@ export function CatalogueView({
           {preview && <p className="text-base font-semibold">{preview}</p>}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button
-            disabled={pending || !brandId || !typeId || !gradeId}
-            onClick={() => run(() => addProduct({ brandId, channel, typeId, gradeId, bagKg: Number(bagKg) }), true)}
+            disabled={pending || !typeId || !gradeId}
+            onClick={() => run(() => addProduct({ channel, typeId, gradeId, bagKg: Number(bagKg) }), true)}
           >
             Save
           </Button>
@@ -284,17 +264,11 @@ export function CatalogueView({
       </Sheet>
 
       <Sheet
-        open={sheet === "brand" || sheet === "type" || sheet === "grade"}
+        open={sheet === "type" || sheet === "grade"}
         onOpenChange={close}
-        title={sheet === "brand" ? "New brand" : sheet === "type" ? "New type" : "New grade"}
+        title={sheet === "type" ? "New type" : "New grade"}
       >
         <form key={sheet ?? "none"} onSubmit={submitText} className="flex flex-col gap-4">
-          {sheet === "brand" && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="name">Brand name</Label>
-              <Input id="name" name="name" autoComplete="off" maxLength={40} />
-            </div>
-          )}
           {sheet === "type" && (
             <>
               <div className="flex flex-col gap-1.5">

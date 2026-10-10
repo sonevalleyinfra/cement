@@ -7,7 +7,6 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  addBrand,
   addCementType,
   addGrade,
   type CatalogueList,
@@ -16,13 +15,13 @@ import {
   setListItemActive,
 } from "../catalogue/actions";
 
-/** One brand, type or grade. `code` is set for types only. */
+/** One type or grade. `code` is set for types only. */
 export type EditorItem = { id: string; name: string; code?: string };
 
 const rowClass = "flex min-h-14 items-center gap-1 rounded-2xl bg-card py-1 pr-1 pl-4 shadow-card ring-1 ring-foreground/6";
 
 /**
- * Bottom sheet to add, rename or remove brands, types or grades (admin only; the actions check it too).
+ * Bottom sheet to add, rename or remove types or grades (admin only; the actions check it too).
  * Remove switches the item off: it leaves the drop-downs, but past stock and orders keep it.
  * For grades pass `typeId`: new grades go under that type.
  */
@@ -67,11 +66,7 @@ export function ListEditorSheet({
     e.preventDefault();
     run(
       () =>
-        kind === "brand"
-          ? addBrand(newName)
-          : isType
-            ? addCementType({ code: newCode, name: newName })
-            : addGrade({ typeId: typeId ?? "", name: newName }),
+        isType ? addCementType({ code: newCode, name: newName }) : addGrade({ typeId: typeId ?? "", name: newName }),
       (res) => {
         setNewName("");
         setNewCode("");
@@ -204,8 +199,8 @@ export function ListEditorSheet({
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder={kind === "brand" ? "New brand" : isType ? "Full name" : "New grade"}
-            aria-label={kind === "brand" ? "New brand" : isType ? "Full name" : "New grade"}
+            placeholder={isType ? "Full name" : "New grade"}
+            aria-label={isType ? "Full name" : "New grade"}
             maxLength={isType ? 60 : kind === "grade" ? 20 : 40}
           />
           <Button
