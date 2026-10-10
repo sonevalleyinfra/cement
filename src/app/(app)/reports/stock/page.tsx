@@ -6,6 +6,9 @@ import { getStockReport } from "@/lib/reports";
 import { requireRole } from "@/lib/session";
 import { Mismatch, num, ReportFrame, Section, signedNum, Stats } from "../report-frame";
 
+/** A change of bags in a stacked card: "–" when nothing moved, so the card only lists what happened. */
+const moved = (v: number) => (v === 0 ? "–" : signedNum(v));
+
 export default async function StockReportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
@@ -47,6 +50,7 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
         <EmptyState title="No stock movements" />
       ) : (
         <DataTable
+          stacked
           columns={[
             { label: "Product" },
             { label: "Start" },
@@ -63,21 +67,21 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
               {f.reconciles ? "" : " ⚠"}
             </span>,
             num(f.openingBags),
-            signedNum(f.openingStockBags),
-            signedNum(f.purchasedBags),
-            signedNum(-f.dispatchedBags),
-            signedNum(f.movedBags),
-            signedNum(f.fixedBags),
+            moved(f.openingStockBags),
+            moved(f.purchasedBags),
+            moved(-f.dispatchedBags),
+            moved(f.movedBags),
+            moved(f.fixedBags),
             num(f.closingBags),
           ])}
           total={[
             "Total",
             num(total.openingBags),
-            signedNum(total.openingStockBags),
-            signedNum(total.purchasedBags),
-            signedNum(-total.dispatchedBags),
-            signedNum(total.movedBags),
-            signedNum(total.fixedBags),
+            moved(total.openingStockBags),
+            moved(total.purchasedBags),
+            moved(-total.dispatchedBags),
+            moved(total.movedBags),
+            moved(total.fixedBags),
             num(total.closingBags),
           ]}
         />

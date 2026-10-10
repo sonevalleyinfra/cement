@@ -13,11 +13,13 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { Stat } from "@/components/app/stat";
+import { buttonVariants } from "@/components/ui/button";
 import {
   getAccountsHome,
   getAdminHome,
@@ -29,6 +31,7 @@ import {
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { supplierHomeLines } from "@/lib/supplier-rules";
+import { cn } from "@/lib/utils";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
@@ -87,7 +90,7 @@ export async function SalesHome({ userId }: { userId: string }) {
   const s = await getSalesHome(userId);
   return (
     <Cards>
-      <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
+      <Card index={0} href="/orders?show=rate" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
       <Card
         index={1}
         href="/ledger"
@@ -194,15 +197,19 @@ export async function RetailerHome({ userId }: { userId: string }) {
   if (!s) return <EmptyState title="No shop linked" />;
   return (
     <Cards>
-      <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Open", value: num(s.openOrders) }]} />
+      {/* The first thing a shop does (spec section 10 lists "new order" first); the cards below are plain, so it is the one highlight. */}
+      <Link href="/orders/new" className={cn(buttonVariants({ size: "lg" }), "w-full")}>
+        New order
+      </Link>
+      <Card index={1} href="/orders?show=open" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Open", value: num(s.openOrders) }]} />
       <Card
-        index={1}
+        index={2}
         href="/ledger"
         title="My dues" icon={Banknote} tone="rose"
         stats={[{ label: s.balancePaise < 0 ? "Advance" : "Due", value: money(Math.abs(s.balancePaise)) }]}
       />
       <Card
-        index={2}
+        index={3}
         href="/receipts"
         title="My payments" icon={Receipt} tone="teal"
         stats={

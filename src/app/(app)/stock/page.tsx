@@ -6,7 +6,8 @@ import { requireRole } from "@/lib/session";
 import { getBalances } from "@/lib/stock";
 import { StockView } from "./stock-view";
 
-const linkClass = "rounded-xl bg-card px-3 py-2 text-sm font-semibold shadow-card ring-1 ring-foreground/6";
+const linkClass =
+  "inline-flex min-h-12 items-center rounded-xl bg-card px-4 text-sm font-semibold shadow-card ring-1 ring-foreground/6";
 
 export default async function StockPage() {
   const session = await requireRole(...rolesFor("viewStock"));

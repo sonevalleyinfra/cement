@@ -1,16 +1,23 @@
 "use client";
 
 import { type FormEvent, useState, useTransition } from "react";
+import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
+import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { firstMissing } from "@/lib/form-rules";
+import { matchesRetailerSearch } from "@/lib/retailer-rules";
+import { useFormError } from "@/lib/use-form-error";
 import {
   addRetailer,
   linkRetailerUser,
+  type RetailerResult,
   saveRetailer,
   setRetailerActive,
   setRetailerSalesRep,
@@ -29,8 +36,6 @@ type Row = {
 };
 type Login = { id: string; label: string };
 
-const selectClass = "h-12 w-full rounded-xl border bg-background px-3 text-base";
-
 export function RetailersView({
   rows,
   canEdit,
@@ -45,150 +50,46 @@ export function RetailersView({
   /** Sales people admin may pick; null = this viewer cannot change it. */
   salesReps: Login[] | null;
 }) {
-  const [linkError, setLinkError] = useState("");
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [error, setError] = useState("");
-  const [pending, start] = useTransition();
+  const [query, setQuery] = useState("");
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [newRep, setNewRep] = useState("");
-
-  function openSheet(row: Row) {
-    setEditing(row);
-    setError("");
-    setOpen(true);
-  }
-
-  function openAdd() {
-    setNewRep("");
-    setError("");
-    setAdding(true);
-  }
-
-  // onSubmit (not a form action) so the fields keep their text when there is an error.
-  function submitAdd(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    start(async () => {
-      const res = await addRetailer({
-        name: String(f.get("name") ?? ""),
-        phone: String(f.get("phone") ?? ""),
-        place: String(f.get("place") ?? ""),
-        salesRepId: newRep,
-      });
-      if (res.ok) setAdding(false);
-      else setError(res.error);
-    });
-  }
-
-  // onSubmit (not a form action) so the fields keep their text when there is an error.
-  function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!editing) return;
-    const formData = new FormData(e.currentTarget);
-    start(async () => {
-      const res = await saveRetailer(editing.id, {
-        name: String(formData.get("name") ?? ""),
-        phone: String(formData.get("phone") ?? ""),
-        place: String(formData.get("place") ?? ""),
-      });
-      if (res.ok) setOpen(false);
-      else setError(res.error);
-    });
-  }
+  const detail = rows.find((r) => r.id === detailId) ?? null;
+  const shown = rows.filter((r) => matchesRetailerSearch(r, query));
 
   return (
-    <>
+    <div className="flex flex-col gap-4">
+      <h1 className="text-xl font-bold">Retailers</h1>
+      {rows.length > 0 && (
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search name, phone or place"
+          aria-label="Search retailers"
+          autoComplete="off"
+        />
+      )}
       {rows.length === 0 ? (
         <EmptyState title="No retailers" />
+      ) : shown.length === 0 ? (
+        <EmptyState title="No match" />
       ) : (
         <ul className="flex flex-col gap-3">
-          {linkError && <p className="text-sm text-destructive">{linkError}</p>}
-          {rows.map((r, i) => (
+          {shown.map((r, i) => (
             <li key={r.id}>
               <ListCard
                 index={i}
                 title={r.name}
+                onClick={() => setDetailId(r.id)}
                 className={r.active ? undefined : "opacity-60"}
                 top={<span className="text-xs text-muted-foreground">{r.active ? "Active" : "Inactive"}</span>}
                 bottom={
-                  // One column so the pickers and buttons wrap inside the card on a phone.
-                  <div className="flex w-full min-w-0 flex-col gap-2">
-                    <div className="text-xs text-muted-foreground">
+                  <div className="flex w-full min-w-0 flex-col gap-0.5 text-xs text-muted-foreground">
+                    <span>
                       <span className="tabular">{r.phone}</span>
                       {r.place && ` · ${r.place}`}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {salesReps ? (
-                        <select
-                          aria-label={`Sales person for ${r.name}`}
-                          className="h-9 max-w-40 rounded-lg border bg-background px-2 text-xs"
-                          value={r.salesRepId ?? ""}
-                          disabled={pending}
-                          onChange={(e) =>
-                            start(async () => {
-                              const res = await setRetailerSalesRep(r.id, e.target.value);
-                              setLinkError(res.ok ? "" : res.error);
-                            })
-                          }
-                        >
-                          {!r.salesRepId && (
-                            <option value="" disabled>
-                              No sales person
-                            </option>
-                          )}
-                          {/* Keep showing a current pick who is no longer active. */}
-                          {r.salesRepId && !salesReps.some((p) => p.id === r.salesRepId) && (
-                            <option value={r.salesRepId}>{r.salesRepName || "Former sales person"}</option>
-                          )}
-                          {salesReps.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">{r.salesRepName || "No sales person"}</div>
-                      )}
-                      {logins && (
-                        <select
-                          aria-label={`Login for ${r.name}`}
-                          className="h-9 max-w-40 rounded-lg border bg-background px-2 text-xs"
-                          value={r.userId ?? ""}
-                          disabled={pending}
-                          onChange={(e) =>
-                            start(async () => {
-                              const res = await linkRetailerUser(r.id, e.target.value || null);
-                              setLinkError(res.ok ? "" : res.error);
-                            })
-                          }
-                        >
-                          <option value="">No login</option>
-                          {r.userId && !logins.some((l) => l.id === r.userId) && (
-                            <option value={r.userId}>{r.loginName || "Linked login"}</option>
-                          )}
-                          {logins.map((l) => (
-                            <option key={l.id} value={l.id}>
-                              {l.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {canEdit && (
-                        <div className="flex gap-2">
-                          <Button variant="outline" onClick={() => openSheet(r)}>
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            disabled={pending}
-                            onClick={() => start(async () => void (await setRetailerActive(r.id, !r.active)))}
-                          >
-                            {r.active ? "Turn off" : "Turn on"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                    </span>
+                    <span>{r.salesRepName || "No sales person"}</span>
                   </div>
                 }
               />
@@ -198,62 +99,241 @@ export function RetailersView({
       )}
       {canEdit && (
         <PinnedAction>
-          <Button onClick={openAdd}>Add</Button>
+          <Button onClick={() => setAdding(true)}>Add</Button>
         </PinnedAction>
       )}
-      <Sheet open={open} onOpenChange={setOpen} title="Edit retailer">
-        <form key={editing?.id ?? "none"} onSubmit={submit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" name="name" defaultValue={editing?.name ?? ""} autoComplete="off" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="phone">Phone</Label>
-            <Input id="phone" name="phone" type="tel" inputMode="numeric" defaultValue={editing?.phone ?? ""} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="place">Place</Label>
-            <Input id="place" name="place" defaultValue={editing?.place ?? ""} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={pending}>
-            Save
-          </Button>
-        </form>
+      <Sheet open={detail !== null} onOpenChange={(o) => !o && setDetailId(null)} title={detail?.name ?? ""}>
+        {detail && (
+          <ShopDetail
+            key={detail.id}
+            row={detail}
+            canEdit={canEdit}
+            logins={logins}
+            salesReps={salesReps}
+            onDone={() => setDetailId(null)}
+          />
+        )}
       </Sheet>
       <Sheet open={adding} onOpenChange={setAdding} title="New retailer">
-        <form onSubmit={submitAdd} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="add-name">Name</Label>
-            <Input id="add-name" name="name" autoComplete="off" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="add-phone">Phone</Label>
-            <Input id="add-phone" name="phone" type="tel" inputMode="numeric" autoComplete="off" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="add-place">Place</Label>
-            <Input id="add-place" name="place" autoComplete="off" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="add-rep">Sales person</Label>
-            <select id="add-rep" className={selectClass} value={newRep} onChange={(e) => setNewRep(e.target.value)}>
-              <option value="" disabled>
-                Pick one
-              </option>
-              {(salesReps ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={pending || !newRep}>
-            Add
-          </Button>
-        </form>
+        {adding && <AddShop salesReps={salesReps ?? []} onDone={() => setAdding(false)} />}
       </Sheet>
-    </>
+    </div>
+  );
+}
+
+/**
+ * Everything about one shop in one place: details, sales person and login are saved together with one
+ * Save button. Turning a shop off asks "sure?" first. Without edit rights it is a read-only card.
+ */
+function ShopDetail({
+  row,
+  canEdit,
+  logins,
+  salesReps,
+  onDone,
+}: {
+  row: Row;
+  canEdit: boolean;
+  logins: Login[] | null;
+  salesReps: Login[] | null;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState(row.name);
+  const [phone, setPhone] = useState(row.phone);
+  const [place, setPlace] = useState(row.place);
+  const [repId, setRepId] = useState(row.salesRepId ?? "");
+  const [loginId, setLoginId] = useState(row.userId ?? "");
+  const [turningOff, setTurningOff] = useState(false);
+  const { error, setError, clearError } = useFormError([name, phone, place, repId, loginId, turningOff]);
+  const [pending, start] = useTransition();
+
+  if (!canEdit) {
+    return (
+      <dl className="flex flex-col gap-3 text-base">
+        <div>
+          <dt className="text-xs text-muted-foreground">Phone</dt>
+          <dd>
+            <a
+              href={`tel:${row.phone}`}
+              className="tabular -my-1 inline-flex min-h-12 items-center font-semibold underline underline-offset-2"
+            >
+              {row.phone}
+            </a>
+          </dd>
+        </div>
+        {row.place && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Place</dt>
+            <dd>{row.place}</dd>
+          </div>
+        )}
+        <div>
+          <dt className="text-xs text-muted-foreground">Sales person</dt>
+          <dd>{row.salesRepName || "None"}</dd>
+        </div>
+      </dl>
+    );
+  }
+
+  /** Runs the saves in order and stops at the first problem. */
+  function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    clearError();
+    start(async () => {
+      const steps: (() => Promise<RetailerResult>)[] = [];
+      if (name !== row.name || phone !== row.phone || place !== row.place) {
+        steps.push(() => saveRetailer(row.id, { name, phone, place }));
+      }
+      if (salesReps && repId && repId !== (row.salesRepId ?? "")) steps.push(() => setRetailerSalesRep(row.id, repId));
+      if (logins && loginId !== (row.userId ?? "")) steps.push(() => linkRetailerUser(row.id, loginId || null));
+      for (const step of steps) {
+        const res = await step();
+        if (!res.ok) return setError(res.error);
+      }
+      onDone();
+    });
+  }
+
+  function switchTo(active: boolean) {
+    clearError();
+    start(async () => {
+      const res = await setRetailerActive(row.id, active);
+      if (res.ok) onDone();
+      else setError(res.error);
+    });
+  }
+
+  // A sales person or login who is no longer in the list is still shown while they are the current pick.
+  const repOptions = [
+    ...(row.salesRepId && !salesReps?.some((p) => p.id === row.salesRepId)
+      ? [{ value: row.salesRepId, label: row.salesRepName || "Former sales person" }]
+      : []),
+    ...(salesReps ?? []).map((p) => ({ value: p.id, label: p.label })),
+  ];
+  const loginOptions = [
+    { value: "", label: "No login" },
+    ...(row.userId && !logins?.some((l) => l.id === row.userId)
+      ? [{ value: row.userId, label: row.loginName || "Linked login" }]
+      : []),
+    ...(logins ?? []).map((l) => ({ value: l.id, label: l.label })),
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form onSubmit={save} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="shop-name">Name</Label>
+          <Input id="shop-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="shop-phone">Phone</Label>
+          <Input
+            id="shop-phone"
+            type="tel"
+            inputMode="numeric"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="shop-place">Place</Label>
+          <Input id="shop-place" value={place} onChange={(e) => setPlace(e.target.value)} autoComplete="off" />
+        </div>
+        {salesReps && (
+          <SelectField
+            label="Sales person"
+            value={repId}
+            onChange={setRepId}
+            placeholder="No sales person"
+            options={repOptions}
+          />
+        )}
+        {logins && <SelectField label="Login" value={loginId} onChange={setLoginId} options={loginOptions} />}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!turningOff && (
+          <Button type="submit" disabled={pending}>
+            {pending ? "Saving…" : "Save"}
+          </Button>
+        )}
+      </form>
+      {turningOff ? (
+        <ConfirmStep
+          question={`Turn off ${row.name}?`}
+          confirmLabel="Turn off"
+          destructive
+          pending={pending}
+          onBack={() => setTurningOff(false)}
+          onConfirm={() => switchTo(false)}
+        />
+      ) : row.active ? (
+        <Button variant="ghost" className="text-destructive" disabled={pending} onClick={() => setTurningOff(true)}>
+          Turn off
+        </Button>
+      ) : (
+        <Button variant="outline" disabled={pending} onClick={() => switchTo(true)}>
+          Turn on
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void }) {
+  const [rep, setRep] = useState("");
+  // The text fields are read with FormData, so the form's onInput clears the error.
+  const { error, setError, clearError } = useFormError();
+  const [pending, start] = useTransition();
+  const hint = firstMissing([[!rep, "Pick a sales person"]]);
+
+  // onSubmit (not a form action) so the fields keep their text when there is an error.
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    clearError();
+    const f = new FormData(e.currentTarget);
+    start(async () => {
+      const res = await addRetailer({
+        name: String(f.get("name") ?? ""),
+        phone: String(f.get("phone") ?? ""),
+        place: String(f.get("place") ?? ""),
+        salesRepId: rep,
+      });
+      if (res.ok) onDone();
+      else setError(res.error);
+    });
+  }
+
+  return (
+    <form onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-name">Name</Label>
+        <Input id="add-name" name="name" autoComplete="off" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-phone">Phone</Label>
+        <Input id="add-phone" name="phone" type="tel" inputMode="numeric" autoComplete="off" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-place">Place</Label>
+        <Input id="add-place" name="place" autoComplete="off" />
+      </div>
+      <SelectField
+        label="Sales person"
+        value={rep}
+        onChange={(v) => {
+          clearError();
+          setRep(v);
+        }}
+        placeholder="Pick one"
+        options={salesReps.map((p) => ({ value: p.id, label: p.label }))}
+      />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div>
+        <FormHint>{hint}</FormHint>
+        <Button className="w-full" type="submit" disabled={pending || hint !== null}>
+          Add
+        </Button>
+      </div>
+    </form>
   );
 }

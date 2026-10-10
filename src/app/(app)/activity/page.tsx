@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { rolesFor } from "@/lib/permissions";
 import { optionalRange, pageParam, param } from "@/lib/report-range";
 import { requireRole } from "@/lib/session";
+import { emptyListTitle } from "@/lib/words";
 
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(...rolesFor("viewActivity"));
@@ -55,7 +56,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         </div>
       </RangeForm>
       {rows.length === 0 ? (
-        <EmptyState title="Nothing yet" icon={History} />
+        <EmptyState
+          title={emptyListTitle({ dates: !!(range.from || range.to), other: !!(actorId || group) })}
+          icon={History}
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((r, i) => (

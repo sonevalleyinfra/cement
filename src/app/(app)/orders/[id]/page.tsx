@@ -13,10 +13,12 @@ import {
   historyRateLine,
   historyReason,
   historyStepLabel,
+  orderAmountSummary,
 } from "@/lib/order-access";
-import { canCancelOrder, isOrderStatus, orderValuePaise, remainingBags } from "@/lib/order-rules";
+import { canCancelOrder, isOrderStatus, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
+import { bagsText } from "@/lib/words";
 import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
 
@@ -91,7 +93,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const events = historyForViewer(user.role, allEvents);
   const sentBags = loads.reduce((n, l) => n + l.bags, 0);
   const notSent = remainingBags(o.bags, sentBags);
-  const valuePaise = orderValuePaise({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads });
+  // Staff only. Never one rate that was not billed: see orderAmountSummary.
+  const amount = showPrice ? orderAmountSummary({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads }) : null;
   const cancelled = cancelledNote(o.status, o.bags, sentBags);
 
   const canCancel = canCancelOrder(user.role, o.status);
@@ -105,17 +108,20 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <div>
         <h1 className="text-xl font-bold">{o.retailer}</h1>
         <p className="text-sm text-muted-foreground">
-          {o.product} · <span className="tabular">{o.bags}</span> bags
+          {o.product} · <span className="tabular">{bagsText(o.bags)}</span>
         </p>
         {cancelled && <p className="text-sm text-muted-foreground">{cancelled}</p>}
         {o.notes && <p className="mt-1 text-sm">{o.notes}</p>}
       </div>
-      {showPrice && o.ratePaise !== null && valuePaise !== null && (
+      {amount && (
         <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-          <div className="text-xs text-muted-foreground">
-            Rate {formatINR(o.ratePaise)} per bag
-          </div>
-          <div className="tabular text-2xl font-bold">{formatINR(valuePaise)}</div>
+          <div className="text-xs text-muted-foreground">{amount.caption}</div>
+          <div className="tabular text-2xl font-bold">{formatINR(amount.totalPaise)}</div>
+          {amount.lines.map((line) => (
+            <div key={line} className="tabular text-xs text-muted-foreground">
+              {line}
+            </div>
+          ))}
         </div>
       )}
       {loads.length > 0 && (
@@ -123,22 +129,21 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           {loads.map((l) => (
             <li key={l.id} className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="tabular text-lg font-bold">{l.bags} bags</span>
+                <span className="tabular text-lg font-bold">{bagsText(l.bags)}</span>
                 <span className="text-sm font-semibold">{l.vehicle}</span>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {l.driverName}
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>{l.driverName}</span>
                 {l.driverPhone && (
-                  <>
-                    {" · "}
-                    <a href={`tel:${l.driverPhone}`} className="tabular underline">
-                      {l.driverPhone}
-                    </a>
-                  </>
+                  <a
+                    href={`tel:${l.driverPhone}`}
+                    className="tabular -my-1 -mr-2 inline-flex min-h-12 min-w-12 items-center justify-end px-2 text-sm font-semibold text-foreground underline underline-offset-2"
+                  >
+                    {l.driverPhone}
+                  </a>
                 )}
-                {" · "}
-                {formatDateTime(l.createdAt)}
               </div>
+              <div className="text-xs text-muted-foreground">{formatDateTime(l.createdAt)}</div>
               {showPrice && (
                 <div className="text-xs text-muted-foreground">
                   {formatINR(l.ratePaise)} per bag · {formatINR(l.bags * l.ratePaise)}

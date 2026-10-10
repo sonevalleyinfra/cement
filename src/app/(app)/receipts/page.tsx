@@ -1,9 +1,9 @@
 import { desc, eq, type SQL } from "drizzle-orm";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { StatusChip } from "@/components/app/status-chip";
+import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
 import { receipts, retailers } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
@@ -59,14 +59,14 @@ export default async function ReceiptsPage() {
         {staff && (
           <div className="flex gap-4">
             {can(user.role, "verifyPayments") && (
-              <Link href="/receipts/review" className="text-sm font-semibold underline">
+              <TextLink href="/receipts/review" strong>
                 Verify
-              </Link>
+              </TextLink>
             )}
             {can(user.role, "recordReceipt") && (
-              <Link href="/receipts/new" className="text-sm font-semibold underline">
+              <TextLink href="/receipts/new" strong>
                 New payment
-              </Link>
+              </TextLink>
             )}
           </div>
         )}

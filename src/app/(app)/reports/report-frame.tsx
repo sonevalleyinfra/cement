@@ -1,8 +1,8 @@
 import { TriangleAlert } from "lucide-react";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { RangeForm } from "@/components/app/range-form";
 import { Stat } from "@/components/app/stat";
+import { TextLink } from "@/components/app/text-link";
 import { formatINR } from "@/lib/money";
 import { rangeQuery, type ReportRange } from "@/lib/report-range";
 
@@ -30,9 +30,7 @@ export function ReportFrame({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{title}</h1>
-        <Link href={`/reports?${rangeQuery(range)}`} className="text-sm text-muted-foreground underline">
-          Reports
-        </Link>
+        <TextLink href={`/reports?${rangeQuery(range)}`}>Reports</TextLink>
       </div>
       <RangeForm from={range.from} to={range.to} keep={keep}>
         {filters}

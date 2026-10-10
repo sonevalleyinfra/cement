@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
+import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
 import { user as users } from "@/db/schema";
 import { formatDate, toISTDateKey } from "@/lib/datetime";
@@ -41,11 +41,7 @@ export default async function SupplierAccountPage({ params }: { params: Promise<
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold">{brand.name} account</h1>
-        {suppliers.length > 1 && (
-          <Link href="/suppliers" className="text-sm text-muted-foreground underline">
-            Suppliers
-          </Link>
-        )}
+        {suppliers.length > 1 && <TextLink href="/suppliers">Suppliers</TextLink>}
       </div>
       <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <div className="text-xs text-muted-foreground">{big.text}</div>

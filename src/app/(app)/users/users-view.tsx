@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useState, useTransition } from "react";
+import { chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -10,14 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseRoles, ROLES } from "@/lib/roles";
 import { type RoleTab, usersInTab } from "@/lib/user-admin-rules";
+import { useFormError } from "@/lib/use-form-error";
+import { roleLabel } from "@/lib/words";
 import { createUser, deleteUser, setUserActive, type UserResult, updateUserAccess } from "./actions";
 
 type Row = { id: string; name: string; email: string; phone: string; role: string; active: boolean };
 
-const chip = "rounded-full bg-muted px-2 py-0.5 text-xs font-medium";
+const chip = "rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium";
 
-const tabChip = (on: boolean) =>
-  `h-11 shrink-0 rounded-full px-4 text-sm font-semibold capitalize ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${on ? "bg-primary text-primary-foreground shadow-brand ring-primary" : "bg-card ring-foreground/10"}`;
+const tabChip = (on: boolean) => chipClass(on);
 
 function toggle(list: string[], value: string) {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -27,8 +29,13 @@ function Checks({ options, value, onChange }: { options: { id: string; label: st
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((o) => (
-        <label key={o.id} className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-sm">
-          <input type="checkbox" checked={value.includes(o.id)} onChange={() => onChange(toggle(value, o.id))} />
+        <label key={o.id} className="flex min-h-12 items-center gap-2 rounded-full bg-muted px-4 text-sm">
+          <input
+            type="checkbox"
+            className="size-5"
+            checked={value.includes(o.id)}
+            onChange={() => onChange(toggle(value, o.id))}
+          />
           {o.label}
         </label>
       ))}
@@ -41,8 +48,8 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
   const [editing, setEditing] = useState<Row | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [tempPassword, setTempPassword] = useState("");
-  const [error, setError] = useState("");
   const [listError, setListError] = useState("");
+  const { error, setError, clearError } = useFormError([roles, tempPassword]);
   const [pending, start] = useTransition();
 
   // Role tabs (a person with several roles shows under each), then Active / Deactivated.
@@ -69,7 +76,7 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
     setEditing(row);
     setRoles(row ? parseRoles(row.role) : []);
     setTempPassword("");
-    setError("");
+    clearError();
     setOpen(true);
   }
 
@@ -77,6 +84,7 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    clearError();
     start(async () => {
       const res = editing
         ? await updateUserAccess(editing.id, {
@@ -99,10 +107,11 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
 
   return (
     <>
+      <h1 className="mb-3 text-xl font-bold">Users</h1>
       <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
         {tabs.map((t) => (
           <button key={t} type="button" className={tabChip(tab === t)} onClick={() => setTab(t)}>
-            {t === "none" ? "No role" : t} <span className="tabular opacity-70">{count(t)}</span>
+            {t === "none" ? "No role" : roleLabel(t)} <span className="tabular opacity-70">{count(t)}</span>
           </button>
         ))}
       </div>
@@ -133,7 +142,7 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
                   <>
                     <div className="flex flex-wrap gap-1">
                       {parseRoles(r.role).map((x) => (
-                        <span key={x} className={chip}>{x}</span>
+                        <span key={x} className={chip}>{roleLabel(x)}</span>
                       ))}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -160,7 +169,7 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
         <Button onClick={() => openSheet(null)}>Add</Button>
       </PinnedAction>
       <Sheet open={open} onOpenChange={setOpen} title={editing ? `Edit ${editing.name}` : "New user"}>
-        <form key={editing?.id ?? "new"} onSubmit={submit} className="flex flex-col gap-4">
+        <form key={editing?.id ?? "new"} onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
           {!editing && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">Name</Label>
@@ -198,7 +207,7 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Roles</Label>
-            <Checks options={ROLES.map((x) => ({ id: x, label: x }))} value={roles} onChange={setRoles} />
+            <Checks options={ROLES.map((x) => ({ id: x, label: roleLabel(x) }))} value={roles} onChange={setRoles} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={pending}>

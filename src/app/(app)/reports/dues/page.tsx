@@ -32,9 +32,14 @@ export default async function DuesReportPage({ searchParams }: { searchParams: P
         <EmptyState title="No dues" />
       ) : (
         <DataTable
-          columns={[{ label: "Retailer" }, { label: "Due" }, ...KEYS.map((k) => ({ label: AGING_LABELS[k] }))]}
+          stacked
+          columns={[{ label: "Retailer" }, { label: "Due" }, ...KEYS.map((k) => ({ label: `${AGING_LABELS[k]} days` }))]}
           rows={d.lines.map((l) => [
-            <Link key="n" href={`/reports/statement?retailer=${l.retailerId}&${q}`} className="underline-offset-2 hover:underline">
+            <Link
+              key="n"
+              href={`/reports/statement?retailer=${l.retailerId}&${q}`}
+              className="-my-2 flex min-h-12 items-center underline-offset-2 hover:underline"
+            >
               {l.name}
             </Link>,
             money(l.duePaise),

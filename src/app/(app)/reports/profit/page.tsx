@@ -26,6 +26,7 @@ export default async function ProfitReportPage({ searchParams }: { searchParams:
         <EmptyState title="No dispatches" />
       ) : (
         <DataTable
+          stacked
           columns={[
             { label: "Product" },
             { label: "Bags" },
