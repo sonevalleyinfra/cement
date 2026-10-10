@@ -20,11 +20,12 @@ export const auth = betterAuth({
 
   database: drizzleAdapter(db, { provider: "pg", schema }),
 
-  // Extra column on the user table (kept here so `pnpm auth:generate` keeps it).
-  // input: false = users cannot change it themselves; the admin sets it in /users.
+  // Extra columns on the user table (kept here so `pnpm auth:generate` keeps them).
+  // input: false = users cannot change them themselves; the admin sets them in /users.
   user: {
     additionalFields: {
       phone: { type: "string", required: false, defaultValue: "", input: false },
+      deletedAt: { type: "date", required: false, input: false },
     },
   },
 

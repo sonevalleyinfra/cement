@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { firms, user, userFirms } from "@/db/schema";
 import { rolesFor } from "@/lib/permissions";
@@ -11,6 +11,7 @@ export default async function UsersPage() {
     db
       .select({ id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role, banned: user.banned })
       .from(user)
+      .where(isNull(user.deletedAt))
       .orderBy(asc(user.name)),
     db.select({ id: firms.id, name: firms.name }).from(firms).where(eq(firms.active, true)).orderBy(asc(firms.createdAt), asc(firms.slot)),
     db.select().from(userFirms),

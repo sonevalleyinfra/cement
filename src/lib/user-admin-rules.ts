@@ -1,6 +1,6 @@
 /** Rules for the users page. Plain functions: no database, no request. */
 import { isValidIndianMobile, normalizePhone } from "@/lib/retailer-rules";
-import { isRole, type Role } from "@/lib/roles";
+import { isRole, parseRoles, type Role } from "@/lib/roles";
 
 const STAFF_ROLES: readonly Role[] = ["admin", "sales", "accounts", "logistics"];
 
@@ -67,3 +67,29 @@ export function passwordFromBytes(bytes: Uint8Array): string {
   return Array.from(bytes.slice(0, 12), (b) => alphabet[b % alphabet.length]).join("");
 }
 
+
+/**
+ * Deleting only hides a user and marks them deleted (their orders, receipts and history stay).
+ * Allowed once the account is deactivated, and never on yourself. Returns an error or null.
+ */
+export function checkDelete(isSelf: boolean, isActive: boolean): string | null {
+  if (isSelf) return "You cannot delete yourself";
+  if (isActive) return "Deactivate first";
+  return null;
+}
+
+/** The users page groups people by role. "none" collects anyone without a known role. */
+export type RoleTab = Role | "none";
+
+/** Users who hold `tab` (a person with several roles shows under each) and match `active`. */
+export function usersInTab<T extends { role: string; active: boolean }>(
+  rows: readonly T[],
+  tab: RoleTab,
+  active: boolean,
+): T[] {
+  return rows.filter((r) => {
+    if (r.active !== active) return false;
+    const roles = parseRoles(r.role);
+    return tab === "none" ? roles.length === 0 : roles.includes(tab);
+  });
+}

@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ export default async function AdminPage() {
       createdAt: user.createdAt,
     })
     .from(user)
+    .where(isNull(user.deletedAt))
     .orderBy(desc(user.createdAt))
     .limit(100);
 

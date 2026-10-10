@@ -1,7 +1,7 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
@@ -16,6 +16,7 @@ import { rolesFor } from "@/lib/permissions";
 import { joinRoles, parseRoles, type Role } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
 import {
+  checkDelete,
   checkRolesAndFirms,
   checkSelfDeactivate,
   checkSelfRoleChange,
@@ -108,7 +109,11 @@ export async function updateUserAccess(
 
   const firmIds = [...new Set(form.firmIds)];
   if (!(await firmsExist(firmIds))) return { ok: false, error: "Pick firms from the list." };
-  const [target] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1);
+  const [target] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(and(eq(user.id, userId), isNull(user.deletedAt)))
+    .limit(1);
   if (!target) return { ok: false, error: "User not found." };
 
   const roles = form.roles as Role[];
@@ -139,11 +144,47 @@ export async function setUserActive(userId: string, active: boolean): Promise<Us
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
   const self = checkSelfDeactivate(me.id === userId, active);
   if (self) return { ok: false, error: self };
+  const [target] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(and(eq(user.id, userId), isNull(user.deletedAt)))
+    .limit(1);
+  if (!target) return { ok: false, error: "User not found." };
   const h = await headers();
   if (active) await auth.api.unbanUser({ headers: h, body: { userId } });
   else await auth.api.banUser({ headers: h, body: { userId, banReason: "Deactivated by admin" } });
   // Better Auth saves the ban on its own, so the audit row is a second step right after it.
   await writeAudit(db, { actorId: me.id, entity: "user", entityId: userId, action: active ? "activate" : "deactivate" });
+  revalidatePath("/users");
+  return { ok: true };
+}
+
+/**
+ * "Deletes" a deactivated user: marks them deleted so they leave the users page.
+ * Nothing is erased, so their orders, receipts and history keep showing who did what.
+ * They stay banned, so they still cannot sign in.
+ */
+export async function deleteUser(userId: string): Promise<UserResult> {
+  const { user: me } = await requireRole(...rolesFor("manageUsers"));
+  const [target] = await db
+    .select({ id: user.id, name: user.name, email: user.email, banned: user.banned })
+    .from(user)
+    .where(and(eq(user.id, userId), isNull(user.deletedAt)))
+    .limit(1);
+  if (!target) return { ok: false, error: "User not found." };
+  const problem = checkDelete(me.id === userId, !target.banned);
+  if (problem) return { ok: false, error: problem };
+
+  await db.transaction(async (tx) => {
+    await tx.update(user).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(user.id, userId));
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "user",
+      entityId: userId,
+      action: "delete",
+      details: { name: target.name, email: target.email },
+    });
+  });
   revalidatePath("/users");
   return { ok: true };
 }
