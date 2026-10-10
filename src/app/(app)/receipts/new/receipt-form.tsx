@@ -36,7 +36,8 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
   const { pending: saving, run } = useSubmit();
   const pending = loading || saving;
 
-  const totalPaise = parseRupeesToPaise(digits || "0") ?? 0;
+  // The keypad allows paise ("9023.45"); a point typed with nothing after it yet counts as whole rupees.
+  const totalPaise = parseRupeesToPaise(digits.replace(/\.$/, "") || "0") ?? 0;
   // Paying more than the dues is fine: the rest stays with the shop as an advance.
   const advancePaise = duesPaise !== null && totalPaise > duesPaise ? totalPaise - duesPaise : 0;
 
@@ -121,7 +122,7 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
 
       <section className="flex flex-col gap-3">
         <div className="tabular text-center text-4xl font-bold">{formatINR(totalPaise, { hidePaise: true })}</div>
-        <Keypad value={digits} onChange={setDigits} />
+        <Keypad value={digits} onChange={setDigits} decimal />
         {advancePaise > 0 && (
           <p className="text-center text-sm text-muted-foreground">Advance {formatINR(advancePaise)}</p>
         )}

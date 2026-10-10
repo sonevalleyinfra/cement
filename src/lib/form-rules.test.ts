@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { errorKey, firstMissing, visibleError } from "./form-rules";
+import { errorKey, firstMissing, pressKey, visibleError } from "./form-rules";
+import { parseRupeesToPaise } from "./money";
 
 describe("errorKey", () => {
   it("is the same for the same values and different when a value changes", () => {
@@ -42,5 +43,29 @@ describe("firstMissing", () => {
   it("returns null when nothing is missing", () => {
     expect(firstMissing([[false, "Pick a retailer"]])).toBeNull();
     expect(firstMissing([])).toBeNull();
+  });
+});
+
+describe("pressKey (on-screen keypad)", () => {
+  const type = (keys: string[], opts?: { maxLength?: number; decimal?: boolean }) =>
+    keys.reduce((v, k) => pressKey(v, k, opts), "");
+  it("whole numbers: digits and 00, no leading zero, capped length", () => {
+    expect(type(["0", "5"])).toBe("5");
+    expect(type(["1", "00"])).toBe("100");
+    expect(type(["1", "2", "3", "4"], { maxLength: 3 })).toBe("123");
+    expect(type(["1", "."])).toBe("1");
+    expect(type(["1", "2", "del"])).toBe("1");
+  });
+  it("payments: rupees and paise, up to 2 digits after the point", () => {
+    const text = type(["9", "0", "2", "3", ".", "4", "5", "6"], { decimal: true });
+    expect(text).toBe("9023.45");
+    expect(parseRupeesToPaise(text)).toBe(902345);
+    expect(type([".", "5"], { decimal: true })).toBe("0.5");
+    expect(type(["1", ".", "."], { decimal: true })).toBe("1.");
+    expect(type(["1", ".", "5", "del", "del"], { decimal: true })).toBe("1");
+  });
+  it("the length cap counts whole rupees only", () => {
+    expect(type(["1", "2", "3", ".", "4", "5"], { maxLength: 3, decimal: true })).toBe("123.45");
+    expect(type(["1", "2", "3", "4"], { maxLength: 3, decimal: true })).toBe("123");
   });
 });
