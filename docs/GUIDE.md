@@ -643,11 +643,11 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 ## 17. Phase 1: the cement app
 
 ### Roles
-- **Admin**: sees everything, manages users, retailers' logins, stock and opening balances.
-- **Sales**: places orders (typing the rate) and fills the rate on their shops' orders.
-- **Accounts**: approves or rejects orders (only once the rate is filled), verifies online payments and cheques,
-  confirms cash handovers.
-- **Logistics**: dispatches any approved order (partly or fully) and can change the rate, with a reason.
+- **Admin**: sees everything, manages users, retailers' logins, stock, opening balances and ledger adjustments.
+- **Sales**: places orders (typing the rate) and fills the rate on their shops' orders. Records payments.
+- **Accounts**: approves or rejects orders (only once the rate is filled), verifies online payments,
+  confirms cash handovers, reverses a payment entered by mistake.
+- **Logistics**: dispatches any approved order (partly or fully) and can change the rate, with a reason. Records payments.
 - **Admin**: everything, and is the only one who can cancel an order.
 - **Retailer**: places own orders and sees own orders and dues. Never sees prices on orders.
 
@@ -668,7 +668,19 @@ Commands that change things (ship, release, launch...) only run when **you** typ
 4. Every dispatch takes bags out of stock and adds bags x rate to the retailer's dues (one ledger line per dispatch).
 5. Logistics or admin can change the rate after approval, with a reason. The new rate counts for bags not sent yet.
 6. Admin can cancel an order, with a reason. Only bags not sent yet are cancelled; bags already sent stay billed.
-7. Anyone on staff records a receipt (cash, online or cheque). It lowers that retailer's dues; paying more leaves an advance.
+7. Anyone on staff records a payment (More → Payments → New payment): **cash** or **online**. No cheques.
+   Paying more than the dues leaves an advance.
+
+### Payments
+- **Cash** lowers the retailer's dues at once. The cash is now held by whoever recorded it (More → Cash shows
+  "My cash held"). They tap **Hand over** (up to what they hold); accounts tap **Received** and can type a smaller
+  amount if less arrived (the rest stays with that person), or **Reject** with a reason.
+- **Online** needs the UTR / reference. It waits as *Not verified* and does not change the dues. Accounts check the
+  bank statement and tap **Verified** (the dues go down then) or **Reject** with a reason. The same UTR cannot be
+  recorded twice.
+- **Reverse** (accounts or admin, with a reason) undoes a received cash or verified online payment: the dues go back
+  up. Cash can be reversed only while that person still holds it; after it was handed over, admin adds a ledger
+  **Adjustment** on the retailer's ledger page instead (owes more / owes less, with a reason).
 
 ### Try it with demo data (your computer only)
 1. `pnpm dev` (creates the tables and the admin), then in another terminal `pnpm seed:demo`.
@@ -676,6 +688,7 @@ Commands that change things (ship, release, launch...) only run when **you** typ
    `logistics@demo.test`, `retailer@demo.test`.
 3. It adds 6 retailers, 2 truck numbers, one godown with 500 bags of every product, 6 orders in different
    statuses (waiting for a rate, waiting for approval, approved, partly dispatched, dispatched, cancelled; dues come
-   from their dispatches) and one cash receipt. Running it twice is safe.
+   from their dispatches) and payments: cash taken by sales and logistics, one handover confirmed and one waiting,
+   online payments waiting / verified / rejected, and one reversed cash payment. Running it twice is safe.
 4. It refuses to run on production or on a database that is not on localhost. This password is public: never
    use these accounts anywhere real.

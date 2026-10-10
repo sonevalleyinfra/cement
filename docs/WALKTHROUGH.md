@@ -2,6 +2,7 @@
 
 > Historical record, written before firms were removed (spec v1.0: one business, no firms).
 > Anything below about firms, firm access or split receipts no longer applies.
+> Cheques were removed too (payments are cash or online only); cheque notes below are history.
 
 Checked in the browser pane at a 375px phone width, using `pnpm seed:demo` accounts.
 
