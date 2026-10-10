@@ -1,6 +1,6 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { ledgerEntries } from "@/db/schema";
+import { dispatches, ledgerEntries, orders, products } from "@/db/schema";
 import type { LedgerEntry } from "@/lib/ledger-rules";
 
 /** A database or a transaction. */
@@ -46,11 +46,30 @@ export async function getBalance(retailerId: string, conn: Pick<typeof db, "sele
   return row?.balancePaise ?? 0;
 }
 
-/** All entries for one retailer, oldest first. */
+/**
+ * All entries for one retailer, oldest first. A dispatch row also gets its product and bags (its
+ * dispatch was saved in the same transaction: same order, same moment), so a retailer can be shown
+ * "what came" without the amount.
+ */
 export async function getEntries(retailerId: string) {
   return db
-    .select()
+    .select({
+      id: ledgerEntries.id,
+      kind: ledgerEntries.kind,
+      amountPaise: ledgerEntries.amountPaise,
+      note: ledgerEntries.note,
+      actorId: ledgerEntries.actorId,
+      createdAt: ledgerEntries.createdAt,
+      product: products.name,
+      bags: dispatches.bags,
+    })
     .from(ledgerEntries)
+    .leftJoin(orders, eq(orders.id, ledgerEntries.orderId))
+    .leftJoin(products, eq(products.id, orders.productId))
+    .leftJoin(
+      dispatches,
+      and(eq(dispatches.orderId, ledgerEntries.orderId), eq(dispatches.createdAt, ledgerEntries.createdAt)),
+    )
     .where(eq(ledgerEntries.retailerId, retailerId))
     .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id));
 }

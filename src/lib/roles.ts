@@ -46,11 +46,10 @@ export function hasAnyRole(
 }
 
 /**
- * Pure retailer = has the retailer role and no staff role (and is not admin).
- * Only a pure retailer is price-blind; someone who is also staff counts as staff.
+ * A retailer login: has the retailer role and nothing else (a retailer cannot also be staff,
+ * see checkRoles). Prices are decided by `isStaff` (default deny), not by this.
  */
 export function isRetailerOnly(role: string | null | undefined): boolean {
-  if (isAdmin(role)) return false;
   const roles = parseRoles(role);
-  return roles.includes("retailer") && roles.every((r) => r === "retailer");
+  return roles.length > 0 && roles.every((r) => r === "retailer");
 }

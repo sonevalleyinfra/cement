@@ -5,12 +5,14 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, stockMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { claimRequest } from "@/lib/form-submissions";
 import { checkDispatchFields, planDispatch } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
 import { notify } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
+import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
 import { atPlace, lockPlace, truckByNumber } from "@/lib/stock-places";
 import { placeColumns, placeKey } from "@/lib/stock-rules";
@@ -20,6 +22,8 @@ export type DispatchResult = { ok: true } | { ok: false; error: string };
 /**
  * One truck load: stock out, one ledger debit (bags x the order's rate now), order status,
  * history and notification, all in one transaction. Any logistics person (or admin).
+ * The order's sales person is saved on the dispatch, so the sales report keeps it.
+ * `requestId` is the sheet's one-time id: a second tap dispatches nothing more (request-rules.ts).
  */
 export async function dispatchOrder(input: {
   orderId: string;
@@ -30,9 +34,12 @@ export async function dispatchOrder(input: {
   fromPlace: string | null;
   driverName: string;
   driverPhone: string;
+  requestId: string;
 }): Promise<DispatchResult> {
   const { user: me } = await requireRole(...rolesFor("dispatch"));
   if (!isUuid(input.orderId)) return { ok: false, error: "Order not found." };
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
 
   const fields = checkDispatchFields({
     vehicleNumber: String(input.vehicleNumber ?? ""),
@@ -43,6 +50,8 @@ export async function dispatchOrder(input: {
   if (!fields.ok) return fields;
 
   const result = await db.transaction(async (tx): Promise<DispatchResult> => {
+    const claim = await claimRequest(tx, request.id, "dispatch", me.id);
+    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
     // Lock the order (its rate cannot change meanwhile) and the stock place (nobody else takes the same bags).
     const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("no key update");
     if (!order) return { ok: false, error: "Order not found." };
@@ -83,6 +92,7 @@ export async function dispatchOrder(input: {
       fromGodownId: source.godownId,
       fromVehicleId: source.vehicleId,
       ratePaise: plan.ratePaise,
+      salesRepId: order.salesRepId,
       dispatchedBy: me.id,
     }).returning({ id: dispatches.id });
     await tx.insert(stockMovements).values({

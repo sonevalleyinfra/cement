@@ -1,18 +1,28 @@
 "use server";
 
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { receipts, retailers, user, walletMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/db-errors";
+import { claimRequest, saveRequestResult } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { getBalance, postEntry, type DbOrTx } from "@/lib/ledger";
 import { duesFrom } from "@/lib/ledger-rules";
 import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
 import { planReversal } from "@/lib/receipt-reversal";
-import { isUtrTaken, PAYMENT_MODES, planReceipt, planReject, planVerify, UTR_TAKEN } from "@/lib/receipt-rules";
+import {
+  isUtrTaken,
+  PAYMENT_MODES,
+  planReceipt,
+  planReject,
+  planVerify,
+  UTR_FREED_STATUSES,
+  UTR_TAKEN,
+} from "@/lib/receipt-rules";
+import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
 import { walletBalance } from "@/lib/wallet-rules";
 
@@ -63,6 +73,7 @@ async function lockRetailer(tx: DbOrTx, retailerId: string) {
  * Records one payment from a retailer. Any staff member may.
  * Cash: the ledger credit (dues go down now) and the cash held by the recorder, in one transaction.
  * Online: saved as unverified with its UTR (dues unchanged); accounts are told.
+ * `requestId` is the form's one-time id: a second tap gives the first payment back (request-rules.ts).
  */
 export async function saveReceipt(input: {
   retailerId: string;
@@ -70,8 +81,11 @@ export async function saveReceipt(input: {
   totalPaise: number;
   utr?: string;
   note?: string;
+  requestId: string;
 }): Promise<SaveReceiptResult> {
   const session = await requireRole(...rolesFor("recordReceipt"));
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
   if (!isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
   if (!(PAYMENT_MODES as readonly string[]).includes(input.mode)) return { ok: false, error: "Pick cash or online." };
   if (typeof input.totalPaise !== "number") return { ok: false, error: "Enter the amount received." };
@@ -86,13 +100,18 @@ export async function saveReceipt(input: {
 
   try {
     const res = await db.transaction(async (tx): Promise<SaveReceiptResult> => {
+      const claim = await claimRequest(tx, request.id, "payment", session.user.id);
+      if (!claim.fresh) {
+        if (!claim.result.ok) return claim.result;
+        return claim.result.resultId ? { ok: true, id: claim.result.resultId } : { ok: false, error: "Payment not found." };
+      }
       const retailer = await lockRetailer(tx, input.retailerId);
       if (!retailer) return { ok: false, error: "Retailer not found." };
       if (plan.utr) {
         const same = await tx
           .select({ mode: receipts.mode, status: receipts.status, utr: receipts.utr })
           .from(receipts)
-          .where(and(eq(receipts.utr, plan.utr), ne(receipts.status, "rejected")));
+          .where(and(eq(receipts.utr, plan.utr), notInArray(receipts.status, [...UTR_FREED_STATUSES])));
         if (isUtrTaken(plan.utr, same)) return { ok: false, error: UTR_TAKEN };
       }
 
@@ -108,6 +127,7 @@ export async function saveReceipt(input: {
           receivedBy: session.user.id,
         })
         .returning({ id: receipts.id, receiptNo: receipts.receiptNo });
+      await saveRequestResult(tx, request.id, receipt.id);
       if (plan.ledger) await postEntry(tx, plan.ledger, session.user.id, `Payment #${receipt.receiptNo}`, receipt.id);
       await writeAudit(tx, {
         actorId: session.user.id,
@@ -236,10 +256,12 @@ export async function rejectOnline(receiptId: string, reason: string): Promise<P
 
 /**
  * Reverses a received cash or verified online payment. Accounts / admin only, reason required.
+ * For cash, `cashPlace` says where the cash is now: "holder" (still with the person who recorded it:
+ * it leaves their cash held) or "office" (already handed over: nobody's cash held changes).
  * Locks the payment, then the retailer, then (cash) the recorder, so it cannot race a new
  * payment, a verification or a handover request.
  */
-export async function reverseReceipt(receiptId: string, reason: string): Promise<PaymentResult> {
+export async function reverseReceipt(receiptId: string, reason: string, cashPlace?: string): Promise<PaymentResult> {
   const session = await requireRole(...rolesFor("reverseReceipt"));
   if (!isUuid(receiptId)) return { ok: false, error: "Payment not found." };
   let retailerId = "";
@@ -258,7 +280,7 @@ export async function reverseReceipt(receiptId: string, reason: string): Promise
       holder = walletBalance(moves);
     }
 
-    const plan = planReversal(session.user.role, receipt, reason, holder);
+    const plan = planReversal(session.user.role, receipt, reason, cashPlace ?? null, holder);
     if (!plan.ok) return plan;
     await postEntry(
       tx,
@@ -286,7 +308,11 @@ export async function reverseReceipt(receiptId: string, reason: string): Promise
       entity: "payment",
       entityId: receipt.id,
       action: "reverse",
-      details: { ...paymentFacts(receipt), reason: plan.reason },
+      details: {
+        ...paymentFacts(receipt),
+        reason: plan.reason,
+        ...(receipt.mode === "cash" ? { cashWith: plan.walletPaise > 0 ? "holder" : "office" } : {}),
+      },
     });
     await notifyMoney(tx, {
       event: "receipt_reversed",

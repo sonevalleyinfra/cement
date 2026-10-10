@@ -1,4 +1,5 @@
 /** Rules for the users page. Plain functions: no database, no request. */
+import { formatINR } from "@/lib/money";
 import { checkTempPassword } from "@/lib/password-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/retailer-rules";
 import { isRole, parseRoles, type Role } from "@/lib/roles";
@@ -109,4 +110,19 @@ export function usersInTab<T extends { role: string; active: boolean }>(
     const roles = parseRoles(r.role);
     return tab === "none" ? roles.length === 0 : roles.includes(tab);
   });
+}
+
+/** True when these roles leave the person no staff role (so they could no longer hand over cash). */
+export function dropsAllStaffRoles(newRoles: readonly string[]): boolean {
+  return !newRoles.some((r) => (STAFF_ROLES as readonly string[]).includes(r));
+}
+
+/**
+ * Someone who still holds cash cannot be deactivated, deleted or lose every staff role: the cash
+ * would be stuck with nobody to hand it over. `heldPaise` = their cash held now (handovers still
+ * waiting for accounts count as held). Returns an error or null.
+ */
+export function checkCashHeld(heldPaise: number): string | null {
+  if (heldPaise > 0) return `Ask them to hand over ${formatINR(heldPaise, { hidePaise: true })} first.`;
+  return null;
 }

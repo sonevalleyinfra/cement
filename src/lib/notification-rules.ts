@@ -3,7 +3,9 @@
  * Source: docs/idea.md section 8 (Notifications).
  *
  * Spec rows used for orders:
- * - Order placed: accounts, and the shop's sales person when the rate is missing
+ * - Order placed: accounts, and the shop's sales person when the rate is missing. A shop with no
+ *   sales person: every admin too (they can fill the rate or give the shop a sales person), so
+ *   nothing gets stuck.
  * - Approved / rejected: placer, sales person; approved also: every logistics person
  * - Dispatched: retailer, sales person
  * - Rate changed: accounts, sales person, admin
@@ -17,10 +19,13 @@
  * - Online verified / rejected and payment reversed: the staff member who recorded the payment.
  * - Cash payment recorded: every admin (spec section 8), so the owner sees cash coming in.
  * Rules: the person who did the action is never told about their own action; nobody
- * gets the same notification twice; ORDER messages never contain a price (retailers also read these).
+ * gets the same notification twice; ORDER messages never contain a price (retailers also read these),
+ * except "Rate changed", which goes to staff only and says old → new rate and the reason
+ * (never to the shop's login, even if it were on the list).
  * Money messages go to staff only, so they may show the amount.
  */
 import { formatINR } from "@/lib/money";
+import { rateMoveText } from "@/lib/rate-rules";
 
 export const NOTIFICATION_EVENTS = [
   "placed",
@@ -89,7 +94,11 @@ export function recipientIds(
   let list: (string | null)[];
   switch (event) {
     case "placed":
-      list = [people.rateMissing ? people.salesRepId : null, ...people.accountsIds];
+      list = [
+        people.rateMissing ? people.salesRepId : null,
+        ...people.accountsIds,
+        ...(people.salesRepId ? [] : people.adminIds),
+      ];
       break;
     case "rate_filled":
       list = [...people.accountsIds, people.salesRepId];
@@ -123,20 +132,33 @@ const MESSAGES: Record<NotificationEvent, (what: string) => { title: string; bod
   cancelled: (w) => ({ title: "Order cancelled", body: `${w} cancelled.` }),
 };
 
+/** A rate change for staff: "₹350 → ₹360. Reason: price up" (the old rate may be empty). */
+export type RateChange = { fromPaise: number | null; toPaise: number; reason: string };
+
+export function rateChangeText(rate: RateChange): string {
+  const move = rateMoveText(rate.fromPaise, rate.toPaise);
+  const reason = rate.reason.trim();
+  return reason ? `${move}. Reason: ${reason}` : move;
+}
+
 export function buildNotifications(input: {
   event: NotificationEvent;
   retailerName: string;
   bags: number;
   people: OrderPeople;
   actorId: string | null;
+  /** Only used for "rate_edited": the old and new rate and why (staff only). */
+  rate?: RateChange | null;
 }): NotificationDraft[] {
   const { event, retailerName, bags, people, actorId } = input;
-  const msg = MESSAGES[event](`${retailerName}, ${bags} ${bags === 1 ? "bag" : "bags"}`);
+  const what = `${retailerName}, ${bags} ${bags === 1 ? "bag" : "bags"}`;
+  const msg = MESSAGES[event](what);
+  const staffBody = event === "rate_edited" && input.rate ? `${what}: ${rateChangeText(input.rate)}.` : msg.body;
   return recipientIds(event, people, actorId).map((userId) => ({
     userId,
     type: event,
     title: msg.title,
-    body: msg.body,
+    body: userId === people.retailerUserId ? msg.body : staffBody,
     link: null,
   }));
 }

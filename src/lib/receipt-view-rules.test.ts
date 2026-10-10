@@ -8,6 +8,8 @@ describe("showStaffDetails", () => {
   it("shows them to staff and admin", () => {
     expect(showStaffDetails("accounts")).toBe(true);
     expect(showStaffDetails("admin")).toBe(true);
-    expect(showStaffDetails("retailer,sales")).toBe(true);
+  });
+  it("default deny: a login with no known role sees no staff details", () => {
+    for (const role of [null, "", "user"]) expect(showStaffDetails(role)).toBe(false);
   });
 });

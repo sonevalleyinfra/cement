@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, products, retailers } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { claimRequest } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { isBagsInRange, resolveOrderRetailer, validatePlaceOrder } from "@/lib/order-access";
 import { planCancel } from "@/lib/order-rules";
@@ -20,6 +21,7 @@ import {
   rateEditReason,
   rateOnPlace,
 } from "@/lib/rate-rules";
+import { checkRequestId } from "@/lib/request-rules";
 import { orderSalesRep } from "@/lib/sales-rep-rules";
 import { notify } from "@/lib/notify";
 import { requireRole } from "@/lib/session";
@@ -42,6 +44,7 @@ function refresh(orderId?: string) {
 /**
  * Places an order. Sales, retailer and admin only.
  * Staff type the rate (whole rupees per bag); a retailer never sends one.
+ * `requestId` is the form's one-time id: a second tap places nothing more (request-rules.ts).
  */
 export async function placeOrder(input: {
   retailerId: string | null;
@@ -49,8 +52,11 @@ export async function placeOrder(input: {
   bags: number;
   rateRupees?: string;
   notes?: string;
+  requestId: string;
 }): Promise<PlaceOrderResult> {
   const session = await requireRole(...rolesFor("placeOrder"));
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
   const check = validatePlaceOrder({
     bags: input.bags,
     retailerId: input.retailerId,
@@ -86,7 +92,9 @@ export async function placeOrder(input: {
   // The shop's own sales person gets the order (rules in sales-rep-rules.ts).
   const salesRepId = orderSalesRep(retailer.salesRepId, { id: me.id, role: me.role });
 
-  await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
+    const claim = await claimRequest(tx, request.id, "order", me.id);
+    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
     const [order] = await tx
       .insert(orders)
       .values({
@@ -114,9 +122,10 @@ export async function placeOrder(input: {
       details: { retailerId, productId: product.id, bags: input.bags, ratePaise: rate.ratePaise },
     });
     await notify(tx, order.id, "placed", me.id);
+    return { ok: true };
   });
-  refresh();
-  return { ok: true };
+  if (result.ok) refresh();
+  return result;
 }
 
 /**
@@ -135,13 +144,15 @@ export async function fillRate(orderId: string, rupeeDigits: string): Promise<Pl
     if (!canFillRate(me.role, me.id, o)) return { ok: false, error: "You cannot fill the rate on this order." };
     if (o.ratePaise === rate.paise) return { ok: true };
     await tx.update(orders).set({ ratePaise: rate.paise, updatedAt: new Date() }).where(eq(orders.id, orderId));
-    // The history row never shows the price (retailers read the history).
+    // The reason never shows the price (retailers read the history); the rates are kept for staff only.
     await tx.insert(orderEvents).values({
       orderId,
       fromStatus: o.status,
       toStatus: o.status,
       actorId: me.id,
       reason: RATE_FILLED,
+      fromRatePaise: o.ratePaise,
+      toRatePaise: rate.paise,
     });
     await writeAudit(tx, {
       actorId: me.id,
@@ -178,6 +189,8 @@ export async function changeRate(orderId: string, rupeeDigits: string, reason: s
       toStatus: o.status,
       actorId: me.id,
       reason: rateEditReason(check.reason),
+      fromRatePaise: o.ratePaise,
+      toRatePaise: check.ratePaise,
     });
     await writeAudit(tx, {
       actorId: me.id,
@@ -186,18 +199,26 @@ export async function changeRate(orderId: string, rupeeDigits: string, reason: s
       action: "change_rate",
       details: { ...orderFacts(o), ratePaise: { before: o.ratePaise, after: check.ratePaise }, reason: check.reason },
     });
-    await notify(tx, orderId, "rate_edited", me.id);
+    await notify(tx, orderId, "rate_edited", me.id, undefined, {
+      fromPaise: o.ratePaise,
+      toPaise: check.ratePaise,
+      reason: check.reason,
+    });
     return { ok: true };
   });
   if (result.ok) refresh(orderId);
   return result;
 }
 
-/** Accounts or admin approves or rejects a placed order with a rate (reason needed to reject). Nothing is billed here. */
+/**
+ * Accounts or admin approves or rejects a placed order with a rate (reason needed to reject). Nothing is billed here.
+ * `seenRatePaise` is the rate on their screen: if it changed meanwhile, nothing is decided (canDecide).
+ */
 export async function decideOrder(
   orderId: string,
   decision: "approved" | "rejected",
-  reason?: string,
+  reason: string | undefined,
+  seenRatePaise: number,
 ): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("decideOrder"));
   // Only these two outcomes: anything else (e.g. "cancelled") must go through cancelOrder.
@@ -213,7 +234,7 @@ export async function decideOrder(
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!o) return { ok: false, error: "Order not found." };
-    const allowed = canDecide(me.role, o, decision);
+    const allowed = canDecide(me.role, o, decision, seenRatePaise);
     if (!allowed.ok) return allowed;
     await tx.update(orders).set({ status: decision, updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(orderEvents).values({ orderId, fromStatus: o.status, toStatus: decision, actorId: me.id, reason: why });

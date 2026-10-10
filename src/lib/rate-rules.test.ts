@@ -110,20 +110,35 @@ describe("checkRateChange", () => {
 describe("canDecide", () => {
   const ready = { status: "placed", ratePaise: 35000 };
   it("accounts and admin decide on a placed order with a rate", () => {
-    expect(canDecide("accounts", ready, "approved")).toEqual({ ok: true });
-    expect(canDecide("admin", ready, "rejected")).toEqual({ ok: true });
+    expect(canDecide("accounts", ready, "approved", 35000)).toEqual({ ok: true });
+    expect(canDecide("admin", ready, "rejected", 35000)).toEqual({ ok: true });
   });
   it("refused while the rate is missing", () => {
-    expect(canDecide("accounts", { ...ready, ratePaise: null }, "approved")).toEqual({
+    expect(canDecide("accounts", { ...ready, ratePaise: null }, "approved", null)).toEqual({
       ok: false,
       error: "The rate is not filled yet.",
     });
-    expect(canDecide("accounts", { ...ready, ratePaise: null }, "rejected").ok).toBe(false);
+    expect(canDecide("accounts", { ...ready, ratePaise: null }, "rejected", null).ok).toBe(false);
+  });
+  it("refused when the rate changed after accounts saw it, naming the new rate", () => {
+    expect(canDecide("accounts", { ...ready, ratePaise: 36000 }, "approved", 35000)).toEqual({
+      ok: false,
+      error: "Rate changed to ₹360.00, check again.",
+    });
+    expect(canDecide("accounts", { ...ready, ratePaise: 36050 }, "rejected", 35000)).toEqual({
+      ok: false,
+      error: "Rate changed to ₹360.50, check again.",
+    });
+  });
+  it("refused when the screen sent no rate", () => {
+    for (const seen of [undefined, null, "35000", 350.5]) {
+      expect(canDecide("accounts", ready, "approved", seen)).toEqual({ ok: false, error: "Refresh the page and try again." });
+    }
   });
   it("sales, logistics and retailers cannot; other statuses cannot be decided", () => {
-    for (const role of ["sales", "logistics", "retailer"]) expect(canDecide(role, ready, "approved").ok).toBe(false);
+    for (const role of ["sales", "logistics", "retailer"]) expect(canDecide(role, ready, "approved", 35000).ok).toBe(false);
     for (const status of ["approved", "rejected", "partly_dispatched", "cancelled"]) {
-      expect(canDecide("accounts", { ...ready, status }, "approved")).toEqual({
+      expect(canDecide("accounts", { ...ready, status }, "approved", 35000)).toEqual({
         ok: false,
         error: "This order is not waiting for approval.",
       });

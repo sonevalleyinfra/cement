@@ -12,8 +12,9 @@
  * - Payments post a credit ("receipt_credit", minus the amount); a reversed payment posts the
  *   same kind with plus the amount. See receipt-rules.ts.
  * - Admin may add an adjustment (+ the retailer owes more, - owes less) with a reason, to fix
- *   anything else (for example cash reversed after it was already handed over).
- * - Retailers can see their own ledger (their dues).
+ *   anything else.
+ * - Retailers can see their own ledger: their total dues, what came (no dispatch amounts) and their
+ *   payments (ledger-view-rules.ts).
  */
 import { checkReason } from "./receipt-rules";
 

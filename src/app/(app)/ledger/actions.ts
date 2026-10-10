@@ -5,10 +5,12 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ledgerEntries, retailers } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { claimRequest } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { adjustmentEntry, openingEntry } from "@/lib/ledger-rules";
 import { rolesFor } from "@/lib/permissions";
+import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
 
 export type LedgerResult = { ok: true } | { ok: false; error: string };
@@ -58,17 +60,23 @@ export async function setOpeningBalance(input: {
 /**
  * Admin adds an adjustment to one retailer's ledger: `amountPaise` is signed
  * (+ the retailer owes more, - owes less). A reason is required.
+ * `requestId` is the form's one-time id: a second tap adds nothing more (request-rules.ts).
  */
 export async function addAdjustment(input: {
   retailerId: string;
   amountPaise: number;
   reason: string;
+  requestId: string;
 }): Promise<LedgerResult> {
   const session = await requireRole(...rolesFor("adjustLedger"));
   if (!isUuid(input?.retailerId)) return { ok: false, error: "Retailer not found." };
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
   const plan = adjustmentEntry(input.retailerId, Number(input.amountPaise), input.reason);
   if (!plan.ok) return plan;
   const res = await db.transaction(async (tx): Promise<LedgerResult> => {
+    const claim = await claimRequest(tx, request.id, "ledger_adjustment", session.user.id);
+    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
     const [retailer] = await tx
       .select({ id: retailers.id })
       .from(retailers)

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkCashHeld,
+  dropsAllStaffRoles,
   checkDelete,
   checkRoles,
   checkSelfDeactivate,
@@ -144,5 +146,23 @@ describe("usersInTab", () => {
   });
   it("puts people without a known role under none", () => {
     expect(ids(usersInTab(rows, "none", true))).toEqual(["4", "5"]);
+  });
+});
+
+describe("cash held blocks leaving", () => {
+  it("someone holding cash must hand it over first", () => {
+    expect(checkCashHeld(1_250_050)).toBe("Ask them to hand over ₹12,500.50 first.");
+    expect(checkCashHeld(500_000)).toBe("Ask them to hand over ₹5,000 first.");
+  });
+  it("nothing held: allowed", () => {
+    expect(checkCashHeld(0)).toBeNull();
+    expect(checkCashHeld(-100)).toBeNull();
+  });
+  it("only a change that leaves no staff role counts as leaving", () => {
+    expect(dropsAllStaffRoles(["retailer"])).toBe(true);
+    expect(dropsAllStaffRoles([])).toBe(true);
+    expect(dropsAllStaffRoles(["sales"])).toBe(false);
+    expect(dropsAllStaffRoles(["accounts", "logistics"])).toBe(false);
+    expect(dropsAllStaffRoles(["admin"])).toBe(false);
   });
 });

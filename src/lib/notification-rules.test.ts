@@ -8,6 +8,7 @@ import {
   moneyRecipientIds,
   NOTIFICATION_EVENTS,
   notificationTarget,
+  rateChangeText,
   recipientIds,
   type OrderPeople,
 } from "./notification-rules";
@@ -33,6 +34,11 @@ describe("recipientIds (spec section 8)", () => {
       "acc1",
       "acc2",
     ]);
+  });
+  it("placed for a shop with no sales person: admins are told too, so the order does not get stuck", () => {
+    const noRep = { ...people, salesRepId: null, placedBy: "shop", rateMissing: true };
+    expect(recipientIds("placed", noRep, "shop")).toEqual(["acc1", "acc2", "adm"]);
+    expect(recipientIds("placed", { ...noRep, rateMissing: false, placedBy: "adm" }, "adm")).toEqual(["acc1", "acc2"]);
   });
   it("rate filled: accounts and the sales person (not the person who filled it)", () => {
     expect(recipientIds("rate_filled", people, "rep")).toEqual(["acc1", "acc2"]);
@@ -91,6 +97,27 @@ describe("buildNotifications", () => {
     expect(r.map((n) => n.userId)).toEqual(["acc1", "acc2", "rep", "adm"]);
     expect(r[0].title).toBe("Rate changed");
     expect(r[0].body).toBe("Raju Stores, 10 bags.");
+  });
+  it("rate changed with the rates: old → new and the reason, for staff", () => {
+    const r = buildNotifications({
+      ...base,
+      event: "rate_edited",
+      bags: 10,
+      actorId: "log1",
+      rate: { fromPaise: 35000, toPaise: 36050, reason: " price up " },
+    });
+    expect(r[0].body).toBe("Raju Stores, 10 bags: ₹350 → ₹360.50. Reason: price up.");
+  });
+  it("rate details never reach the shop's login, and other events ignore them", () => {
+    const shopIsStaffToo = { ...people, accountsIds: ["shop"] };
+    const rate = { fromPaise: 35000, toPaise: 36000, reason: "x" };
+    const r = buildNotifications({ ...base, people: shopIsStaffToo, event: "rate_edited", bags: 10, actorId: null, rate });
+    expect(r.find((n) => n.userId === "shop")?.body).toBe("Raju Stores, 10 bags.");
+    const d = buildNotifications({ ...base, event: "dispatched", bags: 10, actorId: null, rate });
+    for (const n of d) expect(n.body).not.toMatch(/₹/);
+  });
+  it("rateChangeText: a first rate has no 'before'", () => {
+    expect(rateChangeText({ fromPaise: null, toPaise: 35000, reason: "" })).toBe("₹350");
   });
   it("no order message ever contains a price or money sign", () => {
     for (const event of NOTIFICATION_EVENTS) {

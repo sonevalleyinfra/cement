@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useState, useTransition } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { parseRupeesToPaise } from "@/lib/money";
 import { MAX_REASON } from "@/lib/receipt-rules";
 import { SUPPLIER_MODE_LABELS, SUPPLIER_PAYMENT_MODES } from "@/lib/supplier-rules";
+import { useSubmit } from "@/lib/use-submit";
 import { addSupplierAdjustment, recordSupplierCredit, recordSupplierPayment, setSupplierOpening } from "../actions";
 
 type Kind = "opening" | "payment" | "credit" | "adjustment";
@@ -86,7 +87,7 @@ function EntryForm({
   onDone: () => void;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const { pending, run } = useSubmit();
   const [error, setError] = useState("");
   // Opening: true = we owe the supplier. Adjustment: true = we owe more.
   const [plus, setPlus] = useState(true);
@@ -101,26 +102,23 @@ function EntryForm({
     if (paise === null || paise <= 0) return setError("Enter the amount.");
     const entryDate = String(f.get("date") ?? "");
     const reason = String(f.get("reason") ?? "");
-    start(async () => {
-      const res =
+    const reference = String(f.get("reference") ?? "");
+    run(
+      (requestId) =>
         kind === "opening"
-          ? await setSupplierOpening({ brandId, amountPaise: paise, weOwe: plus, entryDate })
+          ? setSupplierOpening({ brandId, amountPaise: paise, weOwe: plus, entryDate, requestId })
           : kind === "payment"
-            ? await recordSupplierPayment({
-                brandId,
-                amountPaise: paise,
-                mode,
-                reference: String(f.get("reference") ?? ""),
-                entryDate,
-              })
+            ? recordSupplierPayment({ brandId, amountPaise: paise, mode, reference, entryDate, requestId })
             : kind === "credit"
-              ? await recordSupplierCredit({ brandId, amountPaise: paise, reason, entryDate })
-              : await addSupplierAdjustment({ brandId, amountPaise: plus ? paise : -paise, reason, entryDate });
-      if (res.ok) {
-        onDone();
-        router.refresh();
-      } else setError(res.error);
-    });
+              ? recordSupplierCredit({ brandId, amountPaise: paise, reason, entryDate, requestId })
+              : addSupplierAdjustment({ brandId, amountPaise: plus ? paise : -paise, reason, entryDate, requestId }),
+      (res) => {
+        if (res.ok) {
+          onDone();
+          router.refresh();
+        } else setError(res.error);
+      },
+    );
   }
 
   const toggle = (labels: [string, string]) => (

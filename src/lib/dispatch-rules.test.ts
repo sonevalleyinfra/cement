@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDispatchFields, isDispatchable, planDispatch } from "./dispatch-rules";
+import { checkDispatchFields, isDispatchable, planDispatch, truckAfterPlacePick } from "./dispatch-rules";
 
 describe("isDispatchable", () => {
   it("allows approved and partly dispatched only", () => {
@@ -66,5 +66,19 @@ describe("planDispatch", () => {
     for (const status of ["placed", "rejected", "cancelled", "dispatched"]) {
       expect(planDispatch({ ...base, status })).toEqual({ ok: false, error: "This order is not ready to dispatch." });
     }
+  });
+});
+
+describe("truckAfterPlacePick", () => {
+  it("picking a truck fills in its number", () => {
+    expect(truckAfterPlacePick("", null, "BR01AB1234")).toEqual({ truck: "BR01AB1234", autoFilled: "BR01AB1234" });
+  });
+  it("switching between godowns keeps a typed number", () => {
+    expect(truckAfterPlacePick("BR02CD5678", null, null)).toEqual({ truck: "BR02CD5678", autoFilled: null });
+  });
+  it("leaving a truck for a godown clears only the number that truck filled in", () => {
+    expect(truckAfterPlacePick("BR01AB1234", "BR01AB1234", null)).toEqual({ truck: "", autoFilled: null });
+    // Edited after it was filled in: the person typed it, so keep it.
+    expect(truckAfterPlacePick("BR01AB9999", "BR01AB1234", null)).toEqual({ truck: "BR01AB9999", autoFilled: null });
   });
 });

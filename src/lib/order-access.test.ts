@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cancelledNote,
   historyForViewer,
+  historyRateLine,
   historyReason,
   historyStepLabel,
   mentionsMoney,
@@ -24,6 +25,9 @@ describe("price and placing", () => {
     expect(canSeePrice("retailer,sales")).toBe(true);
     expect(canSeePrice("admin")).toBe(true);
     expect(canSeePrice("retailer,admin")).toBe(true);
+  });
+  it("default deny: no known staff role sees no price", () => {
+    for (const role of [null, undefined, "", "user", "guest", "retailer", " , "]) expect(canSeePrice(role)).toBe(false);
   });
   it("sales, retailer and admin can place; others cannot", () => {
     expect(canPlaceOrder("sales")).toBe(true);
@@ -61,8 +65,15 @@ describe("retailer scoping", () => {
   it("sales chooses", () => expect(resolveOrderRetailer("sales", null, "other")).toBe("other"));
   it("list scope", () => {
     expect(orderListScope("sales", null)).toEqual({ kind: "all" });
+    expect(orderListScope("logistics", null)).toEqual({ kind: "all" });
     expect(orderListScope("retailer", "mine")).toEqual({ kind: "retailer", retailerId: "mine" });
     expect(orderListScope("retailer", null)).toEqual({ kind: "none" });
+  });
+  it("a login with no known role sees only its own shop, never every order", () => {
+    expect(orderListScope("user", null)).toEqual({ kind: "none" });
+    expect(orderListScope(null, null)).toEqual({ kind: "none" });
+    expect(orderListScope("guest", "mine")).toEqual({ kind: "retailer", retailerId: "mine" });
+    expect(resolveOrderRetailer("user", null, "other")).toBeNull();
   });
 });
 
@@ -102,6 +113,10 @@ describe("historyForViewer", () => {
     expect(reason("7")).toBe("Shop closed");
     expect(reason("8")).toBe("");
   });
+  it("a login with no known role is treated like a retailer", () => {
+    expect(historyForViewer("user", events).map((e) => e.id)).toEqual(["1", "2", "4", "5", "7", "8"]);
+    expect(historyForViewer(null, events).map((e) => e.id)).toEqual(["1", "2", "4", "5", "7", "8"]);
+  });
   it("spots money words", () => {
     for (const t of ["new RATE", "price", "₹400", "Rs 400", "rs.400", "400/-", "rupees", "discount", "cost"]) {
       expect(mentionsMoney(t)).toBe(true);
@@ -132,5 +147,18 @@ describe("historyReason", () => {
     expect(historyReason("Rate edited: diesel up")).toBe("diesel up");
     expect(historyReason("Rate filled")).toBe("");
     expect(historyReason("40 bags in KA01AB1234")).toBe("40 bags in KA01AB1234");
+  });
+});
+
+describe("historyRateLine", () => {
+  it("staff see old → new rate on a rate row", () => {
+    expect(historyRateLine("accounts", { fromRatePaise: 35000, toRatePaise: 36000 })).toBe("₹350 → ₹360");
+    expect(historyRateLine("admin", { fromRatePaise: null, toRatePaise: 35050 })).toBe("₹350.50");
+  });
+  it("nobody else sees it, and other rows have none", () => {
+    for (const role of ["retailer", "user", null]) {
+      expect(historyRateLine(role, { fromRatePaise: 35000, toRatePaise: 36000 })).toBeNull();
+    }
+    expect(historyRateLine("sales", { fromRatePaise: null, toRatePaise: null })).toBeNull();
   });
 });

@@ -8,7 +8,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
 import { withRunningBalance } from "@/lib/ledger-rules";
-import { ledgerEntryLabel, showLedgerNotes } from "@/lib/ledger-view-rules";
+import { balanceLine, ledgerRowsForViewer } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
@@ -32,13 +32,14 @@ export default async function RetailerLedgerPage({
   if (!retailer) notFound();
 
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
-  const showNotes = showLedgerNotes(user.role);
   const rows = await getEntries(retailerId);
   const actors = new Map(
     (await db.select({ id: users.id, name: users.name }).from(users)).map((u) => [u.id, u.name]),
   );
-  const entries = withRunningBalance(rows);
-  const balance = entries.at(-1)?.balancePaise ?? 0;
+  const withBalance = withRunningBalance(rows);
+  const balance = withBalance.at(-1)?.balancePaise ?? 0;
+  // A shop's own login sees no dispatch amounts and no running balance (owner's rule, ledger-view-rules).
+  const entries = ledgerRowsForViewer(user.role, withBalance);
   const hasOpening = rows.some((r) => r.kind === "opening");
 
   return (
@@ -57,8 +58,8 @@ export default async function RetailerLedgerPage({
         )}
       </div>
       <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-        <div className="text-xs text-muted-foreground">{balance < 0 ? "Advance" : "Dues"}</div>
-        <div className="tabular text-3xl font-bold">{formatINR(Math.abs(balance))}</div>
+        <div className="text-xs text-muted-foreground">{balanceLine(balance).label}</div>
+        <div className="tabular text-3xl font-bold">{formatINR(balanceLine(balance).amountPaise)}</div>
       </div>
       {can(user.role, "setOpeningBalance") && !hasOpening && <OpeningForm retailerId={retailerId} />}
       {can(user.role, "adjustLedger") && <AdjustmentForm retailerId={retailerId} />}
@@ -69,19 +70,22 @@ export default async function RetailerLedgerPage({
           {entries.map((e) => (
             <li key={e.id} className="flex flex-col gap-1 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold">{ledgerEntryLabel(e.kind, e.amountPaise)}</span>
-                <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-green-700" : ""}`}>
-                  {e.amountPaise < 0 ? "- " : ""}
-                  {formatINR(Math.abs(e.amountPaise))}
-                </span>
+                <span className="text-sm font-semibold">{e.label}</span>
+                {e.amountPaise !== null && (
+                  <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-green-700" : ""}`}>
+                    {e.amountPaise < 0 ? "- " : ""}
+                    {formatINR(Math.abs(e.amountPaise))}
+                  </span>
+                )}
               </div>
+              {e.what && <div className="text-sm">{e.what}</div>}
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>
                   {formatDateTime(e.createdAt)}
-                  {showNotes && e.note ? ` · ${e.note}` : ""}
-                  {staff ? ` · ${actors.get(e.actorId) ?? ""}` : ""}
+                  {e.note ? ` · ${e.note}` : ""}
+                  {e.actorId ? ` · ${actors.get(e.actorId) ?? ""}` : ""}
                 </span>
-                <span className="tabular">Balance {formatINR(e.balancePaise)}</span>
+                {e.balancePaise !== null && <span className="tabular">Balance {formatINR(e.balancePaise)}</span>}
               </div>
             </li>
           ))}

@@ -2,23 +2,25 @@
  * Who may place orders, who sees prices, and which orders a person sees.
  * Plain functions (no database) so they are easy to test.
  *
+ * Default deny: only staff (a known staff role or admin, see isStaff) see prices and every order.
+ * Anyone else (a retailer, or a login with no known role) is price-blind and sees only their own
+ * shop's orders, if any. A retailer cannot also hold a staff role (checkRoles in user-admin-rules).
  * Choices where the spec is silent:
- * - A person with the retailer role AND any staff role counts as staff.
- * - Only a pure retailer is price-blind and limited to their own shop's orders.
- * - A pure retailer sees the order history without rate rows (filled / edited), and a staff
+ * - A non-staff viewer sees the order history without rate rows (filled / edited), and a staff
  *   reason that talks about money (rate, price, ₹, rs, discount...) is hidden.
  * - Dispatch loads (bags, vehicle, driver, phone, date) are shown to everyone who may see the
  *   order; the load's rate only to staff.
  */
-import { hasAnyRole, isRetailerOnly } from "./roles";
 import { isValidBags } from "./order-rules";
-import { isRateEvent, rateEventLabel } from "./rate-rules";
+import { isStaff } from "./permissions";
+import { isRateEvent, rateEventLabel, rateMoveText } from "./rate-rules";
+import { hasAnyRole, isRetailerOnly } from "./roles";
 
 export { isRetailerOnly };
 
-/** Retailers never see prices or amounts. Everyone else does. */
+/** Only staff see prices and amounts. Retailers, and anyone without a known staff role, never do. */
 export function canSeePrice(role: string | null | undefined): boolean {
-  return !isRetailerOnly(role);
+  return isStaff(role);
 }
 
 /** Sales, retailers and admin may place orders. */
@@ -49,21 +51,21 @@ export function isBagsInRange(bags: number): boolean {
   return isValidBags(bags) && bags <= MAX_ORDER_BAGS;
 }
 
-/** The retailer an order is placed for: a retailer user is fixed to their own shop. */
+/** The retailer an order is placed for: staff choose; anyone else is fixed to their own shop. */
 export function resolveOrderRetailer(
   role: string | null | undefined,
   ownRetailerId: string | null,
   chosenRetailerId: string | null,
 ): string | null {
-  return isRetailerOnly(role) ? ownRetailerId : chosenRetailerId;
+  return isStaff(role) ? chosenRetailerId : ownRetailerId;
 }
 
-/** Which order filter applies: a pure retailer sees only their shop, others see every order. */
+/** Which orders a person sees: staff every order, anyone else only their own shop's (or none). */
 export function orderListScope(
   role: string | null | undefined,
   ownRetailerId: string | null,
 ): { kind: "all" } | { kind: "retailer"; retailerId: string } | { kind: "none" } {
-  if (!isRetailerOnly(role)) return { kind: "all" };
+  if (isStaff(role)) return { kind: "all" };
   return ownRetailerId ? { kind: "retailer", retailerId: ownRetailerId } : { kind: "none" };
 }
 
@@ -84,17 +86,26 @@ export function mentionsMoney(text: string | null | undefined): boolean {
 }
 
 /**
- * The order history this person may read. Staff see everything. A pure retailer does not
+ * The order history this person may read. Staff see everything. Anyone else does not
  * see rate rows, nor staff reasons that mention money.
  */
 export function historyForViewer<T extends { reason: string }>(
   role: string | null | undefined,
   events: readonly T[],
 ): T[] {
-  if (!isRetailerOnly(role)) return [...events];
+  if (isStaff(role)) return [...events];
   return events
     .filter((e) => !isRateEvent(e.reason))
     .map((e) => (mentionsMoney(e.reason) ? { ...e, reason: "" } : e));
+}
+
+/** The rate line under a rate row of the history ("₹350 → ₹360"), for staff only. Null otherwise. */
+export function historyRateLine(
+  role: string | null | undefined,
+  event: { fromRatePaise: number | null; toRatePaise: number | null },
+): string | null {
+  if (!isStaff(role) || event.toRatePaise === null) return null;
+  return rateMoveText(event.fromRatePaise, event.toRatePaise);
 }
 
 /**

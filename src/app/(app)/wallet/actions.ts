@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { user, walletMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { claimRequest } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
+import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
 import { planHandoverAnswer, validateHandoverRequest, walletBalance, type HandoverAnswer } from "@/lib/wallet-rules";
 
@@ -18,11 +20,18 @@ function refresh() {
   revalidatePath("/dashboard");
 }
 
-/** A staff member asks to hand over some of the cash they hold. Accounts are told. */
-export async function requestHandover(input: { amountPaise: number }): Promise<WalletResult> {
+/**
+ * A staff member asks to hand over some of the cash they hold. Accounts are told.
+ * `requestId` is the form's one-time id: a second tap asks nothing more (request-rules.ts).
+ */
+export async function requestHandover(input: { amountPaise: number; requestId: string }): Promise<WalletResult> {
   const session = await requireRole(...rolesFor("useWallet"));
   const amount = Number(input?.amountPaise);
+  const form = checkRequestId(input?.requestId);
+  if (!form.ok) return form;
   const res = await db.transaction(async (tx): Promise<WalletResult> => {
+    const claim = await claimRequest(tx, form.id, "handover_request", session.user.id);
+    if (!claim.fresh) return claim.result.ok ? { ok: true } : claim.result;
     // Lock the staff member's row so two requests (or a reversal) cannot use the same cash.
     await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
     const rows = await tx.select().from(walletMovements).where(eq(walletMovements.collectorId, session.user.id));

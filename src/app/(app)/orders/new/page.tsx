@@ -3,14 +3,14 @@ import { EmptyState } from "@/components/app/empty-state";
 import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getProducts } from "@/lib/catalogue";
-import { isRetailerOnly } from "@/lib/order-access";
-import { rolesFor } from "@/lib/permissions";
+import { isStaff, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { NewOrderForm } from "./new-order-form";
 
 export default async function NewOrderPage() {
   const { user } = await requireRole(...rolesFor("placeOrder"));
-  const retailerOnly = isRetailerOnly(user.role);
+  // Staff pick any active shop and type the rate; a retailer orders for their own shop only.
+  const retailerOnly = !isStaff(user.role);
   const retailerRows = retailerOnly
     ? await db
         .select({ id: retailers.id, name: retailers.name, place: retailers.place })

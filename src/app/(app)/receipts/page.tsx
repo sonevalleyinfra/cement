@@ -9,7 +9,7 @@ import { receipts, retailers } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
-import { can } from "@/lib/permissions";
+import { can, isStaff } from "@/lib/permissions";
 import { MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { requireUser } from "@/lib/session";
 
@@ -30,7 +30,7 @@ export default async function ReceiptsPage() {
   const { user } = await requireUser();
   const filter = await receiptFilter(user);
   if (filter === null) redirect("/dashboard");
-  const staff = !isRetailerOnly(user.role);
+  const staff = isStaff(user.role);
 
   // Newest 100 only, picked in the database.
   const rows =

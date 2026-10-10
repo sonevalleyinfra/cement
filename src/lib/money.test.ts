@@ -18,8 +18,15 @@ describe("formatINR", () => {
     expect(formatINR(-500)).toBe("-₹5.00");
   });
 
-  it("can hide paise", () => {
+  it("can hide .00 on whole rupees", () => {
     expect(formatINR(1_00_000_00, { hidePaise: true })).toBe("₹1,00,000");
+    expect(formatINR(-50_00, { hidePaise: true })).toBe("-₹50");
+  });
+
+  it("never rounds real paise away, even with hidePaise", () => {
+    expect(formatINR(36_99_950, { hidePaise: true })).toBe("₹36,999.50");
+    expect(formatINR(1, { hidePaise: true })).toBe("₹0.01");
+    expect(formatINR(-99, { hidePaise: true })).toBe("-₹0.99");
   });
 
   it("rejects non-integer amounts", () => {

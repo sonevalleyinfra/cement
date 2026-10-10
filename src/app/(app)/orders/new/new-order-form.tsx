@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
@@ -9,6 +9,7 @@ import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { productGroups } from "@/lib/catalogue-rules";
+import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
 
 type Retailer = { id: string; name: string; place: string };
@@ -34,7 +35,7 @@ export function NewOrderForm({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
-  const [pending, start] = useTransition();
+  const { pending, run } = useSubmit();
 
   const retailer = retailers.find((r) => r.id === retailerId);
   const q = search.trim().toLowerCase();
@@ -44,16 +45,20 @@ export function NewOrderForm({
 
   function submit() {
     setError("");
-    start(async () => {
-      const res = await placeOrder({
-        retailerId,
-        productId,
-        bags: Number(bags || 0),
-        rateRupees: askRate ? rate : undefined,
-      });
-      if (res.ok) router.push("/orders");
-      else setError(res.error);
-    });
+    run(
+      (requestId) =>
+        placeOrder({
+          retailerId,
+          productId,
+          bags: Number(bags || 0),
+          rateRupees: askRate ? rate : undefined,
+          requestId,
+        }),
+      (res) => {
+        if (res.ok) router.push("/orders");
+        else setError(res.error);
+      },
+    );
   }
 
   return (

@@ -10,7 +10,8 @@
  *   do NOT change. Accounts (or admin) check the bank statement and tap "Verified": status
  *   "verified" and the ledger credit is posted then. Or they reject it with a reason (the money
  *   never arrived): status "rejected", nothing is posted.
- * - A UTR may be used by one online payment only (rejected ones do not count).
+ * - A UTR may be used by one online payment only (rejected and reversed ones do not count, so the
+ *   money can be recorded again with the same UTR).
  * - "received" and "verified" payments can later be reversed (see receipt-reversal.ts).
  * - Paying more than the dues is fine: the balance goes below zero (an advance).
  *
@@ -93,14 +94,22 @@ export function checkReceiptAmount(totalPaise: number): string | null {
   return null;
 }
 
-/** True if this UTR is already used by an online payment that was not rejected. */
+/** A payment in one of these states no longer holds its UTR (same list as the database's unique index). */
+export const UTR_FREED_STATUSES = ["rejected", "reversed"] as const;
+
+/** True if this UTR is already used by an online payment that still stands (not rejected or reversed). */
 export function isUtrTaken(
   utr: string,
   existing: readonly { mode: string; status: string; utr: string | null }[],
 ): boolean {
   const wanted = normaliseUtr(utr);
   if (!wanted) return false;
-  return existing.some((p) => p.mode === "online" && p.status !== "rejected" && normaliseUtr(p.utr) === wanted);
+  return existing.some(
+    (p) =>
+      p.mode === "online" &&
+      !(UTR_FREED_STATUSES as readonly string[]).includes(p.status) &&
+      normaliseUtr(p.utr) === wanted,
+  );
 }
 
 export const UTR_TAKEN = "This UTR is already recorded.";

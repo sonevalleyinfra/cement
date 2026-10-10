@@ -88,3 +88,18 @@ export function planDispatch(input: {
     amountPaise,
   };
 }
+
+/**
+ * The truck number box after "Take from" changes. Bags already on a truck usually leave on that
+ * truck, so picking a truck fills in its number. Picking a godown keeps what was typed; only a number
+ * that was filled in from a truck (not typed) is cleared. `autoFilled` is the number last filled in.
+ */
+export function truckAfterPlacePick(
+  current: string,
+  autoFilled: string | null,
+  pickedTruck: string | null,
+): { truck: string; autoFilled: string | null } {
+  if (pickedTruck) return { truck: pickedTruck, autoFilled: pickedTruck };
+  if (autoFilled !== null && current === autoFilled) return { truck: "", autoFilled: null };
+  return { truck: current, autoFilled: null };
+}

@@ -35,7 +35,7 @@ export default async function SuppliersPage() {
                 index={i}
                 title={s.active ? s.name : `${s.name} (off)`}
                 icon={<IconTile icon={Factory} tone="amber" />}
-                bottom={<Stat label={big.text} value={formatINR(big.amountPaise, { hidePaise: true })} />}
+                bottom={<Stat label={big.text} value={formatINR(big.amountPaise)} />}
               />
             );
           })}

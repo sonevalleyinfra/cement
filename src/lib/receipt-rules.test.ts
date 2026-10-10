@@ -12,6 +12,7 @@ import {
   RECEIPT_STATUSES,
   receiptChip,
   validateModeDetails,
+  UTR_FREED_STATUSES,
   type ReceiptRequest,
 } from "./receipt-rules";
 
@@ -70,9 +71,10 @@ describe("UTR", () => {
   it("cannot be recorded twice (any case or spacing)", () => {
     expect(isUtrTaken("utr1", existing)).toBe(true);
     expect(isUtrTaken(" U T R 2 ", existing)).toBe(true);
-    expect(isUtrTaken("UTR3", existing)).toBe(true);
   });
   it("a rejected payment frees its UTR", () => expect(isUtrTaken("UTR4", existing)).toBe(false));
+  it("a reversed payment frees its UTR too", () => expect(isUtrTaken("utr3", existing)).toBe(false));
+  it("UTR_FREED_STATUSES are exactly rejected and reversed", () => expect(UTR_FREED_STATUSES).toEqual(["rejected", "reversed"]));
   it("a new UTR is free", () => {
     expect(isUtrTaken("UTR9", existing)).toBe(false);
     expect(isUtrTaken("", existing)).toBe(false);

@@ -5,7 +5,7 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { user } from "@/db/schema";
+import { user, walletMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { env } from "@/env";
 import { auth } from "@/lib/auth";
@@ -15,18 +15,30 @@ import { checkTempPassword } from "@/lib/password-rules";
 import { rolesFor } from "@/lib/permissions";
 import { joinRoles, parseRoles, type Role } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
+import { walletBalance } from "@/lib/wallet-rules";
 import {
+  checkCashHeld,
   checkDelete,
   checkRoles,
   checkSelfDeactivate,
   checkSelfRoleChange,
   cleanEmail,
   cleanUserPhone,
+  dropsAllStaffRoles,
   passwordFromBytes,
   validateNewUser,
 } from "@/lib/user-admin-rules";
 
 export type UserResult = { ok: true } | { ok: false; error: string };
+
+/** The cash this person holds now (handovers still waiting count as held). */
+async function cashHeldBy(userId: string): Promise<number> {
+  const rows = await db
+    .select({ id: walletMovements.id, kind: walletMovements.kind, amountPaise: walletMovements.amountPaise, refId: walletMovements.refId })
+    .from(walletMovements)
+    .where(eq(walletMovements.collectorId, userId));
+  return walletBalance(rows).balancePaise;
+}
 
 /**
  * Creates a user and marks the email as verified (the admin vouches for it).
@@ -106,6 +118,11 @@ export async function updateUserAccess(
     .where(and(eq(user.id, userId), isNull(user.deletedAt)))
     .limit(1);
   if (!target) return { ok: false, error: "User not found." };
+  // Someone left with no staff role could not hand over the cash they hold.
+  if (dropsAllStaffRoles(form.roles)) {
+    const held = checkCashHeld(await cashHeldBy(userId));
+    if (held) return { ok: false, error: held };
+  }
   // Deleted users keep their email, so it stays taken.
   const [taken] = await db
     .select({ id: user.id })
@@ -169,6 +186,10 @@ export async function setUserActive(userId: string, active: boolean): Promise<Us
     .where(and(eq(user.id, userId), isNull(user.deletedAt)))
     .limit(1);
   if (!target) return { ok: false, error: "User not found." };
+  if (!active) {
+    const held = checkCashHeld(await cashHeldBy(userId));
+    if (held) return { ok: false, error: held };
+  }
   const h = await headers();
   if (active) await auth.api.unbanUser({ headers: h, body: { userId } });
   else await auth.api.banUser({ headers: h, body: { userId, banReason: "Deactivated by admin" } });
@@ -191,7 +212,7 @@ export async function deleteUser(userId: string): Promise<UserResult> {
     .where(and(eq(user.id, userId), isNull(user.deletedAt)))
     .limit(1);
   if (!target) return { ok: false, error: "User not found." };
-  const problem = checkDelete(me.id === userId, !target.banned);
+  const problem = checkDelete(me.id === userId, !target.banned) ?? checkCashHeld(await cashHeldBy(userId));
   if (problem) return { ok: false, error: problem };
 
   await db.transaction(async (tx) => {

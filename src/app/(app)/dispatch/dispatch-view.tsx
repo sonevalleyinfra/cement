@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { truckAfterPlacePick } from "@/lib/dispatch-rules";
 import { remainingBags } from "@/lib/order-rules";
+import { useSubmit } from "@/lib/use-submit";
 import { dispatchOrder } from "./actions";
 
 type OrderRow = {
@@ -41,27 +43,32 @@ export function DispatchView({
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [bags, setBags] = useState("");
   const [truck, setTruck] = useState("");
+  // The truck number last filled in from a truck place (null = what is there was typed).
+  const [autoTruck, setAutoTruck] = useState<string | null>(null);
   const [fromPlace, setFromPlace] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
   const [error, setError] = useState("");
-  const [pending, start] = useTransition();
+  const { pending, run, renew } = useSubmit();
 
   function openSheet(o: OrderRow) {
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
-    // Start with the place holding the most bags of this product.
+    // Start with the place holding the most bags of this product, and an empty truck box.
     const fullest = [...places].sort((a, b) => stockHere(o, b.key) - stockHere(o, a.key))[0];
-    pickPlace(fullest?.key ?? "");
+    pickPlace(fullest?.key ?? "", "", null);
     setDriverName("");
     setDriverPhone("");
     setError("");
+    renew();
   }
 
-  /** Bags already on a truck usually leave on that truck, so its number is filled in. */
-  function pickPlace(key: string) {
+  /** Bags already on a truck usually leave on that truck, so its number is filled in; a typed number stays. */
+  function pickPlace(key: string, current = truck, auto = autoTruck) {
     setFromPlace(key);
-    setTruck(places.find((p) => p.key === key)?.truck ?? "");
+    const next = truckAfterPlacePick(current, auto, places.find((p) => p.key === key)?.truck ?? null);
+    setTruck(next.truck);
+    setAutoTruck(next.autoFilled);
   }
 
   function stockHere(o: OrderRow, key: string) {
@@ -70,20 +77,24 @@ export function DispatchView({
 
   function submit() {
     if (!open) return;
-    start(async () => {
-      const res = await dispatchOrder({
-        orderId: open.id,
-        bags: Number(bags),
-        vehicleNumber: truck,
-        fromPlace: fromPlace || null,
-        driverName,
-        driverPhone,
-      });
-      if (res.ok) {
-        setOpen(null);
-        router.refresh();
-      } else setError(res.error);
-    });
+    run(
+      (requestId) =>
+        dispatchOrder({
+          orderId: open.id,
+          bags: Number(bags),
+          vehicleNumber: truck,
+          fromPlace: fromPlace || null,
+          driverName,
+          driverPhone,
+          requestId,
+        }),
+      (res) => {
+        if (res.ok) {
+          setOpen(null);
+          router.refresh();
+        } else setError(res.error);
+      },
+    );
   }
 
   return (

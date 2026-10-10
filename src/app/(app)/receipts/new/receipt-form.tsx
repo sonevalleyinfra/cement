@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
+import { useSubmit } from "@/lib/use-submit";
 import { MAX_REASON, MAX_UTR, MODE_LABELS, PAYMENT_MODES, validateModeDetails, type PaymentMode } from "@/lib/receipt-rules";
 import { loadDues, saveReceipt } from "../actions";
 
@@ -29,7 +30,9 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
   // What the picked retailer owes right now (null until loaded).
   const [duesPaise, setDuesPaise] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [pending, start] = useTransition();
+  const [loading, start] = useTransition();
+  const { pending: saving, run } = useSubmit();
+  const pending = loading || saving;
 
   const totalPaise = parseRupeesToPaise(digits || "0") ?? 0;
   // Paying more than the dues is fine: the rest stays with the shop as an advance.
@@ -53,17 +56,21 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
   function submit() {
     if (!retailer) return;
     setError("");
-    start(async () => {
-      const res = await saveReceipt({
-        retailerId: retailer.id,
-        mode,
-        totalPaise,
-        utr: mode === "online" ? utr : "",
-        note: mode === "online" ? note : "",
-      });
-      if (res.ok) router.push(`/receipts/${res.id}`);
-      else setError(res.error);
-    });
+    run(
+      (requestId) =>
+        saveReceipt({
+          retailerId: retailer.id,
+          mode,
+          totalPaise,
+          utr: mode === "online" ? utr : "",
+          note: mode === "online" ? note : "",
+          requestId,
+        }),
+      (res) => {
+        if (res.ok) router.push(`/receipts/${res.id}`);
+        else setError(res.error);
+      },
+    );
   }
 
   const matches = retailers.filter((r) => `${r.name} ${r.place}`.toLowerCase().includes(search.trim().toLowerCase()));
@@ -134,7 +141,7 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <PinnedAction>
         <Button type="button" size="lg" disabled={!canSave} onClick={submit}>
-          {pending ? "Saving…" : "Save payment"}
+          {saving ? "Saving…" : "Save payment"}
         </Button>
       </PinnedAction>
     </div>

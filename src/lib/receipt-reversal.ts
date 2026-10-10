@@ -10,12 +10,15 @@
  * - A reason is required (trimmed, at most 300 characters). It goes into the ledger note.
  * - Ledger: one compensating row of +amount (kind "receipt_credit"), so the retailer owes
  *   that money again. Nothing posted before is edited.
- * - Cash: the money leaves the recorder's cash-held balance (one "reversed" wallet row). Only
- *   allowed while they still hold that much. If they already handed it over, the reversal is
- *   refused and admin fixes the dues with a ledger adjustment. If a handover request is waiting
- *   for that cash, accounts answer the request first.
+ * - Cash: accounts / admin say where that cash is now (owner's rule):
+ *   - "Cash is still with <name>" ("holder"): it leaves that person's cash-held balance (one
+ *     "reversed" wallet row). They must hold at least that much, and none of it may be promised in
+ *     a handover request still waiting (answer the request first).
+ *   - "Cash already handed to office" ("office"): no wallet row; the office already has the cash.
+ *   Either way the dues go back up and the payment is marked reversed.
  */
 import { can } from "./permissions";
+import { formatINR } from "./money";
 import { checkReason } from "./receipt-rules";
 
 export const REVERSIBLE_STATUSES = ["received", "verified"] as const;
@@ -29,8 +32,13 @@ export function canReverseReceipt(role: string | null | undefined, status: strin
   return can(role, "reverseReceipt") && isReversibleStatus(status);
 }
 
-export const CASH_HANDED_OVER =
-  "This cash was already handed over, so it cannot be reversed. Ask admin to add a ledger adjustment instead.";
+/** Where the cash of a reversed cash payment is now. */
+export const CASH_PLACES = ["holder", "office"] as const;
+export type CashPlace = (typeof CASH_PLACES)[number];
+
+export function isCashPlace(value: unknown): value is CashPlace {
+  return typeof value === "string" && (CASH_PLACES as readonly string[]).includes(value);
+}
 
 export type ReversalPlan =
   | {
@@ -45,13 +53,15 @@ export type ReversalPlan =
   | { ok: false; error: string };
 
 /**
- * `holder` is the recorder's cash right now (needed for cash): `balancePaise` = cash held,
+ * `cashPlace` says where a cash payment's money is now (ignored for online).
+ * `holder` is the recorder's cash right now (needed for "holder"): `balancePaise` = cash held,
  * `availablePaise` = cash held minus handover requests still waiting.
  */
 export function planReversal(
   role: string | null | undefined,
   receipt: { mode: string; status: string; receiptNo: number; totalPaise: number },
   reason: unknown,
+  cashPlace: unknown = null,
   holder: { balancePaise: number; availablePaise: number } = { balancePaise: 0, availablePaise: 0 },
 ): ReversalPlan {
   if (!can(role, "reverseReceipt")) return { ok: false, error: "Only accounts or admin can reverse a payment." };
@@ -65,15 +75,22 @@ export function planReversal(
     return { ok: false, error: "This payment has nothing to reverse." };
   }
   const cash = receipt.mode === "cash";
-  if (cash && holder.balancePaise < receipt.totalPaise) return { ok: false, error: CASH_HANDED_OVER };
-  if (cash && holder.availablePaise < receipt.totalPaise) {
+  if (cash && !isCashPlace(cashPlace)) return { ok: false, error: "Pick where the cash is now." };
+  const fromHolder = cash && cashPlace === "holder";
+  if (fromHolder && holder.balancePaise < receipt.totalPaise) {
+    return {
+      ok: false,
+      error: `They hold only ${formatINR(Math.max(0, holder.balancePaise))} now. If the cash went to the office, pick "Cash already handed to office".`,
+    };
+  }
+  if (fromHolder && holder.availablePaise < receipt.totalPaise) {
     return { ok: false, error: "A handover of this cash is waiting. Confirm or reject it first." };
   }
   return {
     ok: true,
     reason: r.reason,
     ledgerPaise: receipt.totalPaise,
-    walletPaise: cash ? receipt.totalPaise : 0,
+    walletPaise: fromHolder ? receipt.totalPaise : 0,
     note: `Payment #${receipt.receiptNo} reversed: ${r.reason}`,
   };
 }

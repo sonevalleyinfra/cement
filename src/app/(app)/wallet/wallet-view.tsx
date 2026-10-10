@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
 import { MAX_REASON } from "@/lib/receipt-rules";
+import { useSubmit } from "@/lib/use-submit";
 import { answerHandover, requestHandover } from "./actions";
 
 type Mine = { balancePaise: number; pendingPaise: number; availablePaise: number };
@@ -37,19 +38,22 @@ export function WalletView({
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+  const handover = useSubmit();
 
   function handOver() {
     const paise = parseRupeesToPaise(amount);
     if (paise === null || paise <= 0) return setError("Enter the amount.");
     setError("");
-    start(async () => {
-      const res = await requestHandover({ amountPaise: paise });
-      if (res.ok) {
-        setHandOpen(false);
-        setAmount("");
-        router.refresh();
-      } else setError(res.error);
-    });
+    handover.run(
+      (requestId) => requestHandover({ amountPaise: paise, requestId }),
+      (res) => {
+        if (res.ok) {
+          setHandOpen(false);
+          setAmount("");
+          router.refresh();
+        } else setError(res.error);
+      },
+    );
   }
 
   function answer(action: "confirm" | "reject") {
@@ -166,7 +170,7 @@ export function WalletView({
             <Input id="handover" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button disabled={pending} onClick={handOver}>
+          <Button disabled={handover.pending} onClick={handOver}>
             Hand over
           </Button>
         </div>

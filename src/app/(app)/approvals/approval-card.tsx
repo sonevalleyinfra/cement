@@ -27,9 +27,10 @@ export function ApprovalCard({
 
   function decide(decision: "approved" | "rejected") {
     start(async () => {
-      const res = await decideOrder(order.id, decision, reason);
-      if (res.ok) router.refresh();
-      else setError(res.error);
+      const res = await decideOrder(order.id, decision, reason, order.ratePaise);
+      if (!res.ok) setError(res.error);
+      // Also after an error: a changed rate shows on the card at once.
+      router.refresh();
     });
   }
 

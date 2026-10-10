@@ -30,10 +30,14 @@ const inrWholeFormatter = new Intl.NumberFormat(LOCALE, {
   maximumFractionDigits: 0,
 });
 
-/** 12345678 paise → "₹1,23,456.78" (Indian lakh/crore digit grouping). */
+/**
+ * 12345678 paise → "₹1,23,456.78" (Indian lakh/crore digit grouping).
+ * `hidePaise` drops ".00" from whole-rupee amounts only ("₹37,000"); an amount with paise
+ * always shows them ("₹36,999.50"), so nothing is ever rounded away.
+ */
 export function formatINR(paise: Paise, opts: { hidePaise?: boolean } = {}): string {
   assertPaise(paise);
-  if (opts.hidePaise) return inrWholeFormatter.format(Math.round(paise / 100));
+  if (opts.hidePaise && paise % 100 === 0) return inrWholeFormatter.format(paise / 100);
   return inrFormatter.format(paise / 100);
 }
 

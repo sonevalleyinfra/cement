@@ -114,7 +114,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
           <ReasonAction receiptId={r.id} action="reject" />
         </div>
       )}
-      {showReverse && <ReasonAction receiptId={r.id} action="reverse" />}
+      {showReverse && (
+        <ReasonAction receiptId={r.id} action="reverse" cashHolder={r.mode === "cash" ? r.collector : null} />
+      )}
     </div>
   );
 }

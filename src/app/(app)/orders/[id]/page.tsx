@@ -10,6 +10,7 @@ import {
   canSeePrice,
   cancelledNote,
   historyForViewer,
+  historyRateLine,
   historyReason,
   historyStepLabel,
 } from "@/lib/order-access";
@@ -44,7 +45,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     .limit(1);
   if (!o) notFound();
 
-  // Staff see every order; a pure retailer only sees their own shop's orders.
+  // Staff see every order; anyone else (a retailer) only their own shop's orders.
   const showPrice = canSeePrice(user.role);
   if (!showPrice) {
     const [own] = await db
@@ -61,6 +62,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         id: orderEvents.id,
         toStatus: orderEvents.toStatus,
         reason: orderEvents.reason,
+        fromRatePaise: orderEvents.fromRatePaise,
+        toRatePaise: orderEvents.toRatePaise,
         createdAt: orderEvents.createdAt,
         actor: users.name,
       })
@@ -84,7 +87,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       .where(eq(dispatches.orderId, o.id))
       .orderBy(asc(dispatches.createdAt)),
   ]);
-  // A retailer never sees rate rows or staff reasons about money.
+  // A retailer never sees rate rows or staff reasons about money; staff see old → new rate.
   const events = historyForViewer(user.role, allEvents);
   const sentBags = loads.reduce((n, l) => n + l.bags, 0);
   const notSent = remainingBags(o.bags, sentBags);
@@ -154,6 +157,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <div className="text-xs text-muted-foreground">
               {e.actor} · {formatDateTime(e.createdAt)}
             </div>
+            {historyRateLine(user.role, e) && (
+              <div className="tabular text-sm font-semibold">{historyRateLine(user.role, e)}</div>
+            )}
             {historyReason(e.reason) && <div className="text-sm">{historyReason(e.reason)}</div>}
           </li>
         ))}

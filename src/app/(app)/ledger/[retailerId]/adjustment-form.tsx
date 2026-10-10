@@ -1,17 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { parseRupeesToPaise } from "@/lib/money";
 import { MAX_REASON } from "@/lib/receipt-rules";
+import { useSubmit } from "@/lib/use-submit";
 import { addAdjustment } from "../actions";
 
 /** Admin adds a + or - adjustment to this retailer's ledger, with a reason. */
 export function AdjustmentForm({ retailerId }: { retailerId: string }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const { pending, run } = useSubmit();
   const [open, setOpen] = useState(false);
   const [owesMore, setOwesMore] = useState(true);
   const [amount, setAmount] = useState("");
@@ -30,15 +31,17 @@ export function AdjustmentForm({ retailerId }: { retailerId: string }) {
     setError("");
     const paise = parseRupeesToPaise(amount);
     if (paise === null || paise <= 0) return setError("Enter the amount.");
-    start(async () => {
-      const res = await addAdjustment({ retailerId, amountPaise: owesMore ? paise : -paise, reason });
-      if (res.ok) {
-        setAmount("");
-        setReason("");
-        setOpen(false);
-        router.refresh();
-      } else setError(res.error);
-    });
+    run(
+      (requestId) => addAdjustment({ retailerId, amountPaise: owesMore ? paise : -paise, reason, requestId }),
+      (res) => {
+        if (res.ok) {
+          setAmount("");
+          setReason("");
+          setOpen(false);
+          router.refresh();
+        } else setError(res.error);
+      },
+    );
   }
 
   return (

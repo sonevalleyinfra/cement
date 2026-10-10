@@ -8,6 +8,7 @@ import {
   type MoneyNotificationInput,
   type NotificationDraft,
   type NotificationEvent,
+  type RateChange,
 } from "@/lib/notification-rules";
 import { hasRole, isAdmin } from "@/lib/roles";
 
@@ -56,6 +57,8 @@ export async function notify(
   actorId: string | null,
   /** Bags to mention instead of the whole order (one dispatch, or the bags cancelled). */
   bagsOverride?: number,
+  /** "rate_edited" only: old and new rate and the reason (staff see it). */
+  rate?: RateChange,
 ): Promise<void> {
   const [row] = await tx
     .select({
@@ -80,6 +83,7 @@ export async function notify(
     retailerName: row.retailerName,
     bags: bagsOverride ?? row.bags,
     actorId,
+    rate,
     people: {
       salesRepId: row.salesRepId,
       placedBy: row.placedBy,

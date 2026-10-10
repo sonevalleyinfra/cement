@@ -17,7 +17,8 @@
  */
 import { formatINR } from "./money";
 import { canUserTransition, cleanReason, isOrderStatus, isValidRatePaise, isValidReason } from "./order-rules";
-import { hasAnyRole, hasRole, isAdmin, isRetailerOnly } from "./roles";
+import { isStaff } from "./permissions";
+import { hasAnyRole, hasRole, isAdmin } from "./roles";
 
 /** Highest rate per bag we accept, in whole rupees. Change here if prices rise. */
 export const MAX_RATE_RUPEES_PER_BAG = 2000;
@@ -38,14 +39,14 @@ export function checkRateDigits(digits: string): RateDigitsCheck {
 }
 
 /**
- * The rate saved on a new order. A retailer never sends one (anything sent is ignored, null).
- * Staff (sales, admin) must type it.
+ * The rate saved on a new order. Staff (sales, admin) must type it. Anyone else (a retailer)
+ * never sends one: anything sent is ignored (null).
  */
 export function rateOnPlace(
   role: string | null | undefined,
   rupeeDigits: string | null | undefined,
 ): { ok: true; ratePaise: number | null } | { ok: false; error: string } {
-  if (isRetailerOnly(role)) return { ok: true, ratePaise: null };
+  if (!isStaff(role)) return { ok: true, ratePaise: null };
   const rate = checkRateDigits(String(rupeeDigits ?? ""));
   return rate.ok ? { ok: true, ratePaise: rate.paise } : rate;
 }
@@ -82,16 +83,27 @@ export function checkRateChange(
 
 export type DecideCheck = { ok: true } | { ok: false; error: string };
 
-/** Accounts (or admin) decide on a placed order, and only once its rate is filled. */
+/**
+ * Accounts (or admin) decide on a placed order, and only once its rate is filled.
+ * `seenRatePaise` is the rate shown on their screen: if the sales person changed it meanwhile,
+ * the decision is refused so they look again at the new rate.
+ */
 export function canDecide(
   role: string | null | undefined,
   order: { status: string; ratePaise: number | null },
   decision: "approved" | "rejected",
+  seenRatePaise: unknown,
 ): DecideCheck {
   if (!isOrderStatus(order.status) || !canUserTransition(role, order.status, decision)) {
     return { ok: false, error: "This order is not waiting for approval." };
   }
   if (order.ratePaise === null) return { ok: false, error: "The rate is not filled yet." };
+  if (typeof seenRatePaise !== "number" || !Number.isSafeInteger(seenRatePaise)) {
+    return { ok: false, error: "Refresh the page and try again." };
+  }
+  if (seenRatePaise !== order.ratePaise) {
+    return { ok: false, error: `Rate changed to ${formatINR(order.ratePaise)}, check again.` };
+  }
   return { ok: true };
 }
 
@@ -115,6 +127,12 @@ const RATE_EDIT_PREFIX = "Rate edited:";
 /** History reason for a rate change after approval. */
 export function rateEditReason(reason: string): string {
   return `${RATE_EDIT_PREFIX} ${reason}`;
+}
+
+/** "₹350 → ₹360" (just "₹350" when there was no rate before). Staff only: retailers never see rates. */
+export function rateMoveText(fromPaise: number | null, toPaise: number): string {
+  const to = formatINR(toPaise, { hidePaise: true });
+  return fromPaise === null || fromPaise === toPaise ? to : `${formatINR(fromPaise, { hidePaise: true })} → ${to}`;
 }
 
 /** Rows that are about the rate (a fill or a change): staff only. */
