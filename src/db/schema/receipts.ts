@@ -1,19 +1,19 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { PAYMENT_MODES, RECEIPT_STATUSES } from "../../lib/receipt-rules";
 import { WALLET_KINDS } from "../../lib/wallet-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
-import { firms } from "./firms";
-import { orders } from "./orders";
 import { retailers } from "./retailers";
 
 /**
- * One receipt = one money event from one retailer (it has no firm of its own;
- * the split lives in `receipt_allocations`). `totalPaise` is integer paise.
- * `mode`: cash | online | cheque. `status`: for cheques pending | cleared | bounced,
- * cash is "received", online is "unverified" then "verified". Any receipt can become
- * "reversed" (accounts took it back); `reversedAt`, `reversedBy` and `reversalReason` say when, who and why.
+ * One receipt = one payment from one retailer (rules in lib/receipt-rules.ts). `totalPaise` is integer paise.
+ * `mode`: cash | online. Cash is "received" and credits the retailer's ledger at once. Online is
+ * "unverified" until accounts check the bank statement: "verified" (the ledger credit is posted then)
+ * or "rejected" (`rejectReason`); `checkedBy` / `checkedAt` say who and when.
+ * A received or verified payment can become "reversed"; `reversedAt`, `reversedBy` and `reversalReason`
+ * say when, who and why. `utr` is stored without spaces in capitals and is unique among online
+ * payments that still stand (a rejected or reversed payment frees its UTR).
  */
 export const receipts = pgTable(
   "receipts",
@@ -23,20 +23,19 @@ export const receipts = pgTable(
     retailerId: uuid("retailer_id")
       .notNull()
       .references(() => retailers.id),
-    /** Firm whose bank account received online / cheque money. Empty for cash. */
-    receivedFirmId: uuid("received_firm_id").references(() => firms.id),
     mode: text("mode").notNull(),
     totalPaise: bigint("total_paise", { mode: "number" }).notNull(),
     utr: text("utr"),
-    chequeNumber: text("cheque_number"),
-    /** YYYY-MM-DD */
-    chequeDate: text("cheque_date"),
-    bankName: text("bank_name"),
-    /** received | unverified | verified | pending | cleared | bounced | reversed */
+    /** Optional note typed with an online payment. */
+    note: text("note").default("").notNull(),
+    /** received | unverified | verified | rejected | reversed */
     status: text("status").notNull(),
     receivedBy: text("received_by")
       .notNull()
       .references(() => user.id),
+    checkedBy: text("checked_by").references(() => user.id),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    rejectReason: text("reject_reason").default("").notNull(),
     reversedAt: timestamp("reversed_at", { withTimezone: true }),
     reversedBy: text("reversed_by").references(() => user.id),
     reversalReason: text("reversal_reason").default("").notNull(),
@@ -46,46 +45,27 @@ export const receipts = pgTable(
   (t) => [
     index("receipts_retailer_idx").on(t.retailerId, t.createdAt),
     index("receipts_created_idx").on(t.createdAt),
+    uniqueIndex("receipts_utr_unique_idx")
+      .on(t.utr)
+      .where(sql`${t.mode} = 'online' and ${t.status} not in ('rejected', 'reversed')`),
     check("receipts_total_positive", sql`${t.totalPaise} > 0`),
+    check("receipts_utr_online_only", sql`(${t.mode} = 'online') = (${t.utr} is not null and ${t.utr} <> '')`),
     check("receipts_mode_valid", oneOf(t.mode, PAYMENT_MODES)),
     check("receipts_status_valid", oneOf(t.status, RECEIPT_STATUSES)),
   ],
 );
 
-/** One row per order paid (or one advance row per firm with no order). Amounts sum to the receipt total. */
-export const receiptAllocations = pgTable(
-  "receipt_allocations",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    receiptId: uuid("receipt_id")
-      .notNull()
-      .references(() => receipts.id),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
-    orderId: uuid("order_id").references(() => orders.id),
-    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
-    advance: boolean("advance").default(false).notNull(),
-  },
-  (t) => [
-    index("receipt_allocations_receipt_idx").on(t.receiptId),
-    index("receipt_allocations_order_idx").on(t.orderId),
-    check("receipt_allocations_amount_positive", sql`${t.amountPaise} > 0`),
-  ],
-);
-
 /**
- * Cash wallet, one per collector per firm. Append-only: rows are never edited or deleted.
+ * Cash wallet, one per collector (staff member). Append-only: rows are never edited or deleted.
  * `amountPaise` is a positive size; `kind` decides the direction (see lib/wallet-rules.ts).
- * `refId` points a confirmed / rejected row at the handover request it answers.
+ * `refId` points a confirmed / rejected row at the handover request it answers. A confirmed row
+ * holds the amount actually received (it may be less than the request); a rejected row holds
+ * the reason in `note`.
  */
 export const walletMovements = pgTable(
   "wallet_movements",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
     collectorId: text("collector_id")
       .notNull()
       .references(() => user.id),
@@ -94,13 +74,14 @@ export const walletMovements = pgTable(
     amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
     receiptId: uuid("receipt_id").references(() => receipts.id),
     refId: uuid("ref_id"),
+    note: text("note").default("").notNull(),
     actorId: text("actor_id")
       .notNull()
       .references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    index("wallet_movements_collector_idx").on(t.collectorId, t.firmId, t.createdAt),
+    index("wallet_movements_collector_idx").on(t.collectorId, t.createdAt),
     check("wallet_movements_amount_not_negative", sql`${t.amountPaise} >= 0`),
     check("wallet_movements_kind_valid", oneOf(t.kind, WALLET_KINDS)),
   ],

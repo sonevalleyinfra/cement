@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  LAST_PAYMENT_SKIPS,
+  needsSalesRep,
+  shopsWithoutSalesRep,
+  truckLoads,
   cashInHandPaise,
   homeSections,
   isOpenOrderStatus,
@@ -10,13 +14,17 @@ import {
 } from "./home-rules";
 
 describe("homeSections", () => {
-  it("gives admin one summary section", () => {
-    expect(homeSections("admin")).toEqual(["admin"]);
-    expect(homeSections("sales,admin")).toEqual(["admin"]);
+  it("gives admin one summary section plus my cash held", () => {
+    expect(homeSections("admin")).toEqual(["admin", "cash"]);
+    expect(homeSections("sales,admin")).toEqual(["admin", "cash"]);
   });
-  it("gives one section per role in a sensible order", () => {
-    expect(homeSections("logistics,sales")).toEqual(["sales", "logistics"]);
-    expect(homeSections("retailer,accounts,sales")).toEqual(["sales", "accounts", "retailer"]);
+  it("gives one section per role in a sensible order, then my cash held once", () => {
+    expect(homeSections("logistics,sales")).toEqual(["sales", "logistics", "cash"]);
+    expect(homeSections("retailer,accounts,sales")).toEqual(["sales", "accounts", "retailer", "cash"]);
+    expect(homeSections("accounts")).toEqual(["accounts", "cash"]);
+  });
+  it("a pure retailer has no cash section", () => {
+    expect(homeSections("retailer")).toEqual(["retailer"]);
   });
   it("ignores unknown or missing roles", () => {
     expect(homeSections("user")).toEqual([]);
@@ -34,13 +42,14 @@ describe("istDayStart", () => {
 
 describe("dues totals", () => {
   const rows = [
-    { retailerId: "r1", firmId: "a", amountPaise: 500_00 },
-    { retailerId: "r1", firmId: "a", amountPaise: -200_00 },
-    { retailerId: "r1", firmId: "b", amountPaise: -900_00 },
-    { retailerId: "r2", firmId: "a", amountPaise: 100_00 },
-    { retailerId: "r3", firmId: "a", amountPaise: -50_00 },
+    { retailerId: "r1", amountPaise: 500_00 },
+    { retailerId: "r1", amountPaise: -200_00 },
+    { retailerId: "r2", amountPaise: 100_00 },
+    { retailerId: "r3", amountPaise: -50_00 },
+    { retailerId: "r4", amountPaise: 900_00 },
+    { retailerId: "r4", amountPaise: -1000_00 },
   ];
-  it("adds positive balances per retailer and firm only", () => {
+  it("adds positive balances per retailer only (an advance is not negative dues)", () => {
     expect(totalDuesPaise(rows)).toBe(300_00 + 100_00);
   });
   it("counts retailers that owe something", () => {
@@ -59,8 +68,10 @@ describe("cash and open orders", () => {
   });
   it("open orders exclude finished ones", () => {
     expect(isOpenOrderStatus("placed")).toBe(true);
+    expect(isOpenOrderStatus("approved")).toBe(true);
     expect(isOpenOrderStatus("partly_dispatched")).toBe(true);
-    expect(isOpenOrderStatus("delivered")).toBe(false);
+    expect(isOpenOrderStatus("dispatched")).toBe(false);
+    expect(isOpenOrderStatus("nonsense")).toBe(false);
     expect(isOpenOrderStatus("cancelled")).toBe(false);
     expect(isOpenOrderStatus("rejected")).toBe(false);
   });
@@ -68,10 +79,71 @@ describe("cash and open orders", () => {
 
 describe("logisticsCounts", () => {
   it("counts ready and partly sent orders, ignores the rest", () => {
-    const orders = ["approved", "assigned", "partly_dispatched", "dispatched", "placed", "assigned"].map((status) => ({
+    const orders = ["approved", "approved", "partly_dispatched", "dispatched", "placed", "cancelled"].map((status) => ({
       status,
     }));
-    expect(logisticsCounts(orders)).toEqual({ ready: 3, partly: 1 });
+    expect(logisticsCounts(orders)).toEqual({ ready: 2, partly: 1 });
     expect(logisticsCounts([])).toEqual({ ready: 0, partly: 0 });
+  });
+});
+
+describe("truckLoads", () => {
+  const row = (kind: string, placeKey: string, placeName: string, productName: string, bags: number) => ({
+    kind,
+    placeKey,
+    placeName,
+    productName,
+    bags,
+  });
+  it("lists only trucks holding bags now, by number, with bags per product", () => {
+    const loads = truckLoads([
+      row("godown", "godown:g", "Main", "Prism Trade OPC 53", 500),
+      row("vehicle", "vehicle:2", "BR02CD5678", "Prism Trade OPC 53", 40),
+      row("vehicle", "vehicle:1", "BR01AB1234", "Prism Trade OPC 53", 10),
+      row("vehicle", "vehicle:1", "BR01AB1234", "Prism Trade PPC 43", 30),
+      row("vehicle", "vehicle:3", "BR03EE0001", "Prism Trade OPC 53", 0),
+    ]);
+    expect(loads).toEqual([
+      {
+        truck: "BR01AB1234",
+        bags: 40,
+        products: [
+          { name: "Prism Trade PPC 43", bags: 30 },
+          { name: "Prism Trade OPC 53", bags: 10 },
+        ],
+      },
+      { truck: "BR02CD5678", bags: 40, products: [{ name: "Prism Trade OPC 53", bags: 40 }] },
+    ]);
+  });
+  it("is empty when no truck holds bags", () => {
+    expect(truckLoads([row("godown", "godown:g", "Main", "P", 5)])).toEqual([]);
+  });
+});
+
+describe("shopsWithoutSalesRep", () => {
+  it("counts switched-on shops with nobody", () => {
+    expect(
+      shopsWithoutSalesRep([
+        { active: true, salesRepId: null },
+        { active: true, salesRepId: "s1" },
+        { active: false, salesRepId: null },
+        { active: true, salesRepId: "" },
+      ]),
+    ).toBe(2);
+  });
+  it("the Retailers filter from Home lists exactly the shops counted", () => {
+    const shops = [
+      { id: "a", active: true, salesRepId: null },
+      { id: "b", active: true, salesRepId: "s1" },
+      { id: "c", active: false, salesRepId: null },
+    ];
+    expect(shops.filter(needsSalesRep).map((s) => s.id)).toEqual(["a"]);
+    expect(shops.filter(needsSalesRep)).toHaveLength(shopsWithoutSalesRep(shops));
+  });
+});
+
+describe("LAST_PAYMENT_SKIPS", () => {
+  it("a rejected or reversed payment is never shown as the shop's last payment", () => {
+    expect(LAST_PAYMENT_SKIPS).toEqual(["rejected", "reversed"]);
   });
 });

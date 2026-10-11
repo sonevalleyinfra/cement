@@ -1,8 +1,10 @@
 import {
   BadgeCheck,
   BookOpen,
-  Building2,
+  ChartColumn,
   ChevronRight,
+  Factory,
+  History,
   KeyRound,
   Package,
   Receipt,
@@ -23,16 +25,18 @@ import { signOut } from "../dashboard/actions";
 type Row = { href: string; label: string; icon: LucideIcon; tone: Tone; permission?: Action };
 
 const rows: Row[] = [
+  { href: "/reports", label: "Reports", icon: ChartColumn, tone: "orange", permission: "viewReports" },
+  { href: "/activity", label: "Activity", icon: History, tone: "slate", permission: "viewActivity" },
   { href: "/users", label: "Users", icon: Users, tone: "violet", permission: "manageUsers" },
-  { href: "/firms", label: "Firms", icon: Building2, tone: "slate", permission: "manageFirms" },
   { href: "/catalogue", label: "Catalogue", icon: Tags, tone: "blue", permission: "manageCatalogue" },
   { href: "/approvals", label: "Approvals", icon: BadgeCheck, tone: "violet", permission: "viewApprovals" },
   { href: "/stock", label: "Stock", icon: Package, tone: "blue", permission: "viewStock" },
   { href: "/godowns", label: "Godowns", icon: Warehouse, tone: "blue", permission: "manageStock" },
   { href: "/dispatch", label: "Dispatch", icon: Truck, tone: "blue", permission: "dispatch" },
+  { href: "/suppliers", label: "Suppliers", icon: Factory, tone: "amber", permission: "viewSuppliers" },
   { href: "/ledger", label: "Ledger", icon: BookOpen, tone: "rose", permission: "viewLedger" },
-  { href: "/receipts", label: "Receipts", icon: Receipt, tone: "teal", permission: "viewReceipts" },
-  { href: "/wallet", label: "Wallet", icon: Wallet, tone: "green", permission: "useWallet" },
+  { href: "/receipts", label: "Payments", icon: Receipt, tone: "teal", permission: "viewReceipts" },
+  { href: "/wallet", label: "Cash", icon: Wallet, tone: "green", permission: "useWallet" },
   { href: "/account", label: "Change password", icon: KeyRound, tone: "orange" },
 ];
 

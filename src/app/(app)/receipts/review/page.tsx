@@ -1,62 +1,69 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
+import { ListCard } from "@/components/app/list-card";
 import { db } from "@/db";
-import { receipts, retailers } from "@/db/schema";
+import { receipts, retailers, user as users } from "@/db/schema";
 import { formatDate } from "@/lib/datetime";
-import { getAccessibleFirms } from "@/lib/firm-access";
-import { can, rolesFor } from "@/lib/permissions";
-import { getFirmSelection } from "@/components/app/firm-switcher";
+import { formatINR } from "@/lib/money";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
-import { ReviewView } from "./review-view";
+import { ReasonAction, VerifyButton } from "../payment-actions";
 
+/** Online payments waiting for accounts: check the bank statement, then Verified or Reject. */
 export default async function ReviewPage() {
-  const { user } = await requireRole(...rolesFor("verifyPayments"));
-  const { selection } = await getFirmSelection();
-  if (selection.mode === "all") return <EmptyState title="Pick one firm to verify payments" />;
-  const firms = await getAccessibleFirms(user.id, user.role);
-  const firmIds = firms.map((f) => f.id);
-  if (firmIds.length === 0) return <EmptyState title="No firm available" />;
+  await requireRole(...rolesFor("verifyPayments"));
   const rows = await db
     .select({
       id: receipts.id,
       no: receipts.receiptNo,
       retailer: retailers.name,
-      mode: receipts.mode,
-      status: receipts.status,
       totalPaise: receipts.totalPaise,
       utr: receipts.utr,
-      chequeNumber: receipts.chequeNumber,
-      chequeDate: receipts.chequeDate,
-      bankName: receipts.bankName,
-      receivedFirmId: receipts.receivedFirmId,
+      note: receipts.note,
+      recorder: users.name,
       createdAt: receipts.createdAt,
     })
     .from(receipts)
     .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
-    .where(
-      and(
-        inArray(receipts.receivedFirmId, firmIds),
-        inArray(receipts.status, ["unverified", "pending"]),
-      ),
-    )
+    .innerJoin(users, eq(users.id, receipts.receivedBy))
+    .where(eq(receipts.status, "unverified"))
     .orderBy(asc(receipts.createdAt));
-  const firmName = new Map(firms.map((f) => [f.id, f.name]));
+
   return (
-    <ReviewView
-      canReverse={can(user.role, "reverseReceipt")}
-      rows={rows.map((r) => ({
-        id: r.id,
-        no: r.no,
-        retailer: r.retailer,
-        mode: r.mode,
-        totalPaise: r.totalPaise,
-        utr: r.utr,
-        chequeNumber: r.chequeNumber,
-        chequeDate: r.chequeDate,
-        bankName: r.bankName,
-        firmName: firmName.get(r.receivedFirmId ?? "") ?? "",
-        date: formatDate(r.createdAt),
-      }))}
-    />
+    <div className="flex flex-col gap-4">
+      <h1 className="text-xl font-bold">Verify online</h1>
+      {rows.length === 0 ? (
+        <EmptyState title="Nothing to verify" />
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {rows.map((r, i) => (
+            <li key={r.id}>
+              <ListCard
+                index={i}
+                title={r.retailer}
+                top={
+                  <span className="text-xs text-muted-foreground">
+                    #{r.no} · {formatDate(r.createdAt)} · {r.recorder}
+                  </span>
+                }
+                bottom={
+                  <div className="flex w-full flex-col gap-2">
+                    <div className="flex items-end justify-between gap-2">
+                      <span className="text-sm">
+                        UTR <span className="tabular font-semibold">{r.utr}</span>
+                      </span>
+                      <span className="tabular text-lg font-bold">{formatINR(r.totalPaise)}</span>
+                    </div>
+                    {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
+                    <VerifyButton receiptId={r.id} />
+                    <ReasonAction receiptId={r.id} action="reject" />
+                  </div>
+                }
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

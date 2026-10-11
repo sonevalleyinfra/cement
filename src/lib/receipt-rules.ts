@@ -1,259 +1,194 @@
 /**
- * Receipt allocation rules as plain functions (no database) so they are easy to test.
- * Source: docs/idea.md section 6 (Collections) and section 7 (Ledgers).
+ * Payment (receipt) rules as plain functions (no database) so they are easy to test.
+ * Source: docs/idea.md section 6 (Payments from retailers) and section 5 (Retailer dues).
+ *
+ * - Two modes: cash and online. Money is integer paise.
+ * - Cash: saved as "received". The retailer's dues go down at once (one `receipt_credit`
+ *   ledger row of minus the amount) and the cash is now held by the person who recorded it
+ *   (one "collected" wallet row, see wallet-rules.ts).
+ * - Online: needs a UTR / reference (an optional note too). Saved as "unverified"; the dues
+ *   do NOT change. Accounts (or admin) check the bank statement and tap "Verified": status
+ *   "verified" and the ledger credit is posted then. Or they reject it with a reason (the money
+ *   never arrived): status "rejected", nothing is posted.
+ * - A UTR may be used by one online payment only (rejected and reversed ones do not count, so the
+ *   money can be recorded again with the same UTR).
+ * - "received" and "verified" payments can later be reversed (see receipt-reversal.ts).
+ * - Paying more than the dues is fine: the balance goes below zero (an advance).
  *
  * Choices where the spec is silent:
- * - Money is integer paise. Allocation is PER FIRM (spec 6.1: one row per firm with dues).
- *   Each firm's dues come from its ledger (firm-dues.ts), so openings, advances, bounces
- *   and cancelled orders all count. A line may not be more than that firm's dues.
- *   Inside a firm the ledger applies payments oldest first by itself, so no per-order rows
- *   are stored for new receipts (older rows that name an order stay as they are).
- * - Auto-split = every firm's due items oldest first (openings count as the oldest);
- *   ties keep the firm order given.
- * - Cheque details required: number, date, bank name. Online: UTR / reference + the
- *   firm whose bank account received the money. Cash: nothing extra.
- * - Remaining must be exactly 0 before save. Any excess is an explicit "advance"
- *   for a firm the collector picks; it is never silently dropped.
- * - Cheque lifecycle: pending -> cleared | bounced. Cleared and bounced are final.
- * - Bounce reverses the whole credit (every allocation line and the advance).
- * - Inter-firm balance (online/cheque only): the receiving firm owes each other firm
- *   the amount posted to that firm. Settling it is out of scope here (phase 2).
+ * - "Verified" is one tap; accounts compare the UTR shown on the card with the statement.
+ * - UTRs are stored without spaces and in capitals, so "abc 123" and "ABC123" are the same.
  */
-export const PAYMENT_MODES = ["cash", "online", "cheque"] as const;
+import type { LedgerEntry } from "./ledger-rules";
+import { hasAnyRole } from "./roles";
+
+export const PAYMENT_MODES = ["cash", "online"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
 
-/**
- * Every receipt status. Cash: received. Online: unverified -> verified.
- * Cheque: pending -> cleared | bounced. Any receipt can end as "reversed" (taken back by accounts).
- */
-export const RECEIPT_STATUSES = [
-  "received",
-  "unverified",
-  "verified",
-  "pending",
-  "cleared",
-  "bounced",
-  "reversed",
-] as const;
+/** cash: received. online: unverified -> verified | rejected. received / verified -> reversed. */
+export const RECEIPT_STATUSES = ["received", "unverified", "verified", "rejected", "reversed"] as const;
 export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];
 
-export const MODE_LABELS: Record<string, string> = { cash: "Cash", online: "Online", cheque: "Cheque" };
+export const MODE_LABELS: Record<string, string> = { cash: "Cash", online: "Online" };
 
-/** Status words and the colour group of the status chip (which only knows order colours). */
+export type Result = { ok: true } | { ok: false; error: string };
+
+/** Status word and the colour of the status chip (which uses the order colours). */
 export function receiptChip(status: string): {
-  status: "pending" | "approved" | "rejected" | "delivered";
+  status: "placed" | "approved" | "rejected" | "cancelled";
   label: string;
 } {
   switch (status) {
     case "received":
-      return { status: "delivered", label: "Received" };
+      return { status: "approved", label: "Received" };
     case "unverified":
-      return { status: "pending", label: "Not verified" };
+      return { status: "placed", label: "Not verified" };
     case "verified":
-      return { status: "delivered", label: "Verified" };
-    case "pending":
-      return { status: "pending", label: "Cheque pending" };
-    case "cleared":
-      return { status: "delivered", label: "Cleared" };
-    case "bounced":
-      return { status: "rejected", label: "Bounced" };
+      return { status: "approved", label: "Verified" };
+    case "rejected":
+      return { status: "rejected", label: "Rejected" };
     case "reversed":
-      return { status: "rejected", label: "Reversed" };
+      return { status: "cancelled", label: "Reversed" };
     default:
-      return { status: "pending", label: status };
+      return { status: "placed", label: status };
   }
 }
 
-export type ModeDetails = {
-  utr?: string | null;
-  receivedFirmId?: string | null;
-  chequeNumber?: string | null;
-  chequeDate?: string | null;
-  bankName?: string | null;
-};
+/** Longest reason or note we keep. */
+export const MAX_REASON = 300;
 
-export function validateModeDetails(mode: string, d: ModeDetails): string | null {
-  const has = (v: string | null | undefined) => typeof v === "string" && v.trim().length > 0;
+/** A reason is required (trimmed, at most 300 characters). */
+export function checkReason(reason: unknown): { ok: true; reason: string } | { ok: false; error: string } {
+  const clean = typeof reason === "string" ? reason.trim() : "";
+  if (!clean) return { ok: false, error: "Enter the reason." };
+  if (clean.length > MAX_REASON) return { ok: false, error: `Keep the reason under ${MAX_REASON} characters.` };
+  return { ok: true, reason: clean };
+}
+
+/** The one stored form of a UTR: no spaces, capitals. */
+export function normaliseUtr(utr: string | null | undefined): string {
+  return (utr ?? "").replace(/\s+/g, "").toUpperCase();
+}
+
+export const MAX_UTR = 40;
+
+/** Online needs a UTR / reference; cash needs nothing. Returns an error or null. */
+export function validateModeDetails(mode: string, d: { utr?: string | null }): string | null {
   if (mode === "cash") return null;
   if (mode === "online") {
-    if (!has(d.utr)) return "Enter the UTR / reference number.";
-    if (!has(d.receivedFirmId)) return "Pick the firm whose bank account received the money.";
+    const utr = normaliseUtr(d.utr);
+    if (!utr) return "Enter the UTR / reference number.";
+    if (utr.length > MAX_UTR) return "That UTR is too long.";
     return null;
   }
-  if (mode === "cheque") {
-    if (!has(d.chequeNumber)) return "Enter the cheque number.";
-    if (!has(d.chequeDate) || !/^\d{4}-\d{2}-\d{2}$/.test(d.chequeDate!.trim()))
-      return "Enter the cheque date.";
-    if (!has(d.bankName)) return "Enter the bank name.";
-    if (!has(d.receivedFirmId)) return "Pick the firm whose bank account will receive the cheque.";
-    return null;
-  }
-  return "Pick a payment mode: cash, online or cheque.";
+  return "Pick a payment mode: cash or online.";
 }
 
-/** What one firm is owed, as the receipt screen needs it (built by firm-dues.ts). */
-export type FirmDue = {
-  firmId: string;
-  duePaise: number;
-  /** Items still owed, oldest first. */
-  items: readonly { kind?: string; dueSince: Date | string; duePaise: number }[];
+/** Largest payment we accept: ₹100 crore (a typo guard, not a real business limit). */
+export const MAX_RECEIPT_PAISE = 100 * 1_00_00_000 * 100;
+
+/** The amount must be whole paise above zero (and not absurdly large). Returns an error or null. */
+export function checkReceiptAmount(totalPaise: number): string | null {
+  if (!Number.isSafeInteger(totalPaise) || totalPaise <= 0) return "Enter the amount received.";
+  if (totalPaise > MAX_RECEIPT_PAISE) return "That amount is too large.";
+  return null;
+}
+
+/** A payment in one of these states no longer holds its UTR (same list as the database's unique index). */
+export const UTR_FREED_STATUSES = ["rejected", "reversed"] as const;
+
+/** True if this UTR is already used by an online payment that still stands (not rejected or reversed). */
+export function isUtrTaken(
+  utr: string,
+  existing: readonly { mode: string; status: string; utr: string | null }[],
+): boolean {
+  const wanted = normaliseUtr(utr);
+  if (!wanted) return false;
+  return existing.some(
+    (p) =>
+      p.mode === "online" &&
+      !(UTR_FREED_STATUSES as readonly string[]).includes(p.status) &&
+      normaliseUtr(p.utr) === wanted,
+  );
+}
+
+export const UTR_TAKEN = "This UTR is already recorded.";
+
+/* ---------- Recording ---------- */
+
+export type ReceiptRequest = {
+  retailerId: string;
+  mode: string;
+  totalPaise: number;
+  utr?: string | null;
+  note?: string | null;
 };
 
-/** One allocation line: the part of this receipt that goes to one firm's dues. */
-export type Allocation = { firmId: string; amountPaise: number };
-
-function assertWhole(n: number, what: string): void {
-  if (!Number.isSafeInteger(n) || n < 0) throw new RangeError(`${what} must be a whole number of paise, 0 or more`);
-}
-
-/**
- * Auto-split across firms: every firm's items oldest first (openings count as the
- * oldest), each paid in full before the next. Leftover (overpay) is the advance.
- * Returns one allocation per firm that gets money, in the firm order given.
- */
-export function autoSplitByFirm(
-  receiptPaise: number,
-  dues: readonly FirmDue[],
-): { allocations: Allocation[]; advancePaise: number } {
-  assertWhole(receiptPaise, "Receipt amount");
-  const queue = dues.flatMap((f, firmIndex) =>
-    f.items.map((item, itemIndex) => ({
-      firmId: f.firmId,
-      opening: item.kind === "opening",
-      at: new Date(item.dueSince).getTime(),
-      firmIndex,
-      itemIndex,
-      duePaise: item.duePaise,
-    })),
-  );
-  queue.sort(
-    (a, b) =>
-      Number(b.opening) - Number(a.opening) || a.at - b.at || a.firmIndex - b.firmIndex || a.itemIndex - b.itemIndex,
-  );
-  let left = receiptPaise;
-  const totals = new Map<string, number>();
-  for (const item of queue) {
-    if (left === 0) break;
-    assertWhole(item.duePaise, "Due amount");
-    const take = Math.min(left, item.duePaise);
-    if (take > 0) totals.set(item.firmId, (totals.get(item.firmId) ?? 0) + take);
-    left -= take;
-  }
-  const allocations = dues
-    .filter((f) => totals.has(f.firmId))
-    .map((f) => ({ firmId: f.firmId, amountPaise: totals.get(f.firmId)! }));
-  return { allocations, advancePaise: left };
-}
-
-/**
- * What the entry screen shows: firms the collector typed (or tapped "Clear full" on) keep
- * their amount; every other firm with dues shares what is left by auto-split.
- * `leftoverPaise` is what is not allocated (above 0 = advance, below 0 = too much allocated).
- */
-export function fillAllocation(
-  receiptPaise: number,
-  dues: readonly FirmDue[],
-  fixed: Readonly<Record<string, number>>,
-): { amounts: Record<string, number>; leftoverPaise: number } {
-  const amounts: Record<string, number> = {};
-  let fixedTotal = 0;
-  for (const f of dues) {
-    if (f.firmId in fixed) {
-      amounts[f.firmId] = fixed[f.firmId];
-      fixedTotal += fixed[f.firmId];
+export type ReceiptPlan =
+  | {
+      ok: true;
+      status: "received" | "unverified";
+      /** UTR to store (online), else null. */
+      utr: string | null;
+      note: string;
+      /** Ledger credit to post now (cash), or null (online waits for "Verified"). */
+      ledger: LedgerEntry | null;
+      /** Cash now held by the person who recorded it (0 for online). */
+      walletPaise: number;
     }
+  | { ok: false; error: string };
+
+/** Turns a payment request into what must be saved, or an error. */
+export function planReceipt(req: ReceiptRequest): ReceiptPlan {
+  const modeError = validateModeDetails(req.mode, { utr: req.utr });
+  if (modeError) return { ok: false, error: modeError };
+  const amountError = checkReceiptAmount(req.totalPaise);
+  if (amountError) return { ok: false, error: amountError };
+  const note = typeof req.note === "string" ? req.note.trim() : "";
+  if (note.length > MAX_REASON) return { ok: false, error: `Keep the note under ${MAX_REASON} characters.` };
+  if (req.mode === "online") {
+    return { ok: true, status: "unverified", utr: normaliseUtr(req.utr), note, ledger: null, walletPaise: 0 };
   }
-  const rest = dues.filter((f) => !(f.firmId in fixed));
-  const pool = Math.max(0, receiptPaise - fixedTotal);
-  const auto = autoSplitByFirm(Number.isSafeInteger(pool) ? pool : 0, rest);
-  for (const f of rest) amounts[f.firmId] = 0;
-  for (const a of auto.allocations) amounts[a.firmId] = a.amountPaise;
-  const allocated = Object.values(amounts).reduce((s, n) => s + n, 0);
-  return { amounts, leftoverPaise: receiptPaise - allocated };
+  return {
+    ok: true,
+    status: "received",
+    utr: null,
+    note,
+    ledger: { retailerId: req.retailerId, kind: "receipt_credit", amountPaise: -req.totalPaise },
+    walletPaise: req.totalPaise,
+  };
 }
 
-export type Advance = { firmId: string; amountPaise: number };
+/* ---------- Online: verify or reject (accounts / admin) ---------- */
 
-export type AllocationCheck =
-  | { ok: true; remainingPaise: 0; firmTotals: Record<string, number> }
-  | { ok: false; error: string; remainingPaise?: number };
-
-/**
- * Checks a receipt before saving: each line is one firm that has dues, at most that
- * firm's dues, each firm once. Any excess is an explicit advance with a firm.
- * Remaining must be 0.
- */
-export function validateAllocation(
-  receiptPaise: number,
-  allocations: readonly Allocation[],
-  dues: readonly FirmDue[],
-  advance: Advance | null = null,
-): AllocationCheck {
-  if (!Number.isSafeInteger(receiptPaise) || receiptPaise <= 0)
-    return { ok: false, error: "Receipt amount must be a whole number of paise above 0." };
-  const dueByFirm = new Map(dues.map((f) => [f.firmId, f.duePaise]));
-  const seen = new Set<string>();
-  const firmTotals: Record<string, number> = {};
-  let allocated = 0;
-  for (const a of allocations) {
-    if (!Number.isSafeInteger(a.amountPaise)) return { ok: false, error: "Amounts must be whole paise." };
-    if (a.amountPaise < 0) return { ok: false, error: "An amount cannot be negative." };
-    if (seen.has(a.firmId)) return { ok: false, error: "A firm is allocated twice." };
-    seen.add(a.firmId);
-    if (a.amountPaise === 0) continue;
-    const due = dueByFirm.get(a.firmId) ?? 0;
-    if (due <= 0) return { ok: false, error: "A firm has no dues. Keep the money as advance instead." };
-    if (a.amountPaise > due) return { ok: false, error: "An amount is more than that firm's dues." };
-    allocated += a.amountPaise;
-    firmTotals[a.firmId] = a.amountPaise;
-  }
-  let advancePaise = 0;
-  if (advance) {
-    if (!Number.isSafeInteger(advance.amountPaise) || advance.amountPaise < 0)
-      return { ok: false, error: "Advance must be a whole number of paise, 0 or more." };
-    advancePaise = advance.amountPaise;
-    if (advancePaise > 0) {
-      if (!advance.firmId) return { ok: false, error: "Pick the firm that holds the advance." };
-      firmTotals[advance.firmId] = (firmTotals[advance.firmId] ?? 0) + advancePaise;
-    }
-  }
-  const remaining = receiptPaise - allocated - advancePaise;
-  if (remaining !== 0)
-    return {
-      ok: false,
-      remainingPaise: remaining,
-      error: remaining > 0 ? "Remaining must be zero: allocate the rest or keep it as advance." : "Allocated more than the receipt amount.",
-    };
-  return { ok: true, remainingPaise: 0, firmTotals };
+export function canVerifyPayments(role: string | null | undefined): boolean {
+  return hasAnyRole(role, ["accounts"]);
 }
 
-export type PostingLine = { firmId: string; amountPaise: number };
-
-/** One posting line per firm (allocations + advance). Ledger credit is the negative of this. */
-export function firmLines(allocations: readonly Allocation[], advance?: Advance | null): PostingLine[] {
-  const totals = new Map<string, number>();
-  for (const a of allocations) if (a.amountPaise > 0) totals.set(a.firmId, (totals.get(a.firmId) ?? 0) + a.amountPaise);
-  if (advance && advance.amountPaise > 0) totals.set(advance.firmId, (totals.get(advance.firmId) ?? 0) + advance.amountPaise);
-  return [...totals].map(([firmId, amountPaise]) => ({ firmId, amountPaise }));
+function checkUnverifiedOnline(role: string | null | undefined, receipt: { mode: string; status: string }): Result {
+  if (!canVerifyPayments(role)) return { ok: false, error: "Only accounts or admin can verify online payments." };
+  if (receipt.mode !== "online") return { ok: false, error: "Only online payments are verified." };
+  if (receipt.status !== "unverified") return { ok: false, error: "This payment was already checked." };
+  return { ok: true };
 }
 
-/** Online/cheque money landing in one firm's account but posted to other firms. */
-export function interFirmBalances(
-  receivedFirmId: string,
-  lines: readonly PostingLine[],
-): { owedByFirmId: string; owedToFirmId: string; amountPaise: number }[] {
-  return lines
-    .filter((l) => l.firmId !== receivedFirmId && l.amountPaise > 0)
-    .map((l) => ({ owedByFirmId: receivedFirmId, owedToFirmId: l.firmId, amountPaise: l.amountPaise }));
+/** "Verified": status verified, and the ledger credit (minus the amount) is posted now. */
+export function planVerify(
+  role: string | null | undefined,
+  receipt: { mode: string; status: string; retailerId: string; totalPaise: number },
+): { ok: true; ledger: LedgerEntry } | { ok: false; error: string } {
+  const check = checkUnverifiedOnline(role, receipt);
+  if (!check.ok) return check;
+  return { ok: true, ledger: { retailerId: receipt.retailerId, kind: "receipt_credit", amountPaise: -receipt.totalPaise } };
 }
 
-export type ChequeStatus = "pending" | "cleared" | "bounced";
-
-export function canChangeChequeStatus(from: ChequeStatus, to: ChequeStatus): boolean {
-  return from === "pending" && (to === "cleared" || to === "bounced");
-}
-
-/** Bounce reversal: each posted line is mirrored with the opposite sign, so the credit is fully undone. */
-export function bounceReversal(lines: readonly PostingLine[]): PostingLine[] {
-  return lines.map((l) => ({ firmId: l.firmId, amountPaise: -l.amountPaise }));
+/** "Reject" (the money never arrived): status rejected, reason required, nothing posted. */
+export function planReject(
+  role: string | null | undefined,
+  receipt: { mode: string; status: string },
+  reason: unknown,
+): { ok: true; reason: string } | { ok: false; error: string } {
+  const check = checkUnverifiedOnline(role, receipt);
+  if (!check.ok) return check;
+  return checkReason(reason);
 }

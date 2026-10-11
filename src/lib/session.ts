@@ -1,9 +1,7 @@
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
-import { findAccessibleFirm, getAccessibleFirms } from "@/lib/firm-access";
-import { FIRM_COOKIE, resolveFirmSelection, writeBlockMessage } from "@/lib/firm-selection";
 import { hasAnyRole, isAdmin, type Role } from "@/lib/roles";
 
 /**
@@ -41,29 +39,4 @@ export async function requireRole(...roles: Role[]) {
   const session = await requireUser();
   if (!hasAnyRole(session.user.role, roles)) redirect("/dashboard");
   return session;
-}
-
-/**
- * Returns the session and the firm if the user may work on `firmId`,
- * otherwise redirects to the dashboard. Call it in every server action that
- * touches a firm's data, with the firm id the request asks for.
- */
-export async function requireFirm(firmId: string) {
-  const session = await requireUser();
-  const firm = await findAccessibleFirm(session.user.id, session.user.role, firmId);
-  if (!firm) redirect("/dashboard");
-  return { session, firm };
-}
-
-/**
- * Call in every server action that writes. Returns a message when writing is not
- * allowed right now (admin's read-only "All firms" view, or no firm at all),
- * otherwise null. It does not replace `requireFirm`: check the firm too.
- */
-export async function writeBlock(): Promise<string | null> {
-  const { user } = await requireUser();
-  const firms = await getAccessibleFirms(user.id, user.role);
-  const cookieValue = (await cookies()).get(FIRM_COOKIE)?.value;
-  const selection = resolveFirmSelection(cookieValue, firms.map((f) => f.id), isAdmin(user.role));
-  return writeBlockMessage(selection);
 }

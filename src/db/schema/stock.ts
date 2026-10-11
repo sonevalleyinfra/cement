@@ -1,13 +1,14 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { MOVEMENT_TYPES } from "../../lib/stock-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
-import { firms, products } from "./firms";
+import { products } from "./catalogue";
 import { orders } from "./orders";
 import { vehicles } from "./vehicles";
 
 /**
- * Godowns (warehouses): one shared list for all firms, kept by admin. Vehicles are the other kind of place.
+ * Godowns (warehouses), kept by admin. Trucks (`vehicles`) are the other kind of place.
  * Names are unique ignoring capitals. A godown is switched off, never deleted.
  */
 export const godowns = pgTable(
@@ -24,62 +25,36 @@ export const godowns = pgTable(
 );
 
 /**
- * One firm's bags at one place (a godown or a vehicle). Made automatically the first time bags of
- * that firm arrive there (see `getLocation` in lib/stock-places), so firms never mix stock.
- * Exactly one of `godownId` / `vehicleId` is set. `name` is a copy for old rows; show the place's own name.
- */
-export const stockLocations = pgTable(
-  "stock_locations",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
-    kind: text("kind").notNull(), // "godown" | "vehicle"
-    name: text("name").notNull(),
-    vehicleId: uuid("vehicle_id").references(() => vehicles.id),
-    godownId: uuid("godown_id").references(() => godowns.id),
-    active: boolean("active").default(true).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => [
-    index("stock_locations_firm_idx").on(t.firmId),
-    check("stock_locations_kind_valid", oneOf(t.kind, ["godown", "vehicle"])),
-    check(
-      "stock_locations_one_place",
-      sql`(${t.kind} = 'godown' and ${t.godownId} is not null and ${t.vehicleId} is null) or (${t.kind} = 'vehicle' and ${t.vehicleId} is not null and ${t.godownId} is null)`,
-    ),
-    uniqueIndex("stock_locations_firm_godown_unique").on(t.firmId, t.godownId),
-    uniqueIndex("stock_locations_firm_vehicle_unique").on(t.firmId, t.vehicleId),
-  ],
-);
-
-/**
  * Append-only stock ledger. `bags` is signed (+ in, - out). Rows are NEVER updated or
  * deleted: fix mistakes by adding a new movement (reversal or adjustment).
+ * The place is a godown OR a truck: exactly one of `godownId` / `vehicleId` is set.
+ * Stock = sum of `bags` per product per place.
  */
 export const stockMovements = pgTable(
   "stock_movements",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
     productId: uuid("product_id")
       .notNull()
       .references(() => products.id),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => stockLocations.id),
-    type: text("type").notNull(), // opening | purchase | dispatch | dispatch_reversal | adjustment | transfer
+    godownId: uuid("godown_id").references(() => godowns.id),
+    vehicleId: uuid("vehicle_id").references(() => vehicles.id),
+    /** opening | purchase | dispatch | adjustment | transfer (MOVEMENT_TYPES in lib/stock-rules.ts) */
+    type: text("type").notNull(),
     bags: integer("bags").notNull(),
     orderId: uuid("order_id").references(() => orders.id),
     reason: text("reason").default("").notNull(),
+    /** Purchases only: what one bag cost, in paise (used for the average purchase cost per product). */
+    unitCostPaise: integer("unit_cost_paise"),
     actorId: text("actor_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    index("stock_movements_balance_idx").on(t.firmId, t.productId, t.locationId),
+    index("stock_movements_godown_idx").on(t.godownId, t.productId),
+    index("stock_movements_vehicle_idx").on(t.vehicleId, t.productId),
     check("stock_movements_bags_not_zero", sql`${t.bags} <> 0`),
+    check("stock_movements_unit_cost_positive", sql`${t.unitCostPaise} is null or ${t.unitCostPaise} > 0`),
+    check("stock_movements_one_place", sql`num_nonnulls(${t.godownId}, ${t.vehicleId}) = 1`),
+    check("stock_movements_type_valid", oneOf(t.type, MOVEMENT_TYPES)),
   ],
 );

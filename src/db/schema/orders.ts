@@ -3,22 +3,19 @@ import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-o
 import { ORDER_STATUSES } from "../../lib/order-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
-import { firms, products } from "./firms";
+import { products } from "./catalogue";
 import { retailers } from "./retailers";
 
 /**
- * One order = one product for one retailer with one firm.
- * `ratePaise` is the price per bag in paise; empty until sales fills the rate.
+ * One order = one product for one retailer.
+ * `ratePaise` is the current price per bag in paise; empty until the sales person fills it.
+ * It may change after approval; each dispatch saves the rate it was billed at.
  * `salesRepId` is the retailer's sales person when the order was placed (see sales-rep-rules.ts).
- * `logisticsId` is the logistics person picked by round robin when the order was approved.
  */
 export const orders = pgTable(
   "orders",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    firmId: uuid("firm_id")
-      .notNull()
-      .references(() => firms.id),
     retailerId: uuid("retailer_id")
       .notNull()
       .references(() => retailers.id),
@@ -33,12 +30,11 @@ export const orders = pgTable(
       .notNull()
       .references(() => user.id),
     salesRepId: text("sales_rep_id").references(() => user.id),
-    logisticsId: text("logistics_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    index("orders_firm_created_idx").on(t.firmId, t.createdAt),
+    index("orders_created_idx").on(t.createdAt),
     index("orders_retailer_idx").on(t.retailerId),
     // Safety rules the database itself enforces.
     check("orders_bags_positive", sql`${t.bags} > 0`),
@@ -47,7 +43,12 @@ export const orders = pgTable(
   ],
 );
 
-/** History: one row for every status change (including the first "placed"). */
+/**
+ * History: one row for every status change (including the first "placed"), and for every rate
+ * fill or change (status stays the same; the reason says "Rate filled" / "Rate edited: ...").
+ * A rate row also keeps the rate before and after (`fromRatePaise` / `toRatePaise`, staff only;
+ * empty on other rows and on the first fill's "before").
+ */
 export const orderEvents = pgTable(
   "order_events",
   {
@@ -61,11 +62,8 @@ export const orderEvents = pgTable(
       .notNull()
       .references(() => user.id),
     reason: text("reason").default("").notNull(),
-    /**
-     * Who approval's round robin picked. Set only on that "assigned" row, so the next
-     * approval's turn does not move when someone else takes the order at dispatch.
-     */
-    assigneeId: text("assignee_id").references(() => user.id),
+    fromRatePaise: integer("from_rate_paise"),
+    toRatePaise: integer("to_rate_paise"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("order_events_order_idx").on(t.orderId, t.createdAt)],

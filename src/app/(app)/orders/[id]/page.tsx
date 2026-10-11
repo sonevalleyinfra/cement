@@ -1,18 +1,24 @@
 import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { FirmChip } from "@/components/app/firm-chip";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
-import { dispatches, firms, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
-import { findAccessibleFirm } from "@/lib/firm-access";
+import { dispatches, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
-import { canCancelOrder, canSeePrice, chipLabel, chipStatus, historyForViewer, historyStepLabel } from "@/lib/order-access";
-import { isCloseShort, isOrderStatus, orderValuePaise } from "@/lib/order-rules";
-import { canFillRate } from "@/lib/rate-rules";
-import { getFirmSelection } from "@/components/app/firm-switcher";
+import {
+  canSeePrice,
+  cancelledNote,
+  historyForViewer,
+  historyRateLine,
+  historyReason,
+  historyStepLabel,
+  orderAmountSummary,
+} from "@/lib/order-access";
+import { canCancelOrder, isOrderStatus, remainingBags } from "@/lib/order-rules";
+import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
+import { bagsText } from "@/lib/words";
 import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
 
@@ -24,7 +30,6 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const [o] = await db
     .select({
       id: orders.id,
-      firmId: orders.firmId,
       retailerId: orders.retailerId,
       bags: orders.bags,
       ratePaise: orders.ratePaise,
@@ -34,22 +39,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       placedBy: orders.placedBy,
       retailer: retailers.name,
       product: products.name,
-      firmName: firms.name,
-      firmSlot: firms.slot,
     })
     .from(orders)
     .innerJoin(retailers, eq(orders.retailerId, retailers.id))
     .innerJoin(products, eq(orders.productId, products.id))
-    .innerJoin(firms, eq(orders.firmId, firms.id))
     .where(eq(orders.id, id))
     .limit(1);
   if (!o) notFound();
 
-  // Staff need access to the firm; a pure retailer only sees their own shop's orders.
+  // Staff see every order; anyone else (a retailer) only their own shop's orders.
   const showPrice = canSeePrice(user.role);
-  if (showPrice) {
-    if (!(await findAccessibleFirm(user.id, user.role, o.firmId))) notFound();
-  } else {
+  if (!showPrice) {
     const [own] = await db
       .select({ id: retailers.id })
       .from(retailers)
@@ -64,6 +64,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         id: orderEvents.id,
         toStatus: orderEvents.toStatus,
         reason: orderEvents.reason,
+        fromRatePaise: orderEvents.fromRatePaise,
+        toRatePaise: orderEvents.toRatePaise,
         createdAt: orderEvents.createdAt,
         actor: users.name,
       })
@@ -71,7 +73,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       .innerJoin(users, eq(orderEvents.actorId, users.id))
       .where(eq(orderEvents.orderId, o.id))
       .orderBy(asc(orderEvents.createdAt)),
-    // Truck loads: shown to everyone who may see the order (spec 4.6); the rate to staff only.
+    // Truck loads: shown to everyone who may see the order; the rate to staff only.
     db
       .select({
         id: dispatches.id,
@@ -87,35 +89,39 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       .where(eq(dispatches.orderId, o.id))
       .orderBy(asc(dispatches.createdAt)),
   ]);
-  // A retailer never sees rate edits or staff reasons about money.
+  // A retailer never sees rate rows or staff reasons about money; staff see old → new rate.
   const events = historyForViewer(user.role, allEvents);
   const sentBags = loads.reduce((n, l) => n + l.bags, 0);
-  const valuePaise = orderValuePaise({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads });
+  const notSent = remainingBags(o.bags, sentBags);
+  // Staff only. Never one rate that was not billed: see orderAmountSummary.
+  const amount = showPrice ? orderAmountSummary({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads }) : null;
+  const cancelled = cancelledNote(o.status, o.bags, sentBags);
 
-  // Admin's "All firms" view is read only: no buttons that change anything.
-  const { selection } = await getFirmSelection();
-  const canCancel = !selection.readOnly && showPrice && canCancelOrder(user.role, user.id, o);
-  const canRate = !selection.readOnly && canFillRate(user.role, user.id, o.salesRepId, o.status);
+  const canCancel = canCancelOrder(user.role, o.status);
+  const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o) ? "change" : null;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <FirmChip name={o.firmName} slot={o.firmSlot} />
-        {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} label={chipLabel(o.status)} />}
+      <div className="flex items-center justify-end">
+        {isOrderStatus(o.status) && <StatusChip status={o.status} />}
       </div>
       <div>
         <h1 className="text-xl font-bold">{o.retailer}</h1>
         <p className="text-sm text-muted-foreground">
-          {o.product} · <span className="tabular">{o.bags}</span> bags
+          {o.product} · <span className="tabular">{bagsText(o.bags)}</span>
         </p>
+        {cancelled && <p className="text-sm text-muted-foreground">{cancelled}</p>}
         {o.notes && <p className="mt-1 text-sm">{o.notes}</p>}
       </div>
-      {showPrice && o.ratePaise !== null && valuePaise !== null && (
+      {amount && (
         <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-          <div className="text-xs text-muted-foreground">
-            Rate {formatINR(o.ratePaise)} per bag
-          </div>
-          <div className="tabular text-2xl font-bold">{formatINR(valuePaise)}</div>
+          <div className="text-xs text-muted-foreground">{amount.caption}</div>
+          <div className="tabular text-2xl font-bold">{formatINR(amount.totalPaise)}</div>
+          {amount.lines.map((line) => (
+            <div key={line} className="tabular text-xs text-muted-foreground">
+              {line}
+            </div>
+          ))}
         </div>
       )}
       {loads.length > 0 && (
@@ -123,31 +129,32 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           {loads.map((l) => (
             <li key={l.id} className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="tabular text-lg font-bold">{l.bags} bags</span>
+                <span className="tabular text-lg font-bold">{bagsText(l.bags)}</span>
                 <span className="text-sm font-semibold">{l.vehicle}</span>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {l.driverName}
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>{l.driverName}</span>
                 {l.driverPhone && (
-                  <>
-                    {" · "}
-                    <a href={`tel:${l.driverPhone}`} className="tabular underline">
-                      {l.driverPhone}
-                    </a>
-                  </>
+                  <a
+                    href={`tel:${l.driverPhone}`}
+                    className="tabular -my-1 -mr-2 inline-flex min-h-12 min-w-12 items-center justify-end px-2 text-sm font-semibold text-foreground underline underline-offset-2"
+                  >
+                    {l.driverPhone}
+                  </a>
                 )}
-                {" · "}
-                {formatDateTime(l.createdAt)}
               </div>
-              {showPrice && l.ratePaise !== null && l.ratePaise !== o.ratePaise && (
-                <div className="text-xs text-muted-foreground">Rate {formatINR(l.ratePaise)} per bag</div>
+              <div className="text-xs text-muted-foreground">{formatDateTime(l.createdAt)}</div>
+              {showPrice && (
+                <div className="text-xs text-muted-foreground">
+                  {formatINR(l.ratePaise)} per bag · {formatINR(l.bags * l.ratePaise)}
+                </div>
               )}
             </li>
           ))}
         </ul>
       )}
-      {canRate && <RateForm orderId={o.id} bags={o.bags} />}
-      {canCancel && <CancelForm orderId={o.id} closeShort={isCloseShort(o.status, sentBags)} />}
+      {rateMode && <RateForm orderId={o.id} bags={notSent} mode={rateMode} hasRate={o.ratePaise !== null} />}
+      {canCancel && <CancelForm orderId={o.id} notSent={notSent} sent={sentBags} />}
       <ol className="flex flex-col gap-3 border-l pl-4">
         {events.map((e) => (
           <li key={e.id}>
@@ -155,7 +162,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <div className="text-xs text-muted-foreground">
               {e.actor} · {formatDateTime(e.createdAt)}
             </div>
-            {e.reason && <div className="text-sm">Reason: {e.reason}</div>}
+            {historyRateLine(user.role, e) && (
+              <div className="tabular text-sm font-semibold">{historyRateLine(user.role, e)}</div>
+            )}
+            {historyReason(e.reason) && <div className="text-sm">{historyReason(e.reason)}</div>}
           </li>
         ))}
       </ol>

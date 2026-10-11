@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  brandNames,
   NO_FILTERS,
   stockByPlace,
   stockByProduct,
@@ -10,9 +11,9 @@ import {
 } from "./stock-view-rules";
 
 const products: StockProduct[] = [
-  { id: "t-opc53", name: "Prism Trade OPC 53", channel: "trade", typeCode: "OPC", grade: "53", bagKg: 50 },
-  { id: "t-ppc43", name: "Prism Trade PPC 43", channel: "trade", typeCode: "PPC", grade: "43", bagKg: 50 },
-  { id: "n-ppc53", name: "Prism Non-trade PPC 53", channel: "non_trade", typeCode: "PPC", grade: "53", bagKg: 50 },
+  { id: "t-opc53", name: "Prism Trade OPC 53", brand: "Prism", channel: "trade", typeCode: "OPC", grade: "53", bagKg: 50 },
+  { id: "t-ppc43", name: "Prism Trade PPC 43", brand: "Prism", channel: "trade", typeCode: "PPC", grade: "43", bagKg: 50 },
+  { id: "n-ppc53", name: "Prism Non-trade PPC 53", brand: "Prism", channel: "non_trade", typeCode: "PPC", grade: "53", bagKg: 50 },
 ];
 const G = { placeKey: "godown:1", placeName: "Main Godown", placeKind: "godown" };
 const B = { placeKey: "godown:2", placeName: "Bypass Store", placeKind: "godown" };
@@ -30,9 +31,9 @@ describe("stockTotal", () => {
     expect(stockTotal(rows, products, NO_FILTERS)).toEqual({ bags: 400, kg: 20000 });
   });
   it("follows the filters", () => {
-    expect(stockTotal(rows, products, { channel: "trade", typeCode: "all" }).bags).toBe(360);
-    expect(stockTotal(rows, products, { channel: "all", typeCode: "PPC" }).bags).toBe(100);
-    expect(stockTotal(rows, products, { channel: "non_trade", typeCode: "OPC" }).bags).toBe(0);
+    expect(stockTotal(rows, products, { ...NO_FILTERS, channel: "trade" }).bags).toBe(360);
+    expect(stockTotal(rows, products, { ...NO_FILTERS, typeCode: "PPC" }).bags).toBe(100);
+    expect(stockTotal(rows, products, { ...NO_FILTERS, channel: "non_trade", typeCode: "OPC" }).bags).toBe(0);
   });
   it("skips rows of unknown products", () => {
     expect(stockTotal([{ productId: "gone", bags: 5, ...G }], products, NO_FILTERS).bags).toBe(0);
@@ -51,7 +52,7 @@ describe("stockByProduct", () => {
     expect(sections[0].items[1].places.map((p) => p.name)).toEqual(["Bypass Store"]);
   });
   it("leaves out empty products and sections", () => {
-    const sections = stockByProduct(rows, products, { channel: "all", typeCode: "OPC" });
+    const sections = stockByProduct(rows, products, { ...NO_FILTERS, typeCode: "OPC" });
     expect(sections).toHaveLength(1);
     expect(sections[0].items.map((i) => i.product.id)).toEqual(["t-opc53"]);
   });
@@ -70,12 +71,12 @@ describe("stockByPlace", () => {
       ["n-ppc53", 40],
     ]);
   });
-  it("adds up rows of the same place and product (all firms view)", () => {
+  it("adds up repeated rows of the same place and product", () => {
     const cards = stockByPlace([...rows, { productId: "t-opc53", bags: 50, ...G }], products, NO_FILTERS);
     expect(cards.find((c) => c.key === "godown:1")?.lines[0]).toMatchObject({ bags: 250 });
   });
   it("drops places left empty by the filters", () => {
-    expect(stockByPlace(rows, products, { channel: "non_trade", typeCode: "all" }).map((c) => c.name)).toEqual([
+    expect(stockByPlace(rows, products, { ...NO_FILTERS, channel: "non_trade" }).map((c) => c.name)).toEqual([
       "Main Godown",
     ]);
   });
@@ -83,4 +84,33 @@ describe("stockByPlace", () => {
 
 describe("typeCodes", () => {
   it("lists each type once, in catalogue order", () => expect(typeCodes(products)).toEqual(["OPC", "PPC"]));
+});
+
+describe("more than one brand", () => {
+  const ultra: StockProduct = { id: "u-opc53", name: "UltraTech Trade OPC 53", brand: "UltraTech", channel: "trade", typeCode: "OPC", grade: "53", bagKg: 50 };
+  const all = [...products, ultra];
+  const withUltra = [...rows, { productId: "u-opc53", bags: 25, ...G }];
+
+  it("lists each brand with bags once, in catalogue order", () => {
+    expect(brandNames(rows, products)).toEqual(["Prism"]);
+    expect(brandNames(withUltra, all)).toEqual(["Prism", "UltraTech"]);
+  });
+  it("leaves out a brand with no bags, so one brand with stock gets no brand sections", () => {
+    expect(brandNames(rows, all)).toEqual(["Prism"]);
+    expect(stockByProduct(rows, all, NO_FILTERS).map((s) => s.label)).toEqual(["Trade", "Non-trade"]);
+  });
+  it("gives each brand its own sections", () => {
+    expect(stockByProduct(withUltra, all, NO_FILTERS).map((s) => s.label)).toEqual([
+      "Prism · Trade",
+      "Prism · Non-trade",
+      "UltraTech · Trade",
+    ]);
+  });
+  it("filters by brand", () => {
+    expect(stockTotal(withUltra, all, { ...NO_FILTERS, brand: "UltraTech" })).toEqual({ bags: 25, kg: 1250 });
+    expect(stockTotal(withUltra, all, { ...NO_FILTERS, brand: "Prism" }).bags).toBe(400);
+    expect(stockByPlace(withUltra, all, { ...NO_FILTERS, brand: "UltraTech" }).map((c) => [c.name, c.bags])).toEqual([
+      ["Main Godown", 25],
+    ]);
+  });
 });

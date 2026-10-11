@@ -1,21 +1,20 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { firms, ledgerEntries } from "@/db/schema";
+import { dispatches, ledgerEntries, orders, products } from "@/db/schema";
 import type { LedgerEntry } from "@/lib/ledger-rules";
 
 /** A database or a transaction. */
 export type DbOrTx = Pick<typeof db, "insert" | "select">;
 
-/** Appends one row. Rows are never edited or deleted. */
+/** Appends one row and returns its id. Rows are never edited or deleted. */
 export async function postEntry(
   tx: DbOrTx,
   entry: LedgerEntry,
   actorId: string,
   note = "",
   receiptId: string | null = null,
-): Promise<void> {
-  await tx.insert(ledgerEntries).values({
-    firmId: entry.firmId,
+): Promise<string> {
+  const [row] = await tx.insert(ledgerEntries).values({
     retailerId: entry.retailerId,
     kind: entry.kind,
     amountPaise: entry.amountPaise,
@@ -23,44 +22,54 @@ export async function postEntry(
     receiptId,
     note: note.slice(0, 300),
     actorId,
-  });
+  }).returning({ id: ledgerEntries.id });
+  return row.id;
 }
 
-/** Net balance per firm for one retailer (positive = retailer owes). Server-only. */
-export async function getRetailerBalances(retailerId: string) {
-  return db
-    .select({
-      firmId: ledgerEntries.firmId,
-      firmName: firms.name,
-      firmSlot: firms.slot,
-      balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
-    })
-    .from(ledgerEntries)
-    .innerJoin(firms, eq(firms.id, ledgerEntries.firmId))
-    .where(eq(ledgerEntries.retailerId, retailerId))
-    .groupBy(ledgerEntries.firmId, firms.name, firms.slot, firms.createdAt)
-    .orderBy(asc(firms.createdAt), asc(firms.slot));
-}
-
-/** Net balance per retailer and firm (for the list cards). Server-only. */
-export async function getAllBalances(firmIds: string[]) {
-  if (firmIds.length === 0) return [];
-  return db
+/** Net balance per retailer (for the list cards; positive = retailer owes). Server-only. */
+export async function getAllBalances(conn: Pick<typeof db, "select"> = db) {
+  return conn
     .select({
       retailerId: ledgerEntries.retailerId,
-      firmId: ledgerEntries.firmId,
       balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
-    .where(sql`${ledgerEntries.firmId} in ${firmIds}`)
-    .groupBy(ledgerEntries.retailerId, ledgerEntries.firmId);
+    .groupBy(ledgerEntries.retailerId);
 }
 
-/** All entries for one retailer with one firm, oldest first. */
-export async function getEntries(retailerId: string, firmId: string) {
-  return db
-    .select()
+/** Net balance of one retailer (positive = owes, negative = advance). Server-only. */
+export async function getBalance(retailerId: string, conn: Pick<typeof db, "select"> = db): Promise<number> {
+  const [row] = await conn
+    .select({ balancePaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
     .from(ledgerEntries)
-    .where(and(eq(ledgerEntries.retailerId, retailerId), eq(ledgerEntries.firmId, firmId)))
+    .where(eq(ledgerEntries.retailerId, retailerId));
+  return row?.balancePaise ?? 0;
+}
+
+/**
+ * All entries for one retailer, oldest first. A dispatch row also gets its product and bags (its
+ * dispatch was saved in the same transaction: same order, same moment), so a retailer can be shown
+ * "what came" without the amount.
+ */
+export async function getEntries(retailerId: string) {
+  return db
+    .select({
+      id: ledgerEntries.id,
+      kind: ledgerEntries.kind,
+      amountPaise: ledgerEntries.amountPaise,
+      note: ledgerEntries.note,
+      actorId: ledgerEntries.actorId,
+      createdAt: ledgerEntries.createdAt,
+      product: products.name,
+      bags: dispatches.bags,
+    })
+    .from(ledgerEntries)
+    .leftJoin(orders, eq(orders.id, ledgerEntries.orderId))
+    .leftJoin(products, eq(products.id, orders.productId))
+    .leftJoin(
+      dispatches,
+      and(eq(dispatches.orderId, ledgerEntries.orderId), eq(dispatches.createdAt, ledgerEntries.createdAt)),
+    )
+    .where(eq(ledgerEntries.retailerId, retailerId))
     .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id));
 }

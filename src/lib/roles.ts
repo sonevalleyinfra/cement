@@ -46,13 +46,10 @@ export function hasAnyRole(
 }
 
 /**
- * Whether a user may work on a firm. Admin may use any firm; everyone else only
- * the firms they were given access to (`user_firms`).
+ * A retailer login: has the retailer role and nothing else (a retailer cannot also be staff,
+ * see checkRoles). Prices are decided by `isStaff` (default deny), not by this.
  */
-export function canAccessFirm(
-  role: string | null | undefined,
-  allowedFirmIds: readonly string[],
-  firmId: string,
-): boolean {
-  return isAdmin(role) || allowedFirmIds.includes(firmId);
+export function isRetailerOnly(role: string | null | undefined): boolean {
+  const roles = parseRoles(role);
+  return roles.length > 0 && roles.every((r) => r === "retailer");
 }

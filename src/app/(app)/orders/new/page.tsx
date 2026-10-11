@@ -1,22 +1,16 @@
 import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
-import { getFirmSelection } from "@/components/app/firm-switcher";
 import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getProducts } from "@/lib/catalogue";
-import { isRetailerOnly } from "@/lib/order-access";
-import { rolesFor } from "@/lib/permissions";
+import { isStaff, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { NewOrderForm } from "./new-order-form";
 
 export default async function NewOrderPage() {
   const { user } = await requireRole(...rolesFor("placeOrder"));
-  const { firms, selection } = await getFirmSelection();
-  if (selection.mode !== "firm") return <EmptyState title="Pick one firm to place an order" />;
-  const firm = firms.find((f) => f.id === selection.firmId);
-  if (!firm) return <EmptyState title="Pick one firm to place an order" />;
-
-  const retailerOnly = isRetailerOnly(user.role);
+  // Staff pick any active shop and type the rate; a retailer orders for their own shop only.
+  const retailerOnly = !isStaff(user.role);
   const retailerRows = retailerOnly
     ? await db
         .select({ id: retailers.id, name: retailers.name, place: retailers.place })
@@ -31,16 +25,21 @@ export default async function NewOrderPage() {
     return <EmptyState title="Your login is not linked to a retailer" />;
   }
   if (retailerRows.length === 0) return <EmptyState title="Add a retailer first" />;
-  const productRows = (await getProducts({ activeOnly: true })).map((p) => ({ id: p.id, name: p.name, channel: p.channel }));
+  // With more than one brand, the product list is grouped by brand (see productGroups).
+  const productRows = (await getProducts({ activeOnly: true })).map((p) => ({
+    id: p.id,
+    name: p.name,
+    channel: p.channel,
+    brand: p.brand,
+  }));
   if (productRows.length === 0) return <EmptyState title="No products yet. Ask admin." />;
 
   return (
     <NewOrderForm
-      firmId={selection.firmId}
-      firmName={firm.name}
       retailers={retailerRows}
       products={productRows}
       fixedRetailerId={retailerOnly ? retailerRows[0].id : null}
+      askRate={!retailerOnly}
     />
   );
 }

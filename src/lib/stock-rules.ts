@@ -1,20 +1,14 @@
 /** Pure stock rules (no database). Stock is an append-only list of signed movements. */
-import { isAdmin } from "@/lib/roles";
+import { isAdmin } from "./roles";
+import { bagsText } from "./words";
 
-export const MOVEMENT_TYPES = [
-  "opening",
-  "purchase",
-  "dispatch",
-  "dispatch_reversal",
-  "adjustment",
-  "transfer",
-] as const;
+export const MOVEMENT_TYPES = ["opening", "purchase", "dispatch", "adjustment", "transfer"] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 export type Movement = {
-  firmId: string;
   productId: string;
-  locationId: string;
+  /** The godown or truck, as a place key ("godown:<id>" / "vehicle:<id>", see `placeKey`). */
+  placeKey: string;
   type: MovementType;
   /** Signed: + adds bags, - removes bags. */
   bags: number;
@@ -22,27 +16,14 @@ export type Movement = {
   reason?: string;
 };
 
-export type StockKey = { firmId: string; productId: string; locationId: string };
+export type StockKey = { productId: string; placeKey: string };
 
-/** Bags for one firm + product + location. Other firms' movements are ignored. */
+/** Bags of one product at one place. */
 export function balance(movements: readonly Movement[], key: StockKey): number {
   let total = 0;
   for (const m of movements) {
-    if (m.firmId === key.firmId && m.productId === key.productId && m.locationId === key.locationId) {
-      total += m.bags;
-    }
+    if (m.productId === key.productId && m.placeKey === key.placeKey) total += m.bags;
   }
-  return total;
-}
-
-/** Bags for one firm + product across all locations. */
-export function firmProductTotal(
-  movements: readonly Movement[],
-  firmId: string,
-  productId: string,
-): number {
-  let total = 0;
-  for (const m of movements) if (m.firmId === firmId && m.productId === productId) total += m.bags;
   return total;
 }
 
@@ -56,36 +37,46 @@ export function isPositiveBags(bags: number): boolean {
  */
 export const MAX_STOCK_ENTRY_BAGS = 100000;
 
-/** Can we take `bags` out? Needs whole bags, > 0, and enough in this firm's stock. */
+/** Can we take `bags` out? Needs whole bags, > 0, and enough in stock. */
 export function canDispatch(
   currentBalance: number,
   bags: number,
 ): { ok: true } | { ok: false; error: string } {
   if (!isPositiveBags(bags)) return { ok: false, error: "Bags must be a whole number above zero." };
   if (currentBalance < bags) {
-    return { ok: false, error: `Only ${Math.max(currentBalance, 0)} bags in stock.` };
+    return { ok: false, error: `Only ${bagsText(Math.max(currentBalance, 0))} in stock.` };
   }
   return { ok: true };
 }
 
-/** Builds the dispatch movement (negative). Throws if stock is not enough. */
-export function dispatchMovement(
-  movements: readonly Movement[],
-  key: StockKey,
-  bags: number,
-  orderId: string,
-): Movement {
-  const check = canDispatch(balance(movements, key), bags);
-  if (!check.ok) throw new Error(check.error);
-  return { ...key, type: "dispatch", bags: -bags, orderId };
+/** Why stock was corrected (spec section 4): picked from this list, with an optional note. */
+export const STOCK_FIX_REASONS = ["damage", "burst", "shortage", "count"] as const;
+export type StockFixReason = (typeof STOCK_FIX_REASONS)[number];
+
+export const STOCK_FIX_LABELS: Record<StockFixReason, string> = {
+  damage: "Damage",
+  burst: "Burst bags",
+  shortage: "Shortage",
+  count: "Count",
+};
+
+export function isStockFixReason(value: unknown): value is StockFixReason {
+  return typeof value === "string" && (STOCK_FIX_REASONS as readonly string[]).includes(value);
 }
 
-/** Admin-only adjustment (damage, burst, shortage, physical count). Reason is required. */
+/** The reason text kept on the correction: "Damage" or "Damage: rain in godown" (200 characters at most). */
+export function stockFixText(reason: StockFixReason, note: string | null | undefined): string {
+  const clean = String(note ?? "").trim().replace(/\s+/g, " ");
+  return (clean ? `${STOCK_FIX_LABELS[reason]}: ${clean}` : STOCK_FIX_LABELS[reason]).slice(0, 200);
+}
+
+/** Admin-only correction: a reason from the list (damage, burst, shortage, count) and an optional note. */
 export function adjustmentMovement(
   movements: readonly Movement[],
   key: StockKey,
   deltaBags: number,
-  reason: string,
+  reason: unknown,
+  note: string | null | undefined,
   role: string | null | undefined,
 ): { ok: true; movement: Movement } | { ok: false; error: string } {
   if (!isAdmin(role)) return { ok: false, error: "Only an admin can adjust stock." };
@@ -93,23 +84,22 @@ export function adjustmentMovement(
     return { ok: false, error: "Adjustment must be a whole number other than zero." };
   }
   if (Math.abs(deltaBags) > MAX_STOCK_ENTRY_BAGS) return { ok: false, error: "That is too many bags." };
-  const why = reason.trim();
-  if (!why) return { ok: false, error: "A reason is required." };
+  if (!isStockFixReason(reason)) return { ok: false, error: "Pick a reason." };
   if (balance(movements, key) + deltaBags < 0) {
     return { ok: false, error: "Stock cannot go below zero." };
   }
-  return { ok: true, movement: { ...key, type: "adjustment", bags: deltaBags, reason: why } };
+  return { ok: true, movement: { ...key, type: "adjustment", bags: deltaBags, reason: stockFixText(reason, note) } };
 }
 
-/** Moves bags between two locations of the SAME firm (e.g. leftover bags back to godown). */
+/** Moves bags between two places (e.g. leftover bags back to the godown, loading a truck). */
 export function transferMovements(
   movements: readonly Movement[],
   from: StockKey,
-  toLocationId: string,
+  toPlaceKey: string,
   bags: number,
   reason = "",
 ): { ok: true; movements: [Movement, Movement] } | { ok: false; error: string } {
-  if (from.locationId === toLocationId) return { ok: false, error: "Pick two different places." };
+  if (from.placeKey === toPlaceKey) return { ok: false, error: "Pick two different places." };
   if (Number.isInteger(bags) && bags > MAX_STOCK_ENTRY_BAGS) return { ok: false, error: "That is too many bags." };
   const check = canDispatch(balance(movements, from), bags);
   if (!check.ok) return check;
@@ -117,13 +107,29 @@ export function transferMovements(
     ok: true,
     movements: [
       { ...from, type: "transfer", bags: -bags, reason },
-      { ...from, locationId: toLocationId, type: "transfer", bags, reason },
+      { ...from, placeKey: toPlaceKey, type: "transfer", bags, reason },
     ],
   };
 }
 
-/** The place value for "New truck…" in the purchase form: the truck number and driver are typed in. */
+/** The place value for "New truck…" (purchase, move bags): the truck number and driver are typed in. */
 export const NEW_TRUCK_PLACE = "new-truck";
+
+/**
+ * The two places of a move. "From" must be a place that exists (a godown or a loaded truck);
+ * "To" may also be `NEW_TRUCK_PLACE` (a hired truck typed in the form), so bags can be loaded
+ * onto a truck even when there is only one godown.
+ */
+export function checkTransferPlaces(
+  fromKey: unknown,
+  toKey: unknown,
+): { ok: true; from: PlaceRef; to: PlaceRef | typeof NEW_TRUCK_PLACE } | { ok: false; error: string } {
+  const from = parsePlaceKey(fromKey);
+  const to = toKey === NEW_TRUCK_PLACE ? NEW_TRUCK_PLACE : parsePlaceKey(toKey);
+  if (!from || !to) return { ok: false, error: "Pick where the bags are and where they go." };
+  if (to !== NEW_TRUCK_PLACE && placeKey(from) === placeKey(to)) return { ok: false, error: "Pick two different places." };
+  return { ok: true, from, to };
+}
 
 /** Purchase and opening stock add bags (admin entry; caller checks admin). */
 export function inMovement(
@@ -137,17 +143,13 @@ export function inMovement(
   return { ok: true, movement: { ...key, type, bags, reason } };
 }
 
-/** Opening stock is set once per firm + product + location. A second one must be an adjustment. */
+/** Opening stock is set once per product + place. A second one must be an adjustment. */
 export function canSetOpening(
   movements: readonly Movement[],
   key: StockKey,
 ): { ok: true } | { ok: false; error: string } {
   const done = movements.some(
-    (m) =>
-      m.type === "opening" &&
-      m.firmId === key.firmId &&
-      m.productId === key.productId &&
-      m.locationId === key.locationId,
+    (m) => m.type === "opening" && m.productId === key.productId && m.placeKey === key.placeKey,
   );
   return done
     ? { ok: false, error: "Opening stock is already set here. Use an adjustment to change it." }
@@ -180,7 +182,17 @@ export function parsePlaceKey(text: unknown): PlaceRef | null {
   return { kind: kind as PlaceKind, id: id.toLowerCase() };
 }
 
-/** A godown or vehicle can be switched off only when no firm has any bags there. */
+/**
+ * The database columns for a place key: a godown fills `godownId`, a truck fills `vehicleId`
+ * (the other one stays empty). Throws on a key that is not a place.
+ */
+export function placeColumns(key: string): { godownId: string | null; vehicleId: string | null } {
+  const place = parsePlaceKey(key);
+  if (!place) throw new Error("Unknown place");
+  return place.kind === "godown" ? { godownId: place.id, vehicleId: null } : { godownId: null, vehicleId: place.id };
+}
+
+/** A godown or vehicle can be switched off only when it holds no bags. */
 export function canSwitchOffPlace(bagsThere: number): { ok: true } | { ok: false; error: string } {
   return bagsThere > 0 ? { ok: false, error: "Move the bags out first." } : { ok: true };
 }

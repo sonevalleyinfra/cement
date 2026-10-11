@@ -1,15 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { EmptyState } from "@/components/app/empty-state";
+import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
+import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
+import { StatusChip } from "@/components/app/status-chip";
+import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { remainingBags } from "@/lib/order-rules";
-import { dispatchOrder, markDelivered } from "./actions";
+import { truckAfterPlacePick } from "@/lib/dispatch-rules";
+import { firstMissing } from "@/lib/form-rules";
+import { isOrderStatus, remainingBags } from "@/lib/order-rules";
+import { useFormError } from "@/lib/use-form-error";
+import { useSubmit } from "@/lib/use-submit";
+import { bagsText } from "@/lib/words";
+import { dispatchOrder } from "./actions";
 
 type OrderRow = {
   id: string;
@@ -18,106 +26,96 @@ type OrderRow = {
   product: string;
   bags: number;
   sent: number;
-  ratePaise: number | null;
   status: string;
-  /** Logistics person on the order (shown to admin). */
-  assignee: string | null;
 };
-/** A stock place; `truck` is its number when the bags are on a truck. */
-type Place = { id: string; name: string; truck: string | null };
-type Balance = { productId: string; locationId: string; bags: number };
-
-const selectClass = "h-11 w-full rounded-xl border bg-background px-3 text-base";
+/** A stock place (`key` is "godown:<id>" or "vehicle:<id>"); `truck` is its number when the bags are on a truck. */
+type Place = { key: string; name: string; truck: string | null };
+type Balance = { productId: string; placeKey: string; bags: number };
 
 export function DispatchView({
   isAdmin,
   orders,
-  locations,
+  places,
   balances,
 }: {
-  firmId: string;
   isAdmin: boolean;
   orders: OrderRow[];
-  locations: Place[];
+  places: Place[];
   balances: Balance[];
-  userId: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<OrderRow | null>(null);
   const [bags, setBags] = useState("");
   const [truck, setTruck] = useState("");
-  const [locationId, setLocationId] = useState("");
+  // The truck number last filled in from a truck place (null = what is there was typed).
+  const [autoTruck, setAutoTruck] = useState<string | null>(null);
+  const [fromPlace, setFromPlace] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
-  const [rate, setRate] = useState("");
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
-  const [pending, start] = useTransition();
+  // Goes away when any field is changed, after a save and when the sheet opens again.
+  const { error, setError, clearError } = useFormError([open?.id, bags, truck, fromPlace, driverName, driverPhone]);
+  const { pending, run, renew } = useSubmit();
 
   function openSheet(o: OrderRow) {
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
-    // Start with the place holding the most bags of this product.
-    const fullest = [...locations].sort((a, b) => stockHere(o, b.id) - stockHere(o, a.id))[0];
-    pickPlace(fullest?.id ?? "");
+    // Start with the place holding the most bags of this product, and an empty truck box.
+    const fullest = [...places].sort((a, b) => stockHere(o, b.key) - stockHere(o, a.key))[0];
+    pickPlace(fullest?.key ?? "", "", null);
     setDriverName("");
     setDriverPhone("");
-    setRate("");
-    setReason("");
-    setError("");
+    clearError();
+    renew();
   }
 
-  /** Bags already on a truck usually leave on that truck, so its number is filled in. */
-  function pickPlace(id: string) {
-    setLocationId(id);
-    setTruck(locations.find((l) => l.id === id)?.truck ?? "");
+  /** Bags already on a truck usually leave on that truck, so its number is filled in; a typed number stays. */
+  function pickPlace(key: string, current = truck, auto = autoTruck) {
+    setFromPlace(key);
+    const next = truckAfterPlacePick(current, auto, places.find((p) => p.key === key)?.truck ?? null);
+    setTruck(next.truck);
+    setAutoTruck(next.autoFilled);
   }
 
-  function stockHere(o: OrderRow, loc: string) {
-    return balances.find((b) => b.productId === o.productId && b.locationId === loc)?.bags ?? 0;
+  function stockHere(o: OrderRow, key: string) {
+    return balances.find((b) => b.productId === o.productId && b.placeKey === key)?.bags ?? 0;
   }
 
   function submit() {
     if (!open) return;
-    start(async () => {
-      const res = await dispatchOrder({
-        orderId: open.id,
-        bags: Number(bags),
-        vehicleNumber: truck,
-        locationId: locationId || null,
-        driverName,
-        driverPhone,
-        newRateRupees: rate,
-        rateReason: reason,
-      });
-      if (res.ok) {
-        setOpen(null);
-        router.refresh();
-      } else setError(res.error);
-    });
-  }
-
-  function deliver(id: string) {
-    start(async () => {
-      const res = await markDelivered(id);
-      if (res.ok) router.refresh();
-      else setError(res.error);
-    });
+    clearError();
+    run(
+      (requestId) =>
+        dispatchOrder({
+          orderId: open.id,
+          bags: Number(bags),
+          vehicleNumber: truck,
+          fromPlace: fromPlace || null,
+          driverName,
+          driverPhone,
+          requestId,
+        }),
+      (res) => {
+        if (res.ok) {
+          clearError();
+          setOpen(null);
+          router.refresh();
+        } else setError(res.error);
+      },
+    );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      {locations.length === 0 && (
+      {places.length === 0 && (
         <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <p className="text-sm font-medium">No stock yet</p>
           {isAdmin && (
-            <Link href="/stock/purchase" className="text-sm font-semibold underline">
+            <TextLink href="/stock/purchase" strong>
               Add stock
-            </Link>
+            </TextLink>
           )}
         </div>
       )}
-      {error && !open && <p className="text-sm text-destructive">{error}</p>}
       {orders.length === 0 ? (
         <EmptyState title="Nothing to dispatch" />
       ) : (
@@ -130,29 +128,18 @@ export function DispatchView({
                   index={i}
                   href={`/orders/${o.id}`}
                   title={o.retailer}
-                  top={
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {o.status.replace("_", " ")}
-                    </span>
-                  }
+                  top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
                   bottom={
                     <div className="text-xs text-muted-foreground">
                       {o.product} · <span className="tabular">{o.sent}</span> of{" "}
-                      <span className="tabular">{o.bags}</span> bags sent
-                      {isAdmin && <> · {o.assignee ?? "Not assigned"}</>}
+                      <span className="tabular">{o.bags}</span> {o.bags === 1 ? "bag" : "bags"} sent
                     </div>
                   }
                 />
                 <div className="mt-2">
-                  {left > 0 ? (
-                    <Button className="w-full" onClick={() => openSheet(o)} disabled={locations.length === 0}>
-                      Dispatch
-                    </Button>
-                  ) : (
-                    <Button className="w-full" variant="outline" onClick={() => deliver(o.id)} disabled={pending}>
-                      Mark delivered
-                    </Button>
-                  )}
+                  <Button className="w-full" onClick={() => openSheet(o)} disabled={places.length === 0 || left === 0}>
+                    Dispatch
+                  </Button>
                 </div>
               </li>
             );
@@ -173,16 +160,12 @@ export function DispatchView({
                 onChange={(e) => setBags(e.target.value.replace(/\D/g, ""))}
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold">
-              Take from
-              <select className={selectClass} value={locationId} onChange={(e) => pickPlace(e.target.value)}>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name} ({stockHere(open, l.id)} bags)
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Take from"
+              value={fromPlace}
+              onChange={(key) => pickPlace(key)}
+              options={places.map((p) => ({ value: p.key, label: `${p.name} (${stockHere(open, p.key)} bags)` }))}
+            />
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Truck number
               <Input
@@ -206,26 +189,13 @@ export function DispatchView({
                 onChange={(e) => setDriverPhone(e.target.value)}
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold">
-              New rate per bag in ₹ for this truck (only to change it)
-              <Input
-                inputMode="numeric"
-                maxLength={5}
-                value={rate}
-                onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))}
-                placeholder={open.ratePaise !== null ? String(open.ratePaise / 100) : ""}
-              />
-            </label>
-            {rate && (
-              <label className="flex flex-col gap-1 text-sm font-semibold">
-                Reason for the new rate
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} />
-              </label>
-            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button onClick={submit} disabled={pending}>
-              Dispatch {bags || 0} bags
-            </Button>
+            <div>
+              <FormHint>{firstMissing([[Number(bags || 0) < 1, "Enter the bags"]])}</FormHint>
+              <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1}>
+                Dispatch {bagsText(Number(bags || 0))}
+              </Button>
+            </div>
           </div>
         )}
       </Sheet>

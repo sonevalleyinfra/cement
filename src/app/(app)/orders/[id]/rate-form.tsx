@@ -2,44 +2,95 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Keypad } from "@/components/app/keypad";
+import { FormHint } from "@/components/app/form-hint";
+import { RateField } from "@/components/app/rate-field";
 import { Button } from "@/components/ui/button";
-import { formatINR } from "@/lib/money";
-import { orderTotalPaise } from "@/lib/order-rules";
+import { Input } from "@/components/ui/input";
+import { firstMissing } from "@/lib/form-rules";
 import { checkRateDigits } from "@/lib/rate-rules";
-import { fillRate } from "../actions";
+import { useFormError } from "@/lib/use-form-error";
+import { bagsText } from "@/lib/words";
+import { changeRate, fillRate } from "../actions";
 
-export function RateForm({ orderId, bags }: { orderId: string; bags: number }) {
+/**
+ * Rate per bag in whole rupees (typed with the shared `RateField`).
+ * `mode="fill"`: the sales person (or admin) fills an empty rate while the order is placed.
+ * `mode="change"`: logistics or admin change a rate that is set (any step before fully dispatched),
+ * with a reason; it applies to the `bags` not dispatched yet.
+ */
+export function RateForm({
+  orderId,
+  bags,
+  mode,
+  hasRate,
+}: {
+  orderId: string;
+  bags: number;
+  mode: "fill" | "change";
+  hasRate: boolean;
+}) {
   const router = useRouter();
+  const [open, setOpen] = useState(mode === "fill" && !hasRate);
   const [digits, setDigits] = useState("");
-  const [error, setError] = useState("");
+  const [reason, setReason] = useState("");
+  const { error, setError, clearError } = useFormError([digits, reason]);
   const [pending, start] = useTransition();
   const check = checkRateDigits(digits);
-  const paise = check.ok ? check.paise : null;
+  const hint = firstMissing([
+    [!check.ok, "Enter the rate"],
+    [mode === "change" && !reason.trim(), "Enter a reason"],
+  ]);
 
   function submit() {
+    clearError();
     start(async () => {
-      const res = await fillRate(orderId, digits);
-      if (res.ok) router.refresh();
-      else setError(res.error);
+      const res = mode === "fill" ? await fillRate(orderId, digits) : await changeRate(orderId, digits, reason);
+      if (res.ok) {
+        setOpen(false);
+        setDigits("");
+        setReason("");
+        clearError();
+        router.refresh();
+      } else setError(res.error);
     });
   }
 
+  if (!open) {
+    return (
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        Change rate
+      </Button>
+    );
+  }
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-      <div className="text-sm font-semibold">Rate per bag (₹)</div>
-      <div className="tabular text-3xl font-bold">{digits ? `₹${digits}` : "₹0"}</div>
-      {paise !== null && (
-        <div className="text-sm text-muted-foreground">
-          Total {formatINR(orderTotalPaise(bags, paise))}
-        </div>
+      <RateField
+        value={digits}
+        onChange={setDigits}
+        bags={bags}
+        label={mode === "change" ? `New rate per bag (₹) · ${bagsText(bags)} not sent` : "Rate per bag (₹)"}
+      />
+      {mode === "change" && (
+        <Input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason"
+          aria-label="Reason for the new rate"
+          maxLength={300}
+        />
       )}
-      <Keypad value={digits} onChange={setDigits} maxLength={5} />
-      {digits && !check.ok && <p className="text-sm text-destructive">{check.error}</p>}
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button onClick={submit} disabled={pending || paise === null}>
-        Send for approval
-      </Button>
+      <FormHint>{hint}</FormHint>
+      <div className="flex gap-2">
+        {(hasRate || mode === "change") && (
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            Back
+          </Button>
+        )}
+        <Button className="flex-1" onClick={submit} disabled={pending || hint !== null}>
+          Save rate
+        </Button>
+      </div>
     </div>
   );
 }

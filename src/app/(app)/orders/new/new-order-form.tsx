@@ -1,40 +1,46 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { RateField } from "@/components/app/rate-field";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { productGroups } from "@/lib/catalogue-rules";
+import { firstMissing } from "@/lib/form-rules";
+import { useFormError } from "@/lib/use-form-error";
+import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
 
 type Retailer = { id: string; name: string; place: string };
-type Product = { id: string; name: string; channel: string };
+type Product = { id: string; name: string; channel: string; brand: string };
 
 export function NewOrderForm({
-  firmId,
-  firmName,
   retailers,
   products,
   fixedRetailerId,
+  askRate,
 }: {
-  firmId: string;
-  firmName: string;
   retailers: Retailer[];
   products: Product[];
   fixedRetailerId: string | null;
+  /** Staff type the rate per bag; a retailer never sees it. */
+  askRate: boolean;
 }) {
   const router = useRouter();
   const [retailerId, setRetailerId] = useState<string | null>(fixedRetailerId);
   const [productId, setProductId] = useState<string | null>(products[0]?.id ?? null);
   const [bags, setBags] = useState("");
+  const [rate, setRate] = useState("");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
-  const [pending, start] = useTransition();
+  // The error goes away as soon as the retailer, product, bags or rate is changed.
+  const { error, setError, clearError } = useFormError([retailerId, productId, bags, rate]);
+  const { pending, run } = useSubmit();
 
   const retailer = retailers.find((r) => r.id === retailerId);
   const q = search.trim().toLowerCase();
@@ -42,23 +48,29 @@ export function NewOrderForm({
     ? retailers.filter((r) => `${r.name} ${r.place}`.toLowerCase().includes(q))
     : retailers;
 
+  const hint = firstMissing([[Number(bags || 0) <= 0, "Enter the bags"]]);
+
   function submit() {
-    setError("");
-    start(async () => {
-      const res = await placeOrder({
-        firmId,
-        retailerId,
-        productId,
-        bags: Number(bags || 0),
-      });
-      if (res.ok) router.push("/orders");
-      else setError(res.error);
-    });
+    clearError();
+    run(
+      (requestId) =>
+        placeOrder({
+          retailerId,
+          productId,
+          bags: Number(bags || 0),
+          rateRupees: askRate ? rate : undefined,
+          requestId,
+        }),
+      (res) => {
+        if (res.ok) router.push("/orders");
+        else setError(res.error);
+      },
+    );
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm font-medium text-muted-foreground">{firmName}</p>
+      <h1 className="text-xl font-bold">New order</h1>
 
       {fixedRetailerId ? (
         <div className="rounded-2xl bg-card p-4 text-base font-semibold shadow-card ring-1 ring-foreground/6">
@@ -82,9 +94,12 @@ export function NewOrderForm({
       </div>
       <Keypad value={bags} onChange={setBags} maxLength={6} />
 
+      {askRate && <RateField value={rate} onChange={setRate} bags={Number(bags || 0)} />}
+
       {error && <p className="text-sm text-destructive">{error}</p>}
       <PinnedAction>
-        <Button onClick={submit} disabled={pending}>
+        <FormHint>{hint}</FormHint>
+        <Button onClick={submit} disabled={pending || hint !== null}>
           Place order
         </Button>
       </PinnedAction>

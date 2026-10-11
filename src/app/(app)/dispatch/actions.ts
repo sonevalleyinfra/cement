@@ -2,112 +2,58 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { getFirmSelection } from "@/components/app/firm-switcher";
-import { db } from "@/db";
-import { dispatches, godowns, orderEvents, orders, stockLocations, stockMovements, vehicles } from "@/db/schema";
-import {
-  assigneeAfterDispatch,
-  canDispatchOrder,
-  canMarkDelivered,
-  checkDispatchFields,
-  checkRateEdit,
-  planDispatch,
-  rateEditReason,
-  stepTimes,
-} from "@/lib/dispatch-rules";
+import { dispatches, orderEvents, orders, stockMovements } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
+import { saveOnce } from "@/lib/form-submissions";
+import { checkDispatchFields, planDispatch } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
-import { truckRateChangeEntry } from "@/lib/ledger-rules";
-import { isAssigneeStillValid } from "@/lib/logistics";
+import { dispatchEntry } from "@/lib/ledger-rules";
 import { notify } from "@/lib/notify";
-import { canUserTransition, isOrderStatus } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
-import { checkRateDigits } from "@/lib/rate-rules";
-import { requireFirm, requireRole, writeBlock } from "@/lib/session";
-import { truckByNumber } from "@/lib/stock-places";
+import { checkRequestId } from "@/lib/request-rules";
+import { requireRole } from "@/lib/session";
+import { atPlace, lockPlace, truckByNumber } from "@/lib/stock-places";
+import { placeColumns, placeKey } from "@/lib/stock-rules";
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
 
-function refresh(orderId: string) {
-  revalidatePath("/dispatch");
-  revalidatePath("/orders");
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/notifications");
-}
-
-/** One truck load: stock out, order status, history and notification, all in one transaction. */
+/**
+ * One truck load: stock out, one ledger debit (bags x the order's rate now), order status,
+ * history and notification, all in one transaction. Any logistics person (or admin).
+ * The order's sales person is saved on the dispatch, so the sales report keeps it.
+ * `requestId` is the sheet's one-time id: a second tap dispatches nothing more (request-rules.ts).
+ */
 export async function dispatchOrder(input: {
   orderId: string;
   bags: number;
   /** The truck number as typed; trucks are hired, so none are saved. */
   vehicleNumber: string;
-  locationId: string | null;
+  /** Where the bags come from: a place key ("godown:<id>" / "vehicle:<id>"). */
+  fromPlace: string | null;
   driverName: string;
   driverPhone: string;
-  /** Optional new rate per bag in whole rupees (digits). Needs a reason. */
-  newRateRupees?: string;
-  rateReason?: string;
+  requestId: string;
 }): Promise<DispatchResult> {
-  const session = await requireRole(...rolesFor("dispatch"));
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
+  const { user: me } = await requireRole(...rolesFor("dispatch"));
   if (!isUuid(input.orderId)) return { ok: false, error: "Order not found." };
-  if (input.locationId && !isUuid(input.locationId)) {
-    return { ok: false, error: "Refresh the page and try again." };
-  }
-  const [found] = await db
-    .select({ firmId: orders.firmId })
-    .from(orders)
-    .where(eq(orders.id, input.orderId))
-    .limit(1);
-  if (!found) return { ok: false, error: "Order not found." };
-  await requireFirm(found.firmId);
-  const { selection } = await getFirmSelection();
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
 
   const fields = checkDispatchFields({
-    readOnlyMode: selection.readOnly || selection.firmId !== found.firmId,
     vehicleNumber: String(input.vehicleNumber ?? ""),
-    locationId: input.locationId,
+    fromPlace: typeof input.fromPlace === "string" ? input.fromPlace : null,
     driverName: String(input.driverName ?? ""),
     driverPhone: String(input.driverPhone ?? ""),
   });
   if (!fields.ok) return fields;
 
-  const digits = String(input.newRateRupees ?? "").trim();
-  let wantedRate: number | null = null;
-  if (digits) {
-    const checked = checkRateDigits(digits);
-    if (!checked.ok) return checked;
-    wantedRate = checked.paise;
-  }
-
-  const me = session.user;
-  const result = await db.transaction(async (tx): Promise<DispatchResult> => {
-    // Lock the order and the stock place so two people cannot dispatch the same bags.
+  const result = await saveOnce({ id: request.id, kind: "dispatch", actorId: me.id }, async (tx) => {
+    // Lock the order (its rate cannot change meanwhile) and the stock place (nobody else takes the same bags).
     const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("no key update");
     if (!order) return { ok: false, error: "Order not found." };
-    // Only the assignee (or anyone, when there is none or they can no longer do it), or admin.
-    const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
-    if (!canDispatchOrder({ id: me.id, role: me.role, hasFirmAccess: true }, order, assigneeValid)) {
-      return { ok: false, error: "This order is assigned to someone else." };
-    }
-    const [loc] = await tx
-      .select({
-        id: stockLocations.id,
-        firmId: stockLocations.firmId,
-        // The godown or vehicle itself must still be switched on.
-        active: sql<boolean>`coalesce(${godowns.active}, ${vehicles.active}, false)`,
-      })
-      .from(stockLocations)
-      .leftJoin(godowns, eq(godowns.id, stockLocations.godownId))
-      .leftJoin(vehicles, eq(vehicles.id, stockLocations.vehicleId))
-      .where(eq(stockLocations.id, input.locationId as string))
-      .for("no key update", { of: stockLocations });
-    if (!loc || loc.firmId !== order.firmId || !loc.active) {
-      return { ok: false, error: "Pick a stock place of this firm." };
-    }
-    // The truck is found (or made) by its number; the driver goes on this dispatch only.
-    const vehicle = { id: await truckByNumber(tx, fields.vehicleNumber, me.id), number: fields.vehicleNumber };
+    const place = await lockPlace(tx, fields.from);
+    if (!place.ok) return { ok: false, error: "Pick an active stock place." };
 
     const [sent] = await tx
       .select({ bags: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
@@ -116,135 +62,77 @@ export async function dispatchOrder(input: {
     const [stock] = await tx
       .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
       .from(stockMovements)
-      .where(
-        and(
-          eq(stockMovements.firmId, order.firmId),
-          eq(stockMovements.productId, order.productId),
-          eq(stockMovements.locationId, loc.id),
-        ),
-      );
+      .where(and(eq(stockMovements.productId, order.productId), atPlace(fields.from)));
 
     const plan = planDispatch({
       status: order.status,
       orderedBags: order.bags,
       alreadyDispatchedBags: sent?.bags ?? 0,
       bags: input.bags,
+      ratePaise: order.ratePaise,
       stockBalance: stock?.bags ?? 0,
     });
     if (!plan.ok) return plan;
-    const rate = checkRateEdit(order.ratePaise, wantedRate, input.rateReason);
-    if (!rate.ok) return rate;
-    // A truck rate is billed as the difference from the order rate, so the order needs one.
-    const rateChange =
-      rate.newRatePaise === null ? null : truckRateChangeEntry(order, input.bags, order.ratePaise, rate.newRatePaise);
-    if (rate.newRatePaise !== null && !rateChange) return { ok: false, error: "This order has no rate yet." };
+    const debit = dispatchEntry(order, input.bags, plan.ratePaise);
+    if (!debit.ok) return debit;
 
-    await tx.insert(dispatches).values({
-      firmId: order.firmId,
+    // The truck is found (or made) by its number; the driver goes on this dispatch only.
+    const vehicleId = await truckByNumber(tx, fields.vehicleNumber, me.id);
+    const load = `${input.bags} bags in ${fields.vehicleNumber}`;
+    const source = placeColumns(placeKey(fields.from));
+    const [sentRow] = await tx.insert(dispatches).values({
       orderId: order.id,
       bags: input.bags,
-      vehicleId: vehicle.id,
+      vehicleId,
       driverName: fields.driverName,
       driverPhone: fields.driverPhone,
-      locationId: loc.id,
-      ratePaise: rate.newRatePaise,
+      fromGodownId: source.godownId,
+      fromVehicleId: source.vehicleId,
+      ratePaise: plan.ratePaise,
+      salesRepId: order.salesRepId,
       dispatchedBy: me.id,
-    });
+    }).returning({ id: dispatches.id });
     await tx.insert(stockMovements).values({
-      firmId: order.firmId,
       productId: order.productId,
-      locationId: loc.id,
+      ...source,
       type: "dispatch",
       bags: -input.bags,
       orderId: order.id,
-      reason: `Truck ${vehicle.number}`,
+      reason: `Truck ${fields.vehicleNumber}`,
       actorId: me.id,
     });
-
-    let from = order.status;
-    if (rateChange) {
-      // This truck only: the order rate stays for the other trucks (the truck rate is on the dispatch).
-      await postEntry(tx, rateChange, me.id, rateEditReason(rate.reason));
-      // The history never shows the price itself (retailers read it).
-      await tx.insert(orderEvents).values({
+    await postEntry(tx, debit.entry, me.id, load);
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "dispatch",
+      entityId: sentRow.id,
+      action: "create",
+      details: {
         orderId: order.id,
-        fromStatus: from,
-        toStatus: from,
-        actorId: me.id,
-        reason: rateEditReason(rate.reason),
-      });
-    }
-    const times = stepTimes(new Date(Date.now() + 5), plan.statusSteps.length);
-    for (const [i, step] of plan.statusSteps.entries()) {
-      await tx.insert(orderEvents).values({
-        createdAt: times[i],
-        orderId: order.id,
-        fromStatus: from,
-        toStatus: step,
-        actorId: me.id,
-        reason: step === "assigned" ? "" : `${input.bags} bags in ${vehicle.number}`,
-      });
-      from = step;
-    }
-    await tx
-      .update(orders)
-      .set({
-        status: plan.newStatus,
-        // An order with nobody (valid) on it becomes the dispatcher's.
-        logisticsId: assigneeAfterDispatch(order.logisticsId, me.id, assigneeValid),
-        updatedAt: new Date(),
-      })
-      .where(eq(orders.id, order.id));
-    if (rateChange) await notify(tx, order.id, "rate_edited", me.id, input.bags);
-    await notify(tx, order.id, "dispatched", me.id, input.bags);
-    return { ok: true };
-  });
-  if (result.ok) refresh(input.orderId);
-  return result;
-}
-
-/** Logistics marks a fully dispatched order as delivered. */
-export async function markDelivered(orderId: string): Promise<DispatchResult> {
-  const session = await requireRole(...rolesFor("markDelivered"));
-  if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
-  const [found] = await db
-    .select({ firmId: orders.firmId })
-    .from(orders)
-    .where(eq(orders.id, orderId))
-    .limit(1);
-  if (!found) return { ok: false, error: "Order not found." };
-  await requireFirm(found.firmId);
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
-  // Same as dispatch: the firm on screen must be the order's firm.
-  const { selection } = await getFirmSelection();
-  if (selection.readOnly || selection.firmId !== found.firmId) return { ok: false, error: "Pick this order's firm first." };
-
-  const me = session.user;
-  const result = await db.transaction(async (tx): Promise<DispatchResult> => {
-    const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
-    if (!order) return { ok: false, error: "Order not found." };
-    const assigneeValid = await isAssigneeStillValid(tx, order.firmId, order.logisticsId);
-    if (!canDispatchOrder({ id: me.id, role: me.role, hasFirmAccess: true }, order, assigneeValid)) {
-      return { ok: false, error: "This order is assigned to someone else." };
-    }
-    if (
-      !canMarkDelivered(order.status) ||
-      !isOrderStatus(order.status) ||
-      !canUserTransition(me.role, order.status, "delivered")
-    ) {
-      return { ok: false, error: "Only a fully dispatched order can be marked delivered." };
-    }
-    await tx.update(orders).set({ status: "delivered", updatedAt: new Date() }).where(eq(orders.id, orderId));
+        retailerId: order.retailerId,
+        productId: order.productId,
+        bags: input.bags,
+        ratePaise: plan.ratePaise,
+        amountPaise: debit.entry.amountPaise,
+        from: placeKey(fields.from),
+        truck: fields.vehicleNumber,
+      },
+    });
     await tx.insert(orderEvents).values({
-      orderId,
+      orderId: order.id,
       fromStatus: order.status,
-      toStatus: "delivered",
+      toStatus: plan.newStatus,
       actorId: me.id,
+      reason: load,
     });
-    await notify(tx, orderId, "delivered", me.id);
-    return { ok: true };
+    await tx.update(orders).set({ status: plan.newStatus, updatedAt: new Date() }).where(eq(orders.id, order.id));
+    await notify(tx, order.id, "dispatched", me.id, input.bags);
+    return { ok: true, resultId: sentRow.id };
   });
-  if (result.ok) refresh(orderId);
-  return result;
+  if (!result.ok) return result;
+  revalidatePath("/dispatch");
+  revalidatePath("/orders");
+  revalidatePath(`/orders/${input.orderId}`);
+  revalidatePath("/notifications");
+  return { ok: true };
 }

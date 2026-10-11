@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { brands, cementTypes, grades, products } from "@/db/schema";
 
 /**
- * Products with their parts, in catalogue order: Trade first, then by type and grade. Server-only.
+ * Products with their parts, in catalogue order: by brand, then Trade first, then by type and grade. Server-only.
  * `activeOnly` for drop-downs (switched-off products are hidden there).
  */
 export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
@@ -27,9 +27,9 @@ export async function getProducts({ activeOnly }: { activeOnly: boolean }) {
     .innerJoin(cementTypes, eq(cementTypes.id, grades.typeId))
     .where(activeOnly ? eq(products.active, true) : undefined)
     .orderBy(
+      asc(brands.name),
       // "trade" sorts after "non_trade", so descending puts Trade first.
       desc(products.channel),
-      asc(brands.name),
       asc(cementTypes.sortOrder),
       asc(cementTypes.code),
       asc(grades.sortOrder),

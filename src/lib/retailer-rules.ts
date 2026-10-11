@@ -1,6 +1,8 @@
 /** Rules for the retailers master. Plain functions: no database, no request. */
 
+import { canLinkRetailerUser } from "./rate-rules";
 import { hasRole } from "./roles";
+import { checkSalesRepPick, type SalesRepCandidate } from "./sales-rep-rules";
 
 /** Keeps digits only, and drops a leading 91 or 0 country/trunk prefix. */
 export function normalizePhone(input: string): string {
@@ -37,15 +39,6 @@ export function validateRetailer(raw: {
   return { ok: true, value: { name, phone, place } };
 }
 
-/** True if another retailer (not `selfId`) already uses this phone. */
-export function isDuplicatePhone(
-  phone: string,
-  existing: readonly { id: string; phone: string }[],
-  selfId?: string,
-): boolean {
-  return existing.some((r) => r.id !== selfId && r.phone === phone);
-}
-
 /** A login (user) the admin created with the retailer role. */
 export type RetailerLogin = {
   id: string;
@@ -58,8 +51,8 @@ export type RetailerLogin = {
 };
 
 /**
- * Logins sales may pick when adding a retailer: retailer role, not deactivated or
- * deleted, and not already linked to a shop.
+ * Logins admin may link to a shop: retailer role, not deactivated or deleted, and not already
+ * linked to another shop. (A shop is added without a login; linking one is a separate, optional step.)
  */
 export function pickableRetailerLogins<T extends RetailerLogin>(
   logins: readonly T[],
@@ -69,28 +62,83 @@ export function pickableRetailerLogins<T extends RetailerLogin>(
   return logins.filter((l) => hasRole(l.role, "retailer") && !l.banned && !l.deletedAt && !taken.has(l.id));
 }
 
-/** True if the search text matches the login's name, email or phone (any part, any case). */
-export function matchesRetailerSearch(login: { name: string; email: string; phone: string }, search: string): boolean {
-  const q = search.trim().toLowerCase();
-  if (!q) return true;
-  if (login.name.toLowerCase().includes(q) || login.email.toLowerCase().includes(q)) return true;
-  const digits = q.replace(/\D/g, "");
-  // Ignore a typed +91 / 0 prefix, but only when the rest is a full number.
-  const phoneQuery = digits.length > 10 ? normalizePhone(digits) : digits;
-  return phoneQuery.length > 0 && login.phone.includes(phoneQuery);
+/**
+ * The Retailers search box: every word typed must appear in the shop's name, place or phone
+ * (capitals and spaces do not matter). An empty search matches every shop.
+ */
+export function matchesRetailerSearch(shop: { name: string; place: string; phone: string }, query: string): boolean {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = `${shop.name} ${shop.place} ${shop.phone}`.toLowerCase();
+  return terms.every((t) => haystack.includes(t));
 }
 
-/** Server check before a picked login becomes a retailer. */
-export function checkRetailerPick(
-  login: RetailerLogin | undefined,
-  linkedUserIds: readonly (string | null)[],
-): { ok: true } | { ok: false; error: string } {
-  if (!login || pickableRetailerLogins([login], []).length === 0) {
-    return { ok: false, error: "Pick a retailer from the list." };
+/** What admin changed in the shop sheet. Left out (undefined) = not touched. `userId` null = unlink the login. */
+export type ShopEditForm = {
+  name: string;
+  phone: string;
+  place: string;
+  salesRepId?: string;
+  userId?: string | null;
+};
+
+/** The facts the server looked up for the edit (inside the transaction, after locking the shop). */
+export type ShopEditFacts = {
+  /** Another shop already uses the new phone. */
+  phoneTaken: boolean;
+  /** The sales person picked, if one was picked. */
+  salesRep?: SalesRepCandidate;
+  /** The login picked, if one was picked. */
+  login?: { id: string; role: string | null };
+  /** Shops that use the picked login right now. */
+  loginLinks: readonly { retailerId: string; userId: string | null }[];
+};
+
+export type ShopEditPlan =
+  | {
+      ok: true;
+      /** Name, phone and place to save (always written; the activity row only when something changed). */
+      details: RetailerInput;
+      /** The new sales person, or null when it stays the same. */
+      salesRepId: string | null;
+      /** The new login (null = unlink), or undefined when it stays the same. */
+      userId: string | null | undefined;
+    }
+  | { ok: false; error: string };
+
+/**
+ * The shop sheet saves everything at once: name, phone and place, its sales person and its login.
+ * Every part is checked first; the first problem refuses the whole save (nothing is changed).
+ * - Name and phone are required (validateRetailer); the phone must not belong to another shop.
+ * - A changed sales person must be an active sales person (an unchanged one is kept even if they left).
+ * - A changed login must be a retailer login not linked to another shop; empty unlinks it.
+ */
+export function planShopEdit(
+  shop: { id: string; salesRepId: string | null; userId: string | null },
+  form: ShopEditForm,
+  facts: ShopEditFacts,
+): ShopEditPlan {
+  const check = validateRetailer(form);
+  if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
+  if (facts.phoneTaken) return { ok: false, error: "Phone already used" };
+
+  let salesRepId: string | null = null;
+  if (form.salesRepId && form.salesRepId !== shop.salesRepId) {
+    const rep = checkSalesRepPick(form.salesRepId, facts.salesRep);
+    if (!rep.ok) return rep;
+    salesRepId = form.salesRepId;
   }
-  if (linkedUserIds.includes(login.id)) return { ok: false, error: "This retailer is already added." };
-  if (!isValidIndianMobile(login.phone)) {
-    return { ok: false, error: "This retailer has no valid phone. Ask admin to add one." };
+
+  let userId: string | null | undefined = undefined;
+  if (form.userId !== undefined && (form.userId || null) !== shop.userId) {
+    userId = form.userId || null;
+    if (userId) {
+      if (!facts.login || facts.login.id !== userId || !hasRole(facts.login.role, "retailer")) {
+        return { ok: false, error: "Pick a user with the retailer role." };
+      }
+      const link = canLinkRetailerUser(userId, shop.id, facts.loginLinks);
+      if (!link.ok) return link;
+    }
   }
-  return { ok: true };
+  return { ok: true, details: check.value, salesRepId, userId };
 }

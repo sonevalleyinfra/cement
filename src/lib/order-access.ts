@@ -2,29 +2,27 @@
  * Who may place orders, who sees prices, and which orders a person sees.
  * Plain functions (no database) so they are easy to test.
  *
+ * Default deny: only staff (a known staff role or admin, see isStaff) see prices and every order.
+ * Anyone else (a retailer, or a login with no known role) is price-blind and sees only their own
+ * shop's orders, if any. A retailer cannot also hold a staff role (checkRoles in user-admin-rules).
  * Choices where the spec is silent:
- * - A person with the retailer role AND any staff role counts as staff.
- * - Only a pure retailer is price-blind and limited to their own shop's orders.
- * - A pure retailer sees the order history without rate-edit rows, and a staff reason that
- *   talks about money (rate, price, ₹, rs, discount...) is hidden. A "Closed short" row keeps
- *   its first sentence (how many bags were not sent) and drops the staff part.
+ * - A non-staff viewer sees the order history without rate rows (filled / edited), and a staff
+ *   reason that talks about money (rate, price, ₹, rs, discount...) is hidden.
  * - Dispatch loads (bags, vehicle, driver, phone, date) are shown to everyone who may see the
- *   order (spec 4.6: "Visible to retailer and sales rep"); the load's rate only to staff.
+ *   order; the load's rate only to staff.
  */
-import { isRateEditReason } from "./dispatch-rules";
-import { hasAnyRole, isAdmin, parseRoles } from "./roles";
-import { canUserTransition, isOrderStatus, isValidBags, rolesForTransition, type OrderStatus } from "./order-rules";
+import { formatINR } from "./money";
+import { isOrderStatus, isValidBags, orderTotalPaise, orderValuePaise, remainingBags } from "./order-rules";
+import { isStaff } from "./permissions";
+import { isRateEvent, rateEventLabel, rateMoveText } from "./rate-rules";
+import { hasAnyRole, isRetailerOnly } from "./roles";
+import { bagsText } from "./words";
 
-/** Pure retailer = has the retailer role and no staff role (and is not admin). */
-export function isRetailerOnly(role: string | null | undefined): boolean {
-  if (isAdmin(role)) return false;
-  const roles = parseRoles(role);
-  return roles.includes("retailer") && roles.every((r) => r === "retailer");
-}
+export { isRetailerOnly };
 
-/** Retailers never see prices or amounts. Everyone else does. */
+/** Only staff see prices and amounts. Retailers, and anyone without a known staff role, never do. */
 export function canSeePrice(role: string | null | undefined): boolean {
-  return !isRetailerOnly(role);
+  return isStaff(role);
 }
 
 /** Sales, retailers and admin may place orders. */
@@ -33,7 +31,6 @@ export function canPlaceOrder(role: string | null | undefined): boolean {
 }
 
 export type PlaceOrderInput = {
-  readOnlyMode: boolean;
   bags: number;
   retailerId: string | null;
   productId: string | null;
@@ -43,7 +40,6 @@ export type PlaceOrderInput = {
 export function validatePlaceOrder(
   input: PlaceOrderInput,
 ): { ok: true } | { ok: false; error: string } {
-  if (input.readOnlyMode) return { ok: false, error: "Pick one firm to place an order." };
   if (!input.retailerId) return { ok: false, error: "Pick a retailer." };
   if (!input.productId) return { ok: false, error: "Pick a product." };
   if (!isValidBags(input.bags)) return { ok: false, error: "Enter the number of bags." };
@@ -57,101 +53,110 @@ export function isBagsInRange(bags: number): boolean {
   return isValidBags(bags) && bags <= MAX_ORDER_BAGS;
 }
 
-/** The retailer an order is placed for: a retailer user is fixed to their own shop. */
+/** The retailer an order is placed for: staff choose; anyone else is fixed to their own shop. */
 export function resolveOrderRetailer(
   role: string | null | undefined,
   ownRetailerId: string | null,
   chosenRetailerId: string | null,
 ): string | null {
-  return isRetailerOnly(role) ? ownRetailerId : chosenRetailerId;
+  return isStaff(role) ? chosenRetailerId : ownRetailerId;
 }
 
-/** Which order filter applies: a pure retailer sees only their shop, others see the firm. */
+/** Which orders a person sees: staff every order, anyone else only their own shop's (or none). */
 export function orderListScope(
   role: string | null | undefined,
   ownRetailerId: string | null,
 ): { kind: "all" } | { kind: "retailer"; retailerId: string } | { kind: "none" } {
-  if (!isRetailerOnly(role)) return { kind: "all" };
+  if (isStaff(role)) return { kind: "all" };
   return ownRetailerId ? { kind: "retailer", retailerId: ownRetailerId } : { kind: "none" };
 }
 
-/** Words for the chip when the colour group would be misleading (a cancelled order is not "Rejected"). */
-export function chipLabel(status: OrderStatus): string | undefined {
-  if (status === "cancelled") return "Cancelled";
-  if (status === "partly_dispatched") return "Partly dispatched";
-  return undefined;
+/**
+ * The line under a cancelled order that had some bags sent, e.g. "40 of 100 bags dispatched".
+ * Null when it does not apply (not cancelled, or nothing was sent).
+ */
+export function cancelledNote(status: string, orderedBags: number, sentBags: number): string | null {
+  if (status !== "cancelled" || sentBags <= 0) return null;
+  return `${sentBags} of ${orderedBags} bags dispatched`;
 }
 
-/** Maps the detailed order status to the five colours the status chip knows. */
-export function chipStatus(
-  status: OrderStatus,
-): "pending" | "approved" | "rejected" | "dispatched" | "delivered" {
-  switch (status) {
-    case "placed":
-    case "rate_filled":
-      return "pending";
-    case "approved":
-    case "assigned":
-      return "approved";
-    case "rejected":
-    case "cancelled":
-      return "rejected";
-    case "partly_dispatched":
-    case "dispatched":
-      return "dispatched";
-    case "delivered":
-      return "delivered";
-  }
-}
+export type OrderAmount = { caption: string; totalPaise: number; lines: string[] };
 
 /**
- * May this person cancel this order now? The status step must allow their role
- * (order-rules). Before approval only sales may cancel, and only an order they
- * placed or are the assigned rep for. After approval it is accounts' call. Admin always.
+ * The money box on an order, for staff only (a shop never sees rates or amounts). It never shows one
+ * "rate per bag" that was not billed:
+ * - nothing sent yet: the order's rate and the total at that rate;
+ * - some sent, more to come: the total, what was billed so far, and the bags not sent at the current rate
+ *   (each load shows its own rate in its own row);
+ * - finished or cancelled after some bags went out: only what was billed;
+ * - closed with nothing sent (rejected, cancelled): nothing (null).
  */
-export function canCancelOrder(
-  role: string | null | undefined,
-  userId: string,
-  order: { status: string; placedBy: string | null; salesRepId: string | null },
-): boolean {
-  if (!isOrderStatus(order.status) || !canUserTransition(role, order.status, "cancelled")) return false;
-  if (isAdmin(role) || !rolesForTransition(order.status, "cancelled").includes("sales")) return true;
-  return order.placedBy === userId || order.salesRepId === userId;
+export function orderAmountSummary(order: {
+  status: string;
+  bags: number;
+  ratePaise: number | null;
+  loads: readonly { bags: number; ratePaise: number }[];
+}): OrderAmount | null {
+  const totalPaise = orderValuePaise(order);
+  if (totalPaise === null) return null;
+  if (order.loads.length === 0) {
+    return order.ratePaise === null
+      ? null
+      : { caption: `Rate ${formatINR(order.ratePaise)} per bag`, totalPaise, lines: [] };
+  }
+  const closed = isOrderStatus(order.status) && ["rejected", "dispatched", "cancelled"].includes(order.status);
+  if (closed) return { caption: "Billed", totalPaise, lines: [] };
+  const billed = order.loads.reduce((n, l) => n + orderTotalPaise(l.bags, l.ratePaise), 0);
+  const left = remainingBags(order.bags, order.loads.reduce((n, l) => n + l.bags, 0));
+  const lines = [`Billed ${formatINR(billed)}`];
+  if (left > 0 && order.ratePaise !== null) lines.push(`${bagsText(left)} not sent, at ${formatINR(order.ratePaise)} per bag`);
+  return { caption: "Total", totalPaise, lines };
 }
 
 /** Words that give a price away in a free-text staff reason. */
 const MONEY_WORDS = /(\brate|\bpric|₹|\brs\b|\brs\.|rupee|paise|discount|\bcost|\bamount|\/-)/i;
-const CLOSED_SHORT = /^Closed short: \d+ bags? not sent\./;
 
 export function mentionsMoney(text: string | null | undefined): boolean {
   return MONEY_WORDS.test(text ?? "");
 }
 
 /**
- * The order history this person may read. Staff see everything. A pure retailer does not
- * see rate edits, nor staff reasons that mention money.
+ * The order history this person may read. Staff see everything. Anyone else does not
+ * see rate rows, nor staff reasons that mention money.
  */
 export function historyForViewer<T extends { reason: string }>(
   role: string | null | undefined,
   events: readonly T[],
 ): T[] {
-  if (!isRetailerOnly(role)) return [...events];
+  if (isStaff(role)) return [...events];
   return events
-    .filter((e) => !isRateEditReason(e.reason))
-    .map((e) => {
-      if (!mentionsMoney(e.reason)) return e;
-      const closedShort = CLOSED_SHORT.exec(e.reason);
-      return { ...e, reason: closedShort ? closedShort[0] : "" };
-    });
+    .filter((e) => !isRateEvent(e.reason))
+    .map((e) => (mentionsMoney(e.reason) ? { ...e, reason: "" } : e));
+}
+
+/** The rate line under a rate row of the history ("₹350 → ₹360"), for staff only. Null otherwise. */
+export function historyRateLine(
+  role: string | null | undefined,
+  event: { fromRatePaise: number | null; toRatePaise: number | null },
+): string | null {
+  if (!isStaff(role) || event.toRatePaise === null) return null;
+  return rateMoveText(event.fromRatePaise, event.toRatePaise);
 }
 
 /**
- * The step name shown in an order's history. A rate edit is saved as a row that keeps the
- * status (for example "assigned" to "assigned"), so it shows as "Rate edited", not as a
- * second "Assigned". Other rows show their new status ("partly_dispatched" = "Partly dispatched").
+ * The step name shown in an order's history. A rate fill or change keeps the status (for example
+ * "approved" to "approved"), so it shows as "Rate filled" / "Rate edited". Other rows show their
+ * new status ("partly_dispatched" = "Partly dispatched").
  */
 export function historyStepLabel(event: { toStatus: string; reason: string }): string {
-  if (isRateEditReason(event.reason)) return "Rate edited";
+  const rate = rateEventLabel(event.reason);
+  if (rate) return rate;
   const words = event.toStatus.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** The reason line under a history row (a rate row already says it in its label). */
+export function historyReason(reason: string): string {
+  if (reason.startsWith("Rate edited: ")) return reason.slice("Rate edited: ".length);
+  return isRateEvent(reason) ? "" : reason;
 }

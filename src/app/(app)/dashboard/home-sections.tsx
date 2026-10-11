@@ -2,26 +2,37 @@ import {
   Banknote,
   BadgeCheck,
   CalendarDays,
+  ChartColumn,
   ClipboardList,
+  Factory,
+  History,
   Package,
   Receipt,
+  Store,
   Truck,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { Stat } from "@/components/app/stat";
+import { buttonVariants } from "@/components/ui/button";
 import {
   getAccountsHome,
   getAdminHome,
   getLogisticsHome,
+  getMyCash,
   getRetailerHome,
   getSalesHome,
 } from "@/lib/home-stats";
+import { formatDate, toISTDateKey } from "@/lib/datetime";
+import { NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR } from "@/lib/money";
+import { supplierHomeLines } from "@/lib/supplier-rules";
+import { cn } from "@/lib/utils";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
@@ -64,83 +75,120 @@ function Card({
         )
       }
       bottom={
-        <div className="flex w-full flex-wrap gap-x-8 gap-y-2">
-          {stats.map((s) => (
-            <Stat key={s.label} label={s.label} value={s.value} />
-          ))}
-        </div>
+        stats.length > 0 ? (
+          <div className="flex w-full flex-wrap gap-x-8 gap-y-2">
+            {stats.map((s) => (
+              <Stat key={s.label} label={s.label} value={s.value} />
+            ))}
+          </div>
+        ) : undefined
       }
     />
   );
 }
 
-export async function SalesHome({ userId, firmIds }: { userId: string; firmIds: string[] }) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getSalesHome(userId, firmIds);
+export async function SalesHome({ userId }: { userId: string }) {
+  const s = await getSalesHome(userId);
   return (
     <Cards>
-      <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate pending", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
-      <Card index={1} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Retailers", value: num(s.retailersWithDues) }]} />
+      <Card index={0} href="/orders?show=rate" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
+      <Card
+        index={1}
+        href="/ledger"
+        title="My shops' dues" icon={Banknote} tone="rose"
+        stats={[
+          { label: "Retailers", value: num(s.retailersWithDues) },
+          { label: "Due", value: money(s.duesPaise) },
+        ]}
+      />
     </Cards>
   );
 }
 
-export async function AccountsHome({ firmIds }: { firmIds: string[] }) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getAccountsHome(firmIds);
+export async function AccountsHome() {
+  const s = await getAccountsHome();
   return (
     <Cards>
       <Card index={0} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+      <Card index={1} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
       <Card
-        index={1}
-        href="/receipts/review"
-        title="Receipts" icon={Receipt} tone="teal"
+        index={2}
+        href="/wallet"
+        title="Cash handovers" icon={Wallet} tone="green"
         stats={[
-          { label: "Online to verify", value: num(s.unverifiedOnline) },
-          { label: "Cheques pending", value: num(s.pendingCheques) },
+          { label: "To confirm", value: num(s.handoversToConfirm) },
+          { label: "Amount", value: money(s.cashToConfirmPaise) },
         ]}
       />
-      <Card index={2} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "To confirm", value: money(s.cashToConfirmPaise) }]} />
     </Cards>
   );
 }
 
-export async function LogisticsHome({
-  user,
-  firmIds,
-}: {
-  user: { id: string; role: string | null | undefined };
-  firmIds: string[];
-}) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getLogisticsHome(user, firmIds);
+export async function LogisticsHome() {
+  const s = await getLogisticsHome();
   return (
     <Cards>
       <Card index={0} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} />
-      {s.stock.length === 0 ? (
-        <EmptyState title="No stock" />
+      {s.trucks.length === 0 ? (
+        <Card index={1} href="/stock" title="Truck stock" icon={Package} tone="blue" stats={[{ label: "Loaded trucks", value: "0" }]} />
       ) : (
-        <Card
-          index={1}
-          href="/stock"
-          title="Stock" icon={Package} tone="blue"
-          stats={s.stock.map((p) => ({ label: p.name, value: `${num(p.bags)} bags` }))}
-        />
+        s.trucks.map((t, i) => (
+          <Card
+            key={t.truck}
+            index={i + 1}
+            href="/stock"
+            title={`Truck ${t.truck}`}
+            icon={Truck}
+            tone="blue"
+            stats={t.products.map((p) => ({ label: p.name, value: `${num(p.bags)} bags` }))}
+          />
+        ))
       )}
     </Cards>
   );
 }
 
-export async function AdminHome({ firmIds }: { firmIds: string[] }) {
-  if (firmIds.length === 0) return <EmptyState title="No firm" />;
-  const s = await getAdminHome(firmIds);
+export async function AdminHome() {
+  const s = await getAdminHome();
+  const today = toISTDateKey(new Date());
   return (
     <Cards>
-      <Card index={0} href="/orders" title="Today" icon={CalendarDays} tone="orange" stats={[{ label: "Orders", value: num(s.todayOrders) }, { label: "Bags sent", value: num(s.bagsDispatched) }]} />
+      <Card
+        index={0}
+        href={`/reports/sales?from=${today}&to=${today}`}
+        title="Today"
+        icon={CalendarDays}
+        tone="orange"
+        stats={[
+          { label: "Sales", value: money(s.salesTodayPaise) },
+          { label: "Bags sent", value: num(s.bagsDispatched) },
+          { label: "Orders", value: num(s.todayOrders) },
+        ]}
+      />
       <Card index={1} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Outstanding", value: money(s.duesPaise) }]} />
       <Card index={2} href="/stock" title="Stock" icon={Package} tone="blue" stats={[{ label: "Bags", value: num(s.stockBags) }]} />
-      <Card index={3} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "In hand", value: money(s.cashInHandPaise) }]} />
-      <Card index={4} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+      <Card index={3} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "Held by staff", value: money(s.cashInHandPaise) }]} />
+      <Card index={4} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
+      <Card index={5} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+      <Card index={6} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
+      <Card
+        index={7}
+        href="/suppliers"
+        title="Suppliers" icon={Factory} tone="amber"
+        stats={supplierHomeLines(s.suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) }))}
+      />
+      {s.shopsWithoutSalesRep > 0 && (
+        <Card
+          index={8}
+          href={`/retailers?filter=${NO_REP_FILTER}`}
+          title="Shops"
+          icon={Store}
+          tone="rose"
+          stats={[{ label: "Without sales person", value: num(s.shopsWithoutSalesRep) }]}
+        />
+      )}
+      <Card index={9} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
+      <Card index={10} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
     </Cards>
   );
 }
@@ -150,8 +198,42 @@ export async function RetailerHome({ userId }: { userId: string }) {
   if (!s) return <EmptyState title="No shop linked" />;
   return (
     <Cards>
-      <Card index={0} href="/orders" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Open", value: num(s.openOrders) }]} />
-      <Card index={1} href="/ledger" title="Balance" icon={Banknote} tone="rose" stats={[{ label: "Due", value: money(s.balancePaise) }]} />
+      {/* The first thing a shop does (spec section 10 lists "new order" first); the cards below are plain, so it is the one highlight. */}
+      <Link href="/orders/new" className={cn(buttonVariants({ size: "lg" }), "w-full")}>
+        New order
+      </Link>
+      <Card index={1} href="/orders?show=open" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Open", value: num(s.openOrders) }]} />
+      <Card
+        index={2}
+        href="/ledger"
+        title="My dues" icon={Banknote} tone="rose"
+        stats={[{ label: s.balancePaise < 0 ? "Advance" : "Due", value: money(Math.abs(s.balancePaise)) }]}
+      />
+      <Card
+        index={3}
+        href="/receipts"
+        title="My payments" icon={Receipt} tone="teal"
+        stats={
+          s.lastPayment
+            ? [
+                { label: "Last", value: money(s.lastPayment.totalPaise) },
+                { label: "On", value: formatDate(s.lastPayment.createdAt) },
+              ]
+            : [{ label: "Last", value: "None" }]
+        }
+      />
+    </Cards>
+  );
+}
+
+/** "My cash held": shown once on every staff member's home. */
+export async function MyCashHome({ userId }: { userId: string }) {
+  const s = await getMyCash(userId);
+  const stats = [{ label: "Held", value: money(s.heldPaise) }];
+  if (s.pendingPaise > 0) stats.push({ label: "Waiting", value: money(s.pendingPaise) });
+  return (
+    <Cards>
+      <Card index={1} href="/wallet" title="My cash" icon={Wallet} tone="green" stats={stats} />
     </Cards>
   );
 }

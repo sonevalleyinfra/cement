@@ -1,24 +1,36 @@
-import { desc, eq, and, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
-import { FirmChip } from "@/components/app/firm-chip";
-import { getFirmSelection } from "@/components/app/firm-switcher";
+import { FilterTabs } from "@/components/app/filter-tabs";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { StatusChip } from "@/components/app/status-chip";
 import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
-import { dispatches, firms, orders, products, retailers } from "@/db/schema";
+import { dispatches, orders, products, retailers } from "@/db/schema";
 import { formatINR } from "@/lib/money";
 import { formatDate } from "@/lib/datetime";
-import { canPlaceOrder, canSeePrice, chipLabel, chipStatus, orderListScope } from "@/lib/order-access";
+import { canPlaceOrder, canSeePrice, cancelledNote, orderListScope } from "@/lib/order-access";
+import {
+  ORDER_FILTER_EMPTY,
+  ORDER_FILTER_LABELS,
+  orderFilterSpec,
+  orderFilterTabs,
+  orderFilterValue,
+  parseOrderFilter,
+  rateFilterOwnShopsOnly,
+} from "@/lib/order-filter-rules";
 import { isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { bagsText } from "@/lib/words";
 
-export default async function OrdersPage() {
+export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { user } = await requireUser();
-  const { firms: myFirms, selection } = await getFirmSelection();
+  const sp = await searchParams;
+  // The tab is in the address (?show=rate), so Home cards can open the matching list.
+  const filter = parseOrderFilter(sp.show, user.role);
+  const spec = orderFilterSpec(filter);
   const showPrice = canSeePrice(user.role);
 
   const [own] = await db
@@ -28,13 +40,8 @@ export default async function OrdersPage() {
     .limit(1);
   const scope = orderListScope(user.role, own?.id ?? null);
 
-  const allowedIds = myFirms.map((f) => f.id);
-  const conditions = [];
-  if (selection.mode === "firm") conditions.push(eq(orders.firmId, selection.firmId));
-  if (scope.kind === "retailer") conditions.push(eq(orders.retailerId, scope.retailerId));
-
   const rows =
-    selection.mode === "none" || scope.kind === "none" || (selection.mode === "all" && allowedIds.length === 0)
+    scope.kind === "none"
       ? []
       : await db
           .select({
@@ -45,36 +52,45 @@ export default async function OrdersPage() {
             createdAt: orders.createdAt,
             retailer: retailers.name,
             product: products.name,
-            firmName: firms.name,
-            firmSlot: firms.slot,
           })
           .from(orders)
           .innerJoin(retailers, eq(orders.retailerId, retailers.id))
           .innerJoin(products, eq(orders.productId, products.id))
-          .innerJoin(firms, eq(orders.firmId, firms.id))
-          .where(conditions.length ? and(...conditions) : undefined)
+          .where(
+            and(
+              scope.kind === "retailer" ? eq(orders.retailerId, scope.retailerId) : undefined,
+              spec.statuses ? inArray(orders.status, spec.statuses) : undefined,
+              spec.rate === "missing" ? isNull(orders.ratePaise) : spec.rate === "filled" ? isNotNull(orders.ratePaise) : undefined,
+              // "Rate to fill" is the sales person's own shops, the same number Home shows.
+              rateFilterOwnShopsOnly(user.role, filter) ? eq(orders.salesRepId, user.id) : undefined,
+            ),
+          )
           .orderBy(desc(orders.createdAt))
           .limit(100);
 
-  // Truck loads, so the amount counts each load at its own rate (staff only).
+  // Truck loads: the amount counts each load at its own rate (staff only), and a cancelled
+  // order shows how many bags went out.
   const loads =
-    showPrice && rows.length > 0
+    rows.length > 0
       ? await db
           .select({ orderId: dispatches.orderId, bags: dispatches.bags, ratePaise: dispatches.ratePaise })
           .from(dispatches)
           .where(inArray(dispatches.orderId, rows.map((r) => r.id)))
       : [];
-  const valueOf = (o: (typeof rows)[number]) =>
-    orderValuePaise({ ...o, loads: loads.filter((l) => l.orderId === o.id) });
+  const loadsOf = (id: string) => loads.filter((l) => l.orderId === id);
+  const valueOf = (o: (typeof rows)[number]) => orderValuePaise({ ...o, loads: loadsOf(o.id) });
+  const sentOf = (id: string) => loadsOf(id).reduce((n, l) => n + l.bags, 0);
 
-  const canPlace = canPlaceOrder(user.role) && !selection.readOnly;
+  const canPlace = canPlaceOrder(user.role);
+  const tabs = orderFilterTabs(user.role).map((f) => ({ value: orderFilterValue(f), label: ORDER_FILTER_LABELS[f] }));
 
   return (
     <>
-      {selection.mode === "none" ? (
-        <EmptyState title="No firm assigned to you. Ask admin." />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No orders" />
+      <div className="mb-3">
+        <FilterTabs path="/orders" param="show" value={orderFilterValue(filter)} tabs={tabs} label="Show orders" />
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState title={ORDER_FILTER_EMPTY[filter]} />
       ) : (
         <ul className="flex flex-col gap-3">
           {rows.map((o, i) => (
@@ -83,22 +99,20 @@ export default async function OrdersPage() {
                 index={i}
                 href={`/orders/${o.id}`}
                 title={o.retailer}
-                top={
-                  <>
-                    <FirmChip name={o.firmName} slot={o.firmSlot} />
-                    {isOrderStatus(o.status) && <StatusChip status={chipStatus(o.status)} label={chipLabel(o.status)} />}
-                  </>
-                }
+                top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
                 bottom={
                   <>
                     <div>
-                      <div className="tabular text-2xl font-bold">{o.bags} bags</div>
+                      <div className="tabular text-2xl font-bold">{bagsText(o.bags)}</div>
                       <div className="text-xs text-muted-foreground">
                         {o.product} · {formatDate(o.createdAt)}
                       </div>
+                      {cancelledNote(o.status, o.bags, sentOf(o.id)) && (
+                        <div className="text-xs text-muted-foreground">{cancelledNote(o.status, o.bags, sentOf(o.id))}</div>
+                      )}
                     </div>
                     {showPrice && valueOf(o) !== null && (
-                      <div className="tabular text-lg font-semibold">{formatINR(valueOf(o) ?? 0)}</div>
+                      <div className="tabular text-lg font-semibold">{formatINR(valueOf(o) ?? 0, { hidePaise: true })}</div>
                     )}
                   </>
                 }

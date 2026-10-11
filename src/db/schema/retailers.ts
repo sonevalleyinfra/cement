@@ -1,7 +1,7 @@
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 
-/** Shops that buy cement. Shared by all firms. `phone` is 10 plain digits. */
+/** Shops that buy cement. `phone` is 10 plain digits. */
 export const retailers = pgTable("retailers", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),

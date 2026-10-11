@@ -4,52 +4,79 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { user, walletMovements } from "@/db/schema";
-import { findAccessibleFirm } from "@/lib/firm-access";
+import { writeAudit } from "@/lib/audit";
+import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
-import { requireRole, writeBlock } from "@/lib/session";
-import { canAnswerRequest, canConfirmHandover, validateHandoverRequest, walletBalance } from "@/lib/wallet-rules";
+import { checkRequestId } from "@/lib/request-rules";
+import { requireRole } from "@/lib/session";
+import { planHandoverAnswer, validateHandoverRequest, walletBalance, type HandoverAnswer } from "@/lib/wallet-rules";
 
 export type WalletResult = { ok: true } | { ok: false; error: string };
 
-/** The collector says how much cash of one firm they are handing over. Goes to accounts to confirm. */
-export async function requestHandover(input: { firmId: string; amountPaise: number }): Promise<WalletResult> {
-  const session = await requireRole(...rolesFor("useWallet"));
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
-  if (!isUuid(input.firmId)) return { ok: false, error: "You cannot work on this firm." };
-  const firm = await findAccessibleFirm(session.user.id, session.user.role, input.firmId);
-  if (!firm) return { ok: false, error: "You cannot work on this firm." };
-
-  const res = await db.transaction(async (tx): Promise<WalletResult> => {
-    // Lock the collector's row so two requests cannot use the same cash.
-    await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
-    const rows = await tx
-      .select()
-      .from(walletMovements)
-      .where(and(eq(walletMovements.collectorId, session.user.id), eq(walletMovements.firmId, input.firmId)));
-    const check = validateHandoverRequest(input.amountPaise, walletBalance(rows).availablePaise);
-    if (!check.ok) return check;
-    await tx.insert(walletMovements).values({
-      firmId: input.firmId,
-      collectorId: session.user.id,
-      kind: "handover_request",
-      amountPaise: input.amountPaise,
-      actorId: session.user.id,
-    });
-    return { ok: true };
-  });
-  if (res.ok) revalidatePath("/wallet");
-  return res;
+function refresh() {
+  revalidatePath("/wallet");
+  revalidatePath("/dashboard");
 }
 
-/** Accounts or admin confirm (or refuse) one handover request. Confirming clears that much from the wallet. */
-export async function answerHandover(requestId: string, confirm: boolean): Promise<WalletResult> {
+/**
+ * A staff member asks to hand over some of the cash they hold. Accounts are told.
+ * `requestId` is the form's one-time id: a second tap asks nothing more (request-rules.ts).
+ */
+export async function requestHandover(input: { amountPaise: number; requestId: string }): Promise<WalletResult> {
+  const session = await requireRole(...rolesFor("useWallet"));
+  const amount = Number(input?.amountPaise);
+  const form = checkRequestId(input?.requestId);
+  if (!form.ok) return form;
+  const res = await saveOnce({ id: form.id, kind: "handover_request", actorId: session.user.id }, async (tx) => {
+    // Lock the staff member's row so two requests (or a reversal) cannot use the same cash.
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
+    const rows = await tx.select().from(walletMovements).where(eq(walletMovements.collectorId, session.user.id));
+    const check = validateHandoverRequest(amount, walletBalance(rows).availablePaise);
+    if (!check.ok) return check;
+    const [request] = await tx
+      .insert(walletMovements)
+      .values({
+        collectorId: session.user.id,
+        kind: "handover_request",
+        amountPaise: amount,
+        actorId: session.user.id,
+      })
+      .returning({ id: walletMovements.id });
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "handover",
+      entityId: request.id,
+      action: "request",
+      details: { collectorId: session.user.id, amountPaise: amount },
+    });
+    await notifyMoney(tx, {
+      event: "handover_requested",
+      amountPaise: amount,
+      actorId: session.user.id,
+      collectorId: session.user.id,
+      link: "/wallet",
+    });
+    return { ok: true, resultId: request.id };
+  });
+  if (!res.ok) return res;
+  refresh();
+  return { ok: true };
+}
+
+/**
+ * Accounts or admin answer one handover request: "Received" for the full amount, a smaller
+ * amount actually received (the rest stays with the staff member), or reject with a reason.
+ */
+export async function answerHandover(requestId: string, answer: HandoverAnswer): Promise<WalletResult> {
   const session = await requireRole(...rolesFor("confirmHandover"));
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
   if (!isUuid(requestId)) return { ok: false, error: "Handover not found." };
+  if (answer?.action !== "confirm" && answer?.action !== "reject") return { ok: false, error: "Pick received or reject." };
+  const clean: HandoverAnswer =
+    answer.action === "confirm"
+      ? { action: "confirm", amountPaise: Number(answer.amountPaise) }
+      : { action: "reject", reason: answer.reason };
   const res = await db.transaction(async (tx): Promise<WalletResult> => {
     const [request] = await tx
       .select()
@@ -57,10 +84,8 @@ export async function answerHandover(requestId: string, confirm: boolean): Promi
       .where(and(eq(walletMovements.id, requestId), eq(walletMovements.kind, "handover_request")))
       .for("no key update");
     if (!request) return { ok: false, error: "Handover not found." };
-    const firm = await findAccessibleFirm(session.user.id, session.user.role, request.firmId);
-    if (!firm) return { ok: false, error: "You cannot work on this firm." };
-    const allowed = canConfirmHandover(session.user.role, session.user.id, request.collectorId);
-    if (!allowed.ok) return allowed;
+    // Same lock as a new request, so two answers to one request wait for each other.
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, request.collectorId)).for("no key update");
     const answers = await tx
       .select({ id: walletMovements.id })
       .from(walletMovements)
@@ -70,27 +95,39 @@ export async function answerHandover(requestId: string, confirm: boolean): Promi
           inArray(walletMovements.kind, ["handover_confirmed", "handover_rejected"]),
         ),
       );
-    const once = canAnswerRequest(answers.length > 0);
-    if (!once.ok) return once;
+    const plan = planHandoverAnswer(session.user.role, session.user.id, request, answers.length > 0, clean);
+    if (!plan.ok) return plan;
     await tx.insert(walletMovements).values({
-      firmId: request.firmId,
       collectorId: request.collectorId,
-      kind: confirm ? "handover_confirmed" : "handover_rejected",
-      amountPaise: confirm ? request.amountPaise : 0,
+      kind: plan.kind,
+      amountPaise: plan.amountPaise,
       refId: request.id,
+      note: plan.note,
       actorId: session.user.id,
     });
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "handover",
+      entityId: request.id,
+      action: plan.kind === "handover_confirmed" ? "confirm" : "reject",
+      details: {
+        collectorId: request.collectorId,
+        amountPaise: plan.kind === "handover_confirmed" ? plan.amountPaise : request.amountPaise,
+        requestedPaise: request.amountPaise,
+        ...(plan.note ? { reason: plan.note } : {}),
+      },
+    });
     await notifyMoney(tx, {
-      event: confirm ? "handover_confirmed" : "handover_rejected",
-      firmId: request.firmId,
-      firmNames: [firm.name],
-      amountPaise: request.amountPaise,
+      event: plan.kind,
+      amountPaise: plan.kind === "handover_confirmed" ? plan.amountPaise : request.amountPaise,
+      requestedPaise: request.amountPaise,
       actorId: session.user.id,
       collectorId: request.collectorId,
       link: "/wallet",
+      reason: plan.note,
     });
     return { ok: true };
   });
-  if (res.ok) revalidatePath("/wallet");
+  if (res.ok) refresh();
   return res;
 }

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { TextLink } from "@/components/app/text-link";
 import { FormMessage } from "@/components/form-message";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResetPasswordForm } from "./reset-password-form";
@@ -18,9 +18,9 @@ export default async function ResetPasswordPage({ searchParams }: PageProps<"/re
         ) : (
           <FormMessage kind="error">
             This reset link is invalid or has expired.{" "}
-            <Link href="/forgot-password" className="underline">
+            <TextLink href="/forgot-password" strong className="text-destructive">
               Request a new one
-            </Link>
+            </TextLink>
           </FormMessage>
         )}
       </CardContent>

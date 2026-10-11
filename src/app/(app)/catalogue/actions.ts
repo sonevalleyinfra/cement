@@ -6,7 +6,9 @@ import { db } from "@/db";
 import { brands, cementTypes, grades, products, stockMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import {
+  canSwitchOffBrand,
   canSwitchOffProduct,
+  canSwitchOnProduct,
   cleanListName,
   cleanTypeCode,
   isDuplicateName,
@@ -26,10 +28,11 @@ function done(res: CatalogueResult = { ok: true }): CatalogueResult {
   revalidatePath("/catalogue");
   revalidatePath("/stock", "layout");
   revalidatePath("/orders/new");
+  revalidatePath("/suppliers", "layout");
   return res;
 }
 
-/** Adds a product from the drop-downs. Its name is built, never typed. Admin only. */
+/** Adds a product from the drop-downs (brand first). Its name is built, never typed. Admin only. */
 export async function addProduct(input: NewProductInput): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
   if (!isUuid(input.brandId) || !isUuid(input.typeId) || !isUuid(input.gradeId)) {
@@ -64,14 +67,18 @@ export async function addProduct(input: NewProductInput): Promise<CatalogueResul
   return res.ok ? done(res) : res;
 }
 
-/** Switches a product on or off. Off is refused while any firm still holds its bags. */
+/** Switches a product on or off. Off is refused while any of its bags are still in stock; on needs its brand on. */
 export async function setProductActive(id: string, active: boolean): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
   if (!isUuid(id)) return { ok: false, error: "Product not found." };
   const res = await db.transaction(async (tx): Promise<CatalogueResult> => {
     const [row] = await tx.select().from(products).where(eq(products.id, id)).for("update");
     if (!row) return { ok: false, error: "Product not found." };
-    if (!active) {
+    if (active) {
+      const [brand] = await tx.select({ active: brands.active }).from(brands).where(eq(brands.id, row.brandId)).for("share");
+      const ok = canSwitchOnProduct(Boolean(brand?.active));
+      if (!ok.ok) return ok;
+    } else {
       const [left] = await tx
         .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
         .from(stockMovements)
@@ -92,7 +99,7 @@ export async function setProductActive(id: string, active: boolean): Promise<Cat
   return res.ok ? done(res) : res;
 }
 
-/** Adds a brand, e.g. "Prism". */
+/** Adds a brand, e.g. "UltraTech". It gets its own supplier account (empty until the first entry). */
 export async function addBrand(name: string): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
   const clean = cleanListName(name);
@@ -155,11 +162,13 @@ export async function addGrade(form: { typeId: string; name: string }): Promise<
   return res.ok ? done(res) : res;
 }
 
+/** The lists admin edits. */
 export type CatalogueList = "brand" | "cement_type" | "grade";
 
 /**
  * Switches a brand, type or grade on or off. Off only hides it when adding new products;
- * products already made from it stay as they are (switch those off in the Products tab).
+ * products already made from a type or grade stay as they are (switch those off in the Products tab).
+ * A brand can be switched off only when none of its products are on and none of its bags are in stock.
  */
 export async function setListItemActive(list: CatalogueList, id: string, active: boolean): Promise<CatalogueResult> {
   const session = await requireRole(...rolesFor("manageCatalogue"));
@@ -167,6 +176,21 @@ export async function setListItemActive(list: CatalogueList, id: string, active:
   const res = await db.transaction(async (tx): Promise<CatalogueResult> => {
     let changed: { id: string }[];
     if (list === "brand") {
+      if (!active) {
+        // Locked so no product of this brand is switched on (or bought) while we check.
+        await tx.execute(sql`lock table ${products} in share row exclusive mode`);
+        const [on] = await tx
+          .select({ n: sql<number>`count(*)`.mapWith(Number) })
+          .from(products)
+          .where(and(eq(products.brandId, id), eq(products.active, true)));
+        const [stock] = await tx
+          .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
+          .from(stockMovements)
+          .innerJoin(products, eq(products.id, stockMovements.productId))
+          .where(eq(products.brandId, id));
+        const ok = canSwitchOffBrand({ activeProducts: on?.n ?? 0, bagsInStock: stock?.bags ?? 0 });
+        if (!ok.ok) return ok;
+      }
       changed = await tx.update(brands).set({ active, updatedAt: new Date() }).where(eq(brands.id, id)).returning({ id: brands.id });
     } else if (list === "cement_type") {
       changed = await tx.update(cementTypes).set({ active }).where(eq(cementTypes.id, id)).returning({ id: cementTypes.id });

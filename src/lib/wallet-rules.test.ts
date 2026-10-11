@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   canAnswerRequest,
   canConfirmHandover,
-  collectedMovements,
   pendingRequestIds,
+  planHandoverAnswer,
   validateHandoverRequest,
   WALLET_KINDS,
   walletBalance,
@@ -85,11 +85,48 @@ describe("canConfirmHandover", () => {
   });
 });
 
-describe("collectedMovements", () => {
-  it("adds one row per firm line for cash only", () => {
-    expect(collectedMovements("cash", [{ firmId: "A", amountPaise: 500 }, { firmId: "B", amountPaise: 0 }])).toEqual([
-      { firmId: "A", kind: "collected", amountPaise: 500 },
-    ]);
-    expect(collectedMovements("online", [{ firmId: "A", amountPaise: 500 }])).toEqual([]);
+describe("planHandoverAnswer", () => {
+  const request = { collectorId: "c", amountPaise: 50000 };
+
+  it("confirms the full amount", () => {
+    expect(planHandoverAnswer("accounts", "a", request, false, { action: "confirm", amountPaise: 50000 })).toEqual({
+      ok: true,
+      kind: "handover_confirmed",
+      amountPaise: 50000,
+      part: false,
+      note: "",
+    });
+  });
+  it("confirms a smaller amount actually received; the rest stays with the collector", () => {
+    const p = planHandoverAnswer("admin", "a", request, false, { action: "confirm", amountPaise: 30000 });
+    expect(p).toMatchObject({ ok: true, kind: "handover_confirmed", amountPaise: 30000, part: true });
+    const moves = [
+      { id: "1", kind: "collected", amountPaise: 80000 },
+      { id: "2", kind: "handover_request", amountPaise: 50000 },
+      { id: "3", kind: "handover_confirmed", amountPaise: p.ok ? p.amountPaise : 0, refId: "2" },
+    ];
+    expect(walletBalance(moves)).toMatchObject({ balancePaise: 50000, pendingPaise: 0, availablePaise: 50000 });
+  });
+  it("refuses more than the request, zero, negative and fractions", () => {
+    for (const amountPaise of [50001, 0, -1, 1.5]) {
+      expect(planHandoverAnswer("accounts", "a", request, false, { action: "confirm", amountPaise }).ok).toBe(false);
+    }
+  });
+  it("rejects with a reason only, and nothing is handed over", () => {
+    expect(planHandoverAnswer("accounts", "a", request, false, { action: "reject", reason: " Wrong amount " })).toEqual({
+      ok: true,
+      kind: "handover_rejected",
+      amountPaise: 0,
+      part: false,
+      note: "Wrong amount",
+    });
+    expect(planHandoverAnswer("accounts", "a", request, false, { action: "reject", reason: "" }).ok).toBe(false);
+  });
+  it("only accounts or admin, never their own, only once", () => {
+    const full = { action: "confirm", amountPaise: 50000 } as const;
+    expect(planHandoverAnswer("sales", "a", request, false, full).ok).toBe(false);
+    expect(planHandoverAnswer("logistics", "a", request, false, full).ok).toBe(false);
+    expect(planHandoverAnswer("accounts", "c", request, false, full).ok).toBe(false);
+    expect(planHandoverAnswer("accounts", "a", request, true, full).ok).toBe(false);
   });
 });

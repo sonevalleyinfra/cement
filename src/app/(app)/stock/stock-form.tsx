@@ -1,23 +1,30 @@
 "use client";
 
-import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { chipClass } from "@/components/app/chip";
+import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
+import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { CatalogueList } from "../catalogue/actions";
+import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
+import { firstMissing } from "@/lib/form-rules";
+import { formatINR, parseRupeesToPaise } from "@/lib/money";
+import { purchaseAmountPaise } from "@/lib/supplier-rules";
 import {
-  CHANNEL_LABELS,
-  DEFAULT_BAG_KG,
-  findProductByParts,
-  PRODUCT_CHANNELS,
-} from "@/lib/catalogue-rules";
-import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
+  NEW_TRUCK_PLACE,
+  placeGroups,
+  STOCK_FIX_LABELS,
+  STOCK_FIX_REASONS,
+  type StockFixReason,
+} from "@/lib/stock-rules";
+import { useFormError } from "@/lib/use-form-error";
+import { useSubmit } from "@/lib/use-submit";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
-import { ListEditorSheet } from "./list-editor-sheet";
+import { TruckFields, type TruckInput } from "./truck-fields";
 
 type ProductOption = { id: string; name: string; channel: string; brandId: string; gradeId: string; bagKg: number };
 type Lists = {
@@ -31,180 +38,156 @@ type Balance = { productId: string; placeKey: string; bags: number };
 const copy = {
   purchase: { button: "Add purchase", note: "Supplier / note (optional)", done: "Purchase added." },
   opening: { button: "Set opening stock", note: "", done: "Opening stock set." },
-  adjust: { button: "Save adjustment", note: "Reason (required)", done: "Adjustment saved." },
+  adjust: { button: "Save adjustment", note: "Note (optional)", done: "Adjustment saved." },
 } as const;
 
+const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
+
+/**
+ * Purchase, opening stock and stock correction. The product is picked with drop-downs that only offer
+ * existing products (brand → trade-type → type → grade); picking a brand starts again at that brand's
+ * first product, so nothing new is ever made here (products are added in Catalogue).
+ */
 export function StockForm({
   mode,
-  firmId,
   places,
   products,
   balances,
   lists,
-  canManageCatalogue,
 }: {
   mode: keyof typeof copy;
-  firmId: string;
   places: PlaceOption[];
   products: ProductOption[];
   balances: Balance[];
-  /** Brands, types and grades for the four product drop-downs. */
+  /** Brands, types and grades the products are made from. */
   lists: Lists;
-  /** Shows the edit buttons next to the drop-downs (purchase, admin only). */
-  canManageCatalogue: boolean;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
-  const first = products[0];
-  const [brandPick, setBrandPick] = useState(first?.brandId ?? "");
-  const [channel, setChannel] = useState(first?.channel ?? PRODUCT_CHANNELS[0]);
-  const [typePick, setTypePick] = useState(lists.grades.find((g) => g.id === first?.gradeId)?.typeId ?? "");
-  const [gradePick, setGradePick] = useState(first?.gradeId ?? "");
-  const [editing, setEditing] = useState<CatalogueList | null>(null);
+  const { pending, run } = useSubmit();
+  const [pick, setPick] = useState({ brandId: products[0]?.brandId ?? "", channel: "", typeId: "", gradeId: "" });
   const [place, setPlace] = useState(places[0]?.key ?? (mode === "purchase" ? NEW_TRUCK_PLACE : ""));
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
+  const [reason, setReason] = useState<StockFixReason | null>(null);
+  // Purchase only: what one bag cost (typed in rupees) and the optional supplier invoice number.
+  const [costText, setCostText] = useState("");
+  const [invoiceNo, setInvoiceNo] = useState("");
   // The quick truck form (purchase into a hired truck): nothing about the truck is saved for next time.
-  const [truck, setTruck] = useState({ number: "", driverName: "", driverPhone: "" });
+  const [truck, setTruck] = useState(NO_TRUCK);
   const newTruck = mode === "purchase" && place === NEW_TRUCK_PLACE;
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
+  const [done, setDone] = useState("");
+  const { error, setError, clearError } = useFormError([pick, place, digits, minus, note, reason, costText, invoiceNo, truck]);
 
-  // A pick that left the list (removed, or a grade of another type) falls back to the first one.
-  const brandId = lists.brands.some((b) => b.id === brandPick) ? brandPick : (lists.brands[0]?.id ?? "");
-  const typeId = lists.types.some((t) => t.id === typePick) ? typePick : (lists.types[0]?.id ?? "");
-  const typeGrades = lists.grades.filter((g) => g.typeId === typeId);
-  const gradeId = typeGrades.some((g) => g.id === gradePick) ? gradePick : (typeGrades[0]?.id ?? "");
-  const typeCode = lists.types.find((t) => t.id === typeId)?.code ?? "";
-  const picked = Boolean(brandId && typeId && gradeId);
-  const product = findProductByParts(products, { brandId, channel, gradeId, bagKg: DEFAULT_BAG_KG });
-  const missing = picked && !product;
+  // Brand first. With one brand there is no Brand drop-down: that brand is used.
+  const brandId = startBrand(lists.brands, pick.brandId);
+  const brandName = lists.brands.find((b) => b.id === brandId)?.name ?? "";
+  const parts = pickProductParts(products, lists.types, lists.grades, { ...pick, brandId });
+  const product = parts.product;
 
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
+  const costPaise = parseRupeesToPaise(costText);
+  const owedPaise = costPaise === null ? null : purchaseAmountPaise(bags, costPaise);
+
+  const hint = firstMissing([
+    [!product, "Pick a product"],
+    [!place, "Pick a place"],
+    [newTruck && (!truck.number.trim() || !truck.driverName.trim()), "Enter the truck number and driver"],
+    [bags === 0, "Enter the bags"],
+    [mode === "adjust" && reason === null, "Pick a reason"],
+    [mode === "purchase" && (costPaise === null || costPaise < 1), "Enter the cost per bag"],
+  ]);
 
   function submit() {
-    setMessage(null);
+    setDone("");
+    clearError();
     const input = {
-      firmId,
       brandId,
-      channel,
-      typeId,
-      gradeId,
+      channel: parts.channel,
+      typeId: parts.typeId,
+      gradeId: parts.gradeId,
       place,
       truck: newTruck ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
       note,
+      ...(mode === "adjust" ? { reason: reason ?? "" } : {}),
+      ...(mode === "purchase" ? { costPerBagPaise: costPaise ?? undefined, invoiceNo } : {}),
     };
-    start(async () => {
-      const action = mode === "purchase" ? recordPurchase : mode === "opening" ? recordOpening : recordAdjustment;
-      const res = await action(input);
-      if (res.ok) {
-        setMessage({ ok: true, text: copy[mode].done });
-        setDigits("");
-        setNote("");
-        setTruck({ number: "", driverName: "", driverPhone: "" });
-        router.refresh();
-      } else setMessage({ ok: false, text: res.error });
-    });
-  }
-
-  if ((places.length === 0 && mode !== "purchase") || (products.length === 0 && !canManageCatalogue)) {
-    return (
-      <p className="rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
-        {places.length === 0 ? "Add a godown or vehicle first." : "Add a product first."}
-      </p>
+    const action = mode === "purchase" ? recordPurchase : mode === "opening" ? recordOpening : recordAdjustment;
+    run(
+      (requestId) => action({ ...input, requestId }),
+      (res) => {
+        if (res.ok) {
+          setDone(copy[mode].done);
+          // A fresh form: amount empty and (adjust) back to "Add bags", so it never shows "-0 bags".
+          setDigits("");
+          setMinus(false);
+          setNote("");
+          setReason(null);
+          setCostText("");
+          setInvoiceNo("");
+          setTruck(NO_TRUCK);
+          router.refresh();
+        } else setError(res.error);
+      },
     );
   }
 
-  const edit = (list: CatalogueList, label: string) =>
-    canManageCatalogue ? (
-      <button
-        type="button"
-        onClick={() => setEditing(list)}
-        aria-label={`Edit ${label}`}
-        className="-my-3.5 -mr-3 flex size-12 items-center justify-center rounded-xl text-muted-foreground transition-[background-color,transform] duration-150 ease-out hover:bg-muted active:scale-[0.95]"
-      >
-        <Pencil className="size-4" />
-      </button>
-    ) : undefined;
+  if ((places.length === 0 && mode !== "purchase") || products.length === 0) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
+        <span>{products.length === 0 ? "No products yet" : "No godown yet"}</span>
+        <TextLink href={products.length === 0 ? "/catalogue" : "/godowns"} strong>
+          {products.length === 0 ? "Catalogue" : "Godowns"}
+        </TextLink>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3">
+      {hasManyBrands(lists.brands) && (
         <SelectField
           label="Brand"
           value={brandId}
-          onChange={setBrandPick}
+          // A new brand starts at its own first product (nothing from the old brand is kept).
+          onChange={(id) => setPick({ brandId: id, channel: "", typeId: "", gradeId: "" })}
           options={lists.brands.map((b) => ({ value: b.id, label: b.name }))}
-          placeholder={lists.brands.length === 0 ? "Add one" : undefined}
-          action={edit("brand", "brands")}
         />
-        <SelectField
-          label="Trade-type"
-          value={channel}
-          onChange={setChannel}
-          options={PRODUCT_CHANNELS.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
-        />
+      )}
+      <SelectField
+        label="Trade-type"
+        value={parts.channel}
+        onChange={(channel) => setPick({ ...pick, brandId, channel })}
+        options={parts.channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
+      />
+      <div className="grid grid-cols-2 gap-3">
         <SelectField
           label="Type"
-          value={typeId}
-          onChange={setTypePick}
-          options={lists.types.map((t) => ({ value: t.id, label: t.code }))}
-          placeholder={lists.types.length === 0 ? "Add one" : undefined}
-          action={edit("cement_type", "types")}
+          value={parts.typeId}
+          onChange={(typeId) => setPick({ ...pick, brandId, channel: parts.channel, typeId })}
+          options={parts.typeIds.map((id) => ({ value: id, label: lists.types.find((t) => t.id === id)?.code ?? "" }))}
         />
         <SelectField
           label="Grade"
-          value={gradeId}
-          onChange={setGradePick}
-          options={typeGrades.map((g) => ({ value: g.id, label: g.name }))}
-          placeholder={typeGrades.length === 0 ? "Add one" : undefined}
-          action={typeId ? edit("grade", "grades") : undefined}
+          value={parts.gradeId}
+          onChange={(gradeId) => setPick({ ...pick, brandId, channel: parts.channel, typeId: parts.typeId, gradeId })}
+          options={parts.gradeIds.map((id) => ({ value: id, label: lists.grades.find((g) => g.id === id)?.name ?? "" }))}
         />
       </div>
-      {missing && (
-        <p className={mode === "purchase" ? "text-sm font-medium text-primary" : "text-sm text-destructive"}>
-          {mode === "purchase" ? "New product" : "Not in catalogue"}
-        </p>
-      )}
       <SelectField
         label="Place"
         value={place}
         onChange={setPlace}
-        placeholder={places.length === 0 && mode !== "purchase" ? "Add a godown first" : undefined}
         groups={[
           ...placeGroups(places),
           ...(mode === "purchase" ? [{ label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] }] : []),
         ]}
       />
       {newTruck ? (
-        <div className="animate-in-up flex flex-col gap-2 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
-          <Input
-            value={truck.number}
-            onChange={(e) => setTruck({ ...truck, number: e.target.value.toUpperCase() })}
-            placeholder="Truck number, e.g. BR01AB1234"
-            aria-label="Truck number"
-            autoCapitalize="characters"
-            autoComplete="off"
-            maxLength={14}
-          />
-          <Input
-            value={truck.driverName}
-            onChange={(e) => setTruck({ ...truck, driverName: e.target.value })}
-            placeholder="Driver name"
-            aria-label="Driver name"
-            maxLength={80}
-          />
-          <Input
-            value={truck.driverPhone}
-            onChange={(e) => setTruck({ ...truck, driverPhone: e.target.value })}
-            placeholder="Driver phone (optional)"
-            aria-label="Driver phone"
-            inputMode="tel"
-            maxLength={14}
-          />
-        </div>
+        <TruckFields value={truck} onChange={setTruck} />
       ) : (
         <p className="text-sm text-muted-foreground">In stock here now: {current} bags</p>
       )}
@@ -223,6 +206,48 @@ export function StockForm({
         {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
+      {mode === "adjust" && (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">
+          {STOCK_FIX_REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              aria-checked={reason === r}
+              className={chipClass(reason === r)}
+              onClick={() => setReason(r)}
+            >
+              {STOCK_FIX_LABELS[r]}
+            </button>
+          ))}
+        </div>
+      )}
+      {mode === "purchase" && (
+        <>
+          <Input
+            value={costText}
+            onChange={(e) => setCostText(e.target.value)}
+            placeholder="Cost per bag (₹)"
+            aria-label="Cost per bag"
+            inputMode="decimal"
+            autoComplete="off"
+            maxLength={10}
+          />
+          {owedPaise !== null && (
+            <div className="tabular text-center text-sm text-muted-foreground" aria-live="polite">
+              Owed to {brandName} <span className="font-semibold text-foreground">{formatINR(owedPaise)}</span>
+            </div>
+          )}
+          <Input
+            value={invoiceNo}
+            onChange={(e) => setInvoiceNo(e.target.value)}
+            placeholder="Invoice no. (optional)"
+            aria-label="Invoice number"
+            autoComplete="off"
+            maxLength={60}
+          />
+        </>
+      )}
       {mode !== "opening" && (
         <Input
           value={note}
@@ -232,56 +257,22 @@ export function StockForm({
           maxLength={200}
         />
       )}
-      {message && (
-        <p role="status" className={message.ok ? "text-sm text-green-700" : "text-sm text-destructive"}>
-          {message.text}
+      {error && (
+        <p role="status" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {done && !error && (
+        <p role="status" className="text-sm text-green-700">
+          {done}
         </p>
       )}
       <PinnedAction>
-        <Button
-          onClick={submit}
-          disabled={
-            pending ||
-            bags === 0 ||
-            !picked ||
-            !place ||
-            (newTruck && (!truck.number.trim() || !truck.driverName.trim())) ||
-            (missing && mode !== "purchase") ||
-            (mode === "adjust" && !note.trim())
-          }
-        >
+        <FormHint>{hint}</FormHint>
+        <Button onClick={submit} disabled={pending || hint !== null}>
           {copy[mode].button}
         </Button>
       </PinnedAction>
-      {canManageCatalogue && (
-        <>
-          <ListEditorSheet
-            kind="brand"
-            title="Brands"
-            items={lists.brands}
-            open={editing === "brand"}
-            onOpenChange={(o) => setEditing(o ? "brand" : null)}
-            onAdded={setBrandPick}
-          />
-          <ListEditorSheet
-            kind="cement_type"
-            title="Types"
-            items={lists.types}
-            open={editing === "cement_type"}
-            onOpenChange={(o) => setEditing(o ? "cement_type" : null)}
-            onAdded={setTypePick}
-          />
-          <ListEditorSheet
-            kind="grade"
-            title={`Grades (${typeCode})`}
-            items={typeGrades}
-            typeId={typeId}
-            open={editing === "grade"}
-            onOpenChange={(o) => setEditing(o ? "grade" : null)}
-            onAdded={setGradePick}
-          />
-        </>
-      )}
     </div>
   );
 }

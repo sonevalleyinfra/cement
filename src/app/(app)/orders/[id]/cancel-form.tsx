@@ -2,22 +2,27 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { FormHint } from "@/components/app/form-hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { firstMissing } from "@/lib/form-rules";
+import { useFormError } from "@/lib/use-form-error";
 import { cancelOrder } from "../actions";
 
-/** `closeShort`: some bags already went out, so cancelling keeps them billed and stops the rest. */
-export function CancelForm({ orderId, closeShort = false }: { orderId: string; closeShort?: boolean }) {
+/** Admin cancels the bags not dispatched yet (`notSent`); bags already sent stay billed. */
+export function CancelForm({ orderId, notSent, sent }: { orderId: string; notSent: number; sent: number }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
+  const { error, setError, clearError } = useFormError(reason);
   const [pending, start] = useTransition();
+  const label = sent > 0 ? `Cancel ${notSent} bags not sent` : "Cancel order";
+  const hint = firstMissing([[!reason.trim(), "Enter a reason"]]);
 
   if (!asking) {
     return (
       <Button variant="outline" onClick={() => setAsking(true)}>
-        {closeShort ? "Close short" : "Cancel order"}
+        {label}
       </Button>
     );
   }
@@ -26,26 +31,37 @@ export function CancelForm({ orderId, closeShort = false }: { orderId: string; c
       <Input
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        placeholder={closeShort ? "Reason for closing short" : "Reason for cancelling"}
-        aria-label={closeShort ? "Reason for closing short" : "Reason for cancelling"}
+        placeholder="Reason for cancelling"
+        aria-label="Reason for cancelling"
+        maxLength={300}
       />
       {error && <p className="text-sm text-destructive">{error}</p>}
+      <FormHint>{hint}</FormHint>
       <div className="flex gap-2">
-        <Button variant="outline" onClick={() => setAsking(false)} disabled={pending}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            clearError();
+            setAsking(false);
+          }}
+          disabled={pending}
+        >
           Back
         </Button>
         <Button
           variant="destructive"
-          disabled={pending}
+          disabled={pending || hint !== null}
           onClick={() =>
             start(async () => {
               const res = await cancelOrder(orderId, reason);
-              if (res.ok) router.refresh();
-              else setError(res.error);
+              if (res.ok) {
+                clearError();
+                router.refresh();
+              } else setError(res.error);
             })
           }
         >
-          {closeShort ? "Confirm close short" : "Confirm cancel"}
+          Confirm cancel
         </Button>
       </div>
     </div>

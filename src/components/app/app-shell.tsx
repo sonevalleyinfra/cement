@@ -4,8 +4,13 @@ import { BottomNav, type NavItem } from "./bottom-nav";
 /**
  * The frame every signed-in screen sits in: a header, one scrolling column
  * (max 448px, centred on bigger screens) and the bottom tabs.
- * The header holds only `headerLeft` (the firm switcher) and `headerRight` (the notification bell).
+ * The header holds only `headerLeft` (the app name, `AppTitle`) and `headerRight` (the notification bell).
  */
+/** The app name, large, at the left of the header. */
+export function AppTitle() {
+  return <span className="truncate text-xl font-extrabold tracking-tight">Cement</span>;
+}
+
 export function AppShell({
   headerLeft,
   headerRight,

@@ -2,10 +2,9 @@ import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { db } from "@/db";
-import { firms as firmsTable, retailers } from "@/db/schema";
-import { getAccessibleFirms } from "@/lib/firm-access";
+import { retailers } from "@/db/schema";
 import { getAllBalances } from "@/lib/ledger";
-import { duesFrom } from "@/lib/ledger-rules";
+import { balanceLine } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
 import { hasAnyRole, hasRole } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
@@ -20,8 +19,7 @@ export default async function LedgerPage() {
   const own = staff ? null : await ownRetailerId(user.id);
   if (!staff && !own) return <EmptyState title="Your login is not linked to a retailer" />;
 
-  const firms = staff ? await getAccessibleFirms(user.id, user.role) : await db.select().from(firmsTable).where(eq(firmsTable.active, true));
-  const balances = await getAllBalances(firms.map((f) => f.id));
+  const balances = await getAllBalances();
   const list = await db
     .select({ id: retailers.id, name: retailers.name, place: retailers.place })
     .from(retailers)
@@ -34,8 +32,7 @@ export default async function LedgerPage() {
       <h1 className="text-xl font-bold">Ledger</h1>
       <ul className="flex flex-col gap-3">
         {list.map((r, i) => {
-          const mine = balances.filter((b) => b.retailerId === r.id);
-          const dues = mine.reduce((n, b) => n + duesFrom(b.balancePaise), 0);
+          const line = balanceLine(balances.find((b) => b.retailerId === r.id)?.balancePaise ?? 0);
           return (
             <li key={r.id}>
               <ListCard
@@ -44,8 +41,10 @@ export default async function LedgerPage() {
                 title={r.place ? `${r.name} · ${r.place}` : r.name}
                 bottom={
                   <>
-                    <span className="text-xs text-muted-foreground">Dues{firms.length > 1 ? " (all firms)" : ""}</span>
-                    <span className="tabular text-lg font-bold">{formatINR(dues)}</span>
+                    <span className="text-xs text-muted-foreground">{line.label}</span>
+                    <span className={`tabular text-lg font-bold ${line.label === "Advance" ? "text-green-700" : ""}`}>
+                      {formatINR(line.amountPaise)}
+                    </span>
                   </>
                 }
               />

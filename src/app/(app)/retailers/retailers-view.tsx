@@ -1,21 +1,21 @@
 "use client";
 
 import { type FormEvent, useState, useTransition } from "react";
+import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
+import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { SelectField } from "@/components/app/select-field";
+import { TextLink } from "@/components/app/text-link";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { firstMissing } from "@/lib/form-rules";
 import { matchesRetailerSearch } from "@/lib/retailer-rules";
-import {
-  addRetailerFromLogin,
-  linkRetailerUser,
-  saveRetailer,
-  setRetailerActive,
-  setRetailerSalesRep,
-} from "./actions";
+import { useFormError } from "@/lib/use-form-error";
+import { addRetailer, saveShop, setRetailerActive } from "./actions";
 
 type Row = {
   id: string;
@@ -26,159 +26,70 @@ type Row = {
   userId: string | null;
   salesRepId: string | null;
   salesRepName: string;
+  loginName: string;
 };
 type Login = { id: string; label: string };
-type Pickable = { id: string; name: string; email: string; phone: string };
 
 export function RetailersView({
   rows,
   canEdit,
   logins,
-  pickable,
   salesReps,
+  onlyNoRep = false,
 }: {
   rows: Row[];
+  /** Admin: add, edit and turn off shops. */
   canEdit: boolean;
+  /** Retailer logins not linked to a shop yet; null = this viewer cannot link. */
   logins: Login[] | null;
-  pickable: Pickable[];
   /** Sales people admin may pick; null = this viewer cannot change it. */
   salesReps: Login[] | null;
+  /** Only the shops that need a sales person are listed (`?filter=no-rep`, from Home). */
+  onlyNoRep?: boolean;
 }) {
-  const [linkError, setLinkError] = useState("");
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [error, setError] = useState("");
-  const [pending, start] = useTransition();
+  const [query, setQuery] = useState("");
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const [search, setSearch] = useState("");
-  const [picked, setPicked] = useState<Pickable | null>(null);
-  const matches = pickable.filter((p) => matchesRetailerSearch(p, search));
-
-  function openSheet(row: Row) {
-    setEditing(row);
-    setError("");
-    setOpen(true);
-  }
-
-  function openAdd() {
-    setSearch("");
-    setPicked(null);
-    setError("");
-    setAdding(true);
-  }
-
-  function submitAdd(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!picked) return;
-    const place = String(new FormData(e.currentTarget).get("place") ?? "");
-    start(async () => {
-      const res = await addRetailerFromLogin(picked.id, place);
-      if (res.ok) setAdding(false);
-      else setError(res.error);
-    });
-  }
-
-  // onSubmit (not a form action) so the fields keep their text when there is an error.
-  function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!editing) return;
-    const formData = new FormData(e.currentTarget);
-    start(async () => {
-      const res = await saveRetailer(editing.id, {
-        name: String(formData.get("name") ?? ""),
-        phone: String(formData.get("phone") ?? ""),
-        place: String(formData.get("place") ?? ""),
-      });
-      if (res.ok) setOpen(false);
-      else setError(res.error);
-    });
-  }
+  const detail = rows.find((r) => r.id === detailId) ?? null;
+  const shown = rows.filter((r) => matchesRetailerSearch(r, query));
 
   return (
-    <>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-xl font-bold">Retailers</h1>
+        {onlyNoRep && <TextLink href="/retailers">All retailers</TextLink>}
+      </div>
+      {rows.length > 0 && (
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search name, phone or place"
+          aria-label="Search retailers"
+          autoComplete="off"
+        />
+      )}
       {rows.length === 0 ? (
-        <EmptyState title="No retailers" />
+        <EmptyState title={onlyNoRep ? "None left" : "No retailers"} />
+      ) : shown.length === 0 ? (
+        <EmptyState title="No match" />
       ) : (
         <ul className="flex flex-col gap-3">
-          {linkError && <p className="text-sm text-destructive">{linkError}</p>}
-          {rows.map((r, i) => (
+          {shown.map((r, i) => (
             <li key={r.id}>
               <ListCard
                 index={i}
                 title={r.name}
+                onClick={() => setDetailId(r.id)}
                 className={r.active ? undefined : "opacity-60"}
                 top={<span className="text-xs text-muted-foreground">{r.active ? "Active" : "Inactive"}</span>}
                 bottom={
-                  // One column so the pickers and buttons wrap inside the card on a phone.
-                  <div className="flex w-full min-w-0 flex-col gap-2">
-                    <div className="text-xs text-muted-foreground">
+                  <div className="flex w-full min-w-0 flex-col gap-0.5 text-xs text-muted-foreground">
+                    <span>
                       <span className="tabular">{r.phone}</span>
                       {r.place && ` · ${r.place}`}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {salesReps ? (
-                        <select
-                          aria-label={`Sales person for ${r.name}`}
-                          className="h-9 max-w-40 rounded-lg border bg-background px-2 text-xs"
-                          value={r.salesRepId ?? ""}
-                          disabled={pending}
-                          onChange={(e) =>
-                            start(async () => {
-                              const res = await setRetailerSalesRep(r.id, e.target.value || null);
-                              setLinkError(res.ok ? "" : res.error);
-                            })
-                          }
-                        >
-                          <option value="">No sales person</option>
-                          {/* Keep showing a current pick who is no longer active. */}
-                          {r.salesRepId && !salesReps.some((p) => p.id === r.salesRepId) && (
-                            <option value={r.salesRepId}>{r.salesRepName || "Former sales person"}</option>
-                          )}
-                          {salesReps.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">{r.salesRepName || "No sales person"}</div>
-                      )}
-                      {logins && (
-                        <select
-                          aria-label={`Login for ${r.name}`}
-                          className="h-9 max-w-40 rounded-lg border bg-background px-2 text-xs"
-                          value={r.userId ?? ""}
-                          disabled={pending}
-                          onChange={(e) =>
-                            start(async () => {
-                              const res = await linkRetailerUser(r.id, e.target.value || null);
-                              setLinkError(res.ok ? "" : res.error);
-                            })
-                          }
-                        >
-                          <option value="">No login</option>
-                          {logins.map((l) => (
-                            <option key={l.id} value={l.id}>
-                              {l.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {canEdit && (
-                        <div className="flex gap-2">
-                          <Button variant="outline" onClick={() => openSheet(r)}>
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            disabled={pending}
-                            onClick={() => start(async () => void (await setRetailerActive(r.id, !r.active)))}
-                          >
-                            {r.active ? "Turn off" : "Turn on"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                    </span>
+                    <span>{r.salesRepName || "No sales person"}</span>
                   </div>
                 }
               />
@@ -188,88 +99,239 @@ export function RetailersView({
       )}
       {canEdit && (
         <PinnedAction>
-          <Button onClick={openAdd}>Add</Button>
+          <Button onClick={() => setAdding(true)}>Add</Button>
         </PinnedAction>
       )}
-      <Sheet open={open} onOpenChange={setOpen} title="Edit retailer">
-        <form key={editing?.id ?? "none"} onSubmit={submit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" name="name" defaultValue={editing?.name ?? ""} autoComplete="off" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="phone">Phone</Label>
-            <Input id="phone" name="phone" type="tel" inputMode="numeric" defaultValue={editing?.phone ?? ""} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="place">Place</Label>
-            <Input id="place" name="place" defaultValue={editing?.place ?? ""} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={pending}>
-            Save
-          </Button>
-        </form>
-      </Sheet>
-      <Sheet open={adding} onOpenChange={setAdding} title={picked ? "New retailer" : "Pick retailer"}>
-        {picked ? (
-          <form onSubmit={submitAdd} className="flex flex-col gap-4">
-            <button
-              type="button"
-              onClick={() => setPicked(null)}
-              className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left shadow-card ring-1 ring-foreground/6"
-            >
-              <span className="font-semibold">{picked.name}</span>
-              <span className="text-xs text-muted-foreground">
-                <span className="tabular">{picked.phone}</span> · {picked.email}
-              </span>
-            </button>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-place">Place</Label>
-              <Input id="add-place" name="place" autoComplete="off" />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={pending}>
-              Add
-            </Button>
-          </form>
-        ) : (
-          <>
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, email or phone"
-              aria-label="Search retailers"
-              autoComplete="off"
-              className="mb-3"
-            />
-            <ul className="flex flex-col gap-2">
-              {matches.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPicked(p);
-                      setError("");
-                    }}
-                    className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left shadow-card ring-1 ring-foreground/6"
-                  >
-                    <span className="font-semibold">{p.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      <span className="tabular">{p.phone || "No phone"}</span> · {p.email}
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {matches.length === 0 && (
-                <li className="py-6 text-center text-muted-foreground">
-                  {pickable.length === 0 ? "No new retailers. Ask admin to add one." : "No match"}
-                </li>
-              )}
-            </ul>
-          </>
+      <Sheet open={detail !== null} onOpenChange={(o) => !o && setDetailId(null)} title={detail?.name ?? ""}>
+        {detail && (
+          <ShopDetail
+            key={detail.id}
+            row={detail}
+            canEdit={canEdit}
+            logins={logins}
+            salesReps={salesReps}
+            onDone={() => setDetailId(null)}
+          />
         )}
       </Sheet>
-    </>
+      <Sheet open={adding} onOpenChange={setAdding} title="New retailer">
+        {adding && <AddShop salesReps={salesReps ?? []} onDone={() => setAdding(false)} />}
+      </Sheet>
+    </div>
+  );
+}
+
+/**
+ * Everything about one shop in one place: details, sales person and login are saved together with one
+ * Save button. Turning a shop off asks "sure?" first. Without edit rights it is a read-only card.
+ */
+function ShopDetail({
+  row,
+  canEdit,
+  logins,
+  salesReps,
+  onDone,
+}: {
+  row: Row;
+  canEdit: boolean;
+  logins: Login[] | null;
+  salesReps: Login[] | null;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState(row.name);
+  const [phone, setPhone] = useState(row.phone);
+  const [place, setPlace] = useState(row.place);
+  const [repId, setRepId] = useState(row.salesRepId ?? "");
+  const [loginId, setLoginId] = useState(row.userId ?? "");
+  const [turningOff, setTurningOff] = useState(false);
+  const { error, setError, clearError } = useFormError([name, phone, place, repId, loginId, turningOff]);
+  const [pending, start] = useTransition();
+
+  if (!canEdit) {
+    return (
+      <dl className="flex flex-col gap-3 text-base">
+        <div>
+          <dt className="text-xs text-muted-foreground">Phone</dt>
+          <dd>
+            <a
+              href={`tel:${row.phone}`}
+              className="tabular -my-1 inline-flex min-h-12 items-center font-semibold underline underline-offset-2"
+            >
+              {row.phone}
+            </a>
+          </dd>
+        </div>
+        {row.place && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Place</dt>
+            <dd>{row.place}</dd>
+          </div>
+        )}
+        <div>
+          <dt className="text-xs text-muted-foreground">Sales person</dt>
+          <dd>{row.salesRepName || "None"}</dd>
+        </div>
+      </dl>
+    );
+  }
+
+  /** One save for everything (details, sales person, login): all of it is saved, or nothing. */
+  function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    clearError();
+    start(async () => {
+      const res = await saveShop(row.id, {
+        name,
+        phone,
+        place,
+        salesRepId: salesReps && repId && repId !== (row.salesRepId ?? "") ? repId : undefined,
+        userId: logins && loginId !== (row.userId ?? "") ? loginId || null : undefined,
+      });
+      if (res.ok) onDone();
+      else setError(res.error);
+    });
+  }
+
+  function switchTo(active: boolean) {
+    clearError();
+    start(async () => {
+      const res = await setRetailerActive(row.id, active);
+      if (res.ok) onDone();
+      else setError(res.error);
+    });
+  }
+
+  // A sales person or login who is no longer in the list is still shown while they are the current pick.
+  const repOptions = [
+    ...(row.salesRepId && !salesReps?.some((p) => p.id === row.salesRepId)
+      ? [{ value: row.salesRepId, label: row.salesRepName || "Former sales person" }]
+      : []),
+    ...(salesReps ?? []).map((p) => ({ value: p.id, label: p.label })),
+  ];
+  const loginOptions = [
+    { value: "", label: "No login" },
+    ...(row.userId && !logins?.some((l) => l.id === row.userId)
+      ? [{ value: row.userId, label: row.loginName || "Linked login" }]
+      : []),
+    ...(logins ?? []).map((l) => ({ value: l.id, label: l.label })),
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form onSubmit={save} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="shop-name">Name</Label>
+          <Input id="shop-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="shop-phone">Phone</Label>
+          <Input
+            id="shop-phone"
+            type="tel"
+            inputMode="numeric"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="shop-place">Place</Label>
+          <Input id="shop-place" value={place} onChange={(e) => setPlace(e.target.value)} autoComplete="off" />
+        </div>
+        {salesReps && (
+          <SelectField
+            label="Sales person"
+            value={repId}
+            onChange={setRepId}
+            placeholder="No sales person"
+            options={repOptions}
+          />
+        )}
+        {logins && <SelectField label="Login" value={loginId} onChange={setLoginId} options={loginOptions} />}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!turningOff && (
+          <Button type="submit" disabled={pending}>
+            {pending ? "Saving…" : "Save"}
+          </Button>
+        )}
+      </form>
+      {turningOff ? (
+        <ConfirmStep
+          question={`Turn off ${row.name}?`}
+          confirmLabel="Turn off"
+          destructive
+          pending={pending}
+          onBack={() => setTurningOff(false)}
+          onConfirm={() => switchTo(false)}
+        />
+      ) : row.active ? (
+        <Button variant="ghost" className="text-destructive" disabled={pending} onClick={() => setTurningOff(true)}>
+          Turn off
+        </Button>
+      ) : (
+        <Button variant="outline" disabled={pending} onClick={() => switchTo(true)}>
+          Turn on
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void }) {
+  const [rep, setRep] = useState("");
+  // The text fields are read with FormData, so the form's onInput clears the error.
+  const { error, setError, clearError } = useFormError();
+  const [pending, start] = useTransition();
+  const hint = firstMissing([[!rep, "Pick a sales person"]]);
+
+  // onSubmit (not a form action) so the fields keep their text when there is an error.
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    clearError();
+    const f = new FormData(e.currentTarget);
+    start(async () => {
+      const res = await addRetailer({
+        name: String(f.get("name") ?? ""),
+        phone: String(f.get("phone") ?? ""),
+        place: String(f.get("place") ?? ""),
+        salesRepId: rep,
+      });
+      if (res.ok) onDone();
+      else setError(res.error);
+    });
+  }
+
+  return (
+    <form onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-name">Name</Label>
+        <Input id="add-name" name="name" autoComplete="off" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-phone">Phone</Label>
+        <Input id="add-phone" name="phone" type="tel" inputMode="numeric" autoComplete="off" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-place">Place</Label>
+        <Input id="add-place" name="place" autoComplete="off" />
+      </div>
+      <SelectField
+        label="Sales person"
+        value={rep}
+        onChange={(v) => {
+          clearError();
+          setRep(v);
+        }}
+        placeholder="Pick one"
+        options={salesReps.map((p) => ({ value: p.id, label: p.label }))}
+      />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div>
+        <FormHint>{hint}</FormHint>
+        <Button className="w-full" type="submit" disabled={pending || hint !== null}>
+          Add
+        </Button>
+      </div>
+    </form>
   );
 }

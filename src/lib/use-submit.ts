@@ -1,0 +1,43 @@
+"use client";
+
+import { useRef, useState, useTransition } from "react";
+import { newRequestId } from "@/lib/ids";
+import { nextRequestId } from "@/lib/request-rules";
+
+/**
+ * For a form button that saves something. `run` ignores every tap after the first until the save
+ * answers (the button is also disabled by `pending`), and passes the form's one-time `requestId`
+ * (see lib/request-rules.ts) so the server never saves the same form twice.
+ * After every answer (saved, or refused and fully undone on the server) the form gets a fresh id,
+ * so fixing the form and saving again is a new save. If no answer came (the network dropped),
+ * it keeps the same id, so a retry can never save twice (`nextRequestId`).
+ */
+export function useSubmit() {
+  const [pending, startTransition] = useTransition();
+  const busy = useRef(false);
+  const [requestId, setRequestId] = useState(newRequestId);
+
+  function run<T extends { ok: boolean }>(save: (requestId: string) => Promise<T>, after?: (res: T) => void) {
+    if (busy.current) return;
+    busy.current = true;
+    const id = requestId;
+    startTransition(async () => {
+      let answered = false;
+      try {
+        const res = await save(id);
+        answered = true;
+        after?.(res);
+      } finally {
+        setRequestId((current) => nextRequestId(current, answered, newRequestId));
+        busy.current = false;
+      }
+    });
+  }
+
+  /** A new id, for a form that is opened again for a different record (for example the dispatch sheet). */
+  function renew() {
+    setRequestId(newRequestId());
+  }
+
+  return { pending, run, renew };
+}

@@ -1,6 +1,6 @@
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { asc, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { godowns, stockLocations, stockMovements, vehicles } from "@/db/schema";
+import { godowns, stockMovements, vehicles } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { placeKey, type PlaceKind, type PlaceRef } from "@/lib/stock-rules";
 
@@ -10,10 +10,10 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type Place = { key: string; kind: PlaceKind; id: string; name: string; active: boolean };
 
 /**
- * Places for a firm's stock forms: every active godown (by name), then the trucks (by number)
- * that hold this firm's bags right now. Trucks are hired and typed each time, so empty ones are left out. Server-only.
+ * Places for the stock forms: every active godown (by name), then the trucks (by number)
+ * that hold bags right now. Trucks are hired and typed each time, so empty ones are left out. Server-only.
  */
-export async function getPlaces({ firmId }: { firmId: string }): Promise<Place[]> {
+export async function getPlaces(): Promise<Place[]> {
   const [g, v] = await Promise.all([
     db
       .select({ id: godowns.id, name: godowns.name, active: godowns.active })
@@ -23,8 +23,7 @@ export async function getPlaces({ firmId }: { firmId: string }): Promise<Place[]
     db
       .select({ id: vehicles.id, name: vehicles.number, active: vehicles.active })
       .from(vehicles)
-      .innerJoin(stockLocations, and(eq(stockLocations.vehicleId, vehicles.id), eq(stockLocations.firmId, firmId)))
-      .innerJoin(stockMovements, eq(stockMovements.locationId, stockLocations.id))
+      .innerJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
       .where(eq(vehicles.active, true))
       .groupBy(vehicles.id, vehicles.number, vehicles.active)
       .having(gt(sql`sum(${stockMovements.bags})`, 0))
@@ -37,59 +36,41 @@ export async function getPlaces({ firmId }: { firmId: string }): Promise<Place[]
 }
 
 /**
- * This firm's stock row at a place, made the first time it is needed, and locked for the
- * rest of the transaction. The godown / vehicle itself is share-locked so it cannot be
- * switched off while bags arrive. Refused when the place is unknown or switched off.
+ * Locks the godown or truck for the rest of the transaction, so two people cannot take the
+ * same bags at once and the place cannot be switched off while bags arrive.
+ * Refused when the place is unknown or switched off.
  */
-export async function getLocation(
+export async function lockPlace(
   tx: Tx,
-  firmId: string,
   place: PlaceRef,
-): Promise<{ ok: true; locationId: string; name: string } | { ok: false; error: string }> {
-  const [master] =
+): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
+  const [row] =
     place.kind === "godown"
       ? await tx
           .select({ name: godowns.name, active: godowns.active })
           .from(godowns)
           .where(eq(godowns.id, place.id))
-          .for("share")
+          .for("no key update")
       : await tx
           .select({ name: vehicles.number, active: vehicles.active })
           .from(vehicles)
           .where(eq(vehicles.id, place.id))
-          .for("share");
-  if (!master || !master.active) return { ok: false, error: "Pick an active place." };
-  const isGodown = place.kind === "godown";
-  await tx
-    .insert(stockLocations)
-    .values({
-      firmId,
-      kind: place.kind,
-      name: master.name,
-      godownId: isGodown ? place.id : null,
-      vehicleId: isGodown ? null : place.id,
-    })
-    .onConflictDoNothing();
-  const [loc] = await tx
-    .select({ id: stockLocations.id })
-    .from(stockLocations)
-    .where(
-      and(
-        eq(stockLocations.firmId, firmId),
-        isGodown ? eq(stockLocations.godownId, place.id) : eq(stockLocations.vehicleId, place.id),
-      ),
-    )
-    .for("no key update");
-  return { ok: true, locationId: loc.id, name: master.name };
+          .for("no key update");
+  if (!row || !row.active) return { ok: false, error: "Pick an active place." };
+  return { ok: true, name: row.name };
 }
 
-/** Bags at a godown or vehicle, all firms together (for the switch-off check). */
+/** Rows of one place: the godown or truck column matches (for `where`). */
+export function atPlace(place: PlaceRef) {
+  return place.kind === "godown" ? eq(stockMovements.godownId, place.id) : eq(stockMovements.vehicleId, place.id);
+}
+
+/** Bags at a godown or truck, every product together (for the switch-off check). */
 export async function bagsAtPlace(tx: Tx, place: PlaceRef): Promise<number> {
   const [row] = await tx
     .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
     .from(stockMovements)
-    .innerJoin(stockLocations, eq(stockLocations.id, stockMovements.locationId))
-    .where(place.kind === "godown" ? eq(stockLocations.godownId, place.id) : eq(stockLocations.vehicleId, place.id));
+    .where(atPlace(place));
   return row?.bags ?? 0;
 }
 

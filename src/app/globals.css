@@ -39,17 +39,11 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --color-firm-a: var(--firm-a);
-  --color-firm-b: var(--firm-b);
-  --color-firm-c: var(--firm-c);
-  --color-firm-d: var(--firm-d);
-  --color-firm-e: var(--firm-e);
-  --color-firm-f: var(--firm-f);
   --color-status-pending: var(--status-pending);
   --color-status-approved: var(--status-approved);
   --color-status-rejected: var(--status-rejected);
   --color-status-dispatched: var(--status-dispatched);
-  --color-status-delivered: var(--status-delivered);
+  --color-status-cancelled: var(--status-cancelled);
   --color-brand: var(--brand);
   --color-brand-2: var(--brand-2);
   --shadow-card: 0 1px 2px oklch(0.3 0.03 60 / 0.05), 0 6px 20px -8px oklch(0.3 0.03 60 / 0.12);
@@ -102,20 +96,13 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* One accent per firm. Used only for the firm chip and the header accent. */
-  --firm-a: oklch(0.52 0.17 265);
-  --firm-b: oklch(0.56 0.11 195);
-  --firm-c: oklch(0.58 0.15 40);
-  --firm-d: oklch(0.55 0.13 145);
-  --firm-e: oklch(0.54 0.16 330);
-  --firm-f: oklch(0.62 0.12 90);
 
   /* Status colours. Used only on status chips. Each has a dot colour and a soft background. */
   --status-pending: oklch(0.7 0.14 80);
   --status-approved: oklch(0.58 0.14 155);
   --status-rejected: oklch(0.55 0.2 27);
   --status-dispatched: oklch(0.55 0.14 245);
-  --status-delivered: oklch(0.52 0.01 85);
+  --status-cancelled: oklch(0.52 0.01 85);
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }

@@ -4,26 +4,25 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { ledgerEntries, retailers } from "@/db/schema";
+import { writeAudit } from "@/lib/audit";
+import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
-import { openingEntry } from "@/lib/ledger-rules";
+import { adjustmentEntry, openingEntry } from "@/lib/ledger-rules";
 import { rolesFor } from "@/lib/permissions";
-import { requireFirm, requireRole, writeBlock } from "@/lib/session";
+import { checkRequestId } from "@/lib/request-rules";
+import { requireRole } from "@/lib/session";
 
 export type LedgerResult = { ok: true } | { ok: false; error: string };
 
-/** Admin sets the opening balance for one retailer with one firm (once). `owes` false = advance. */
+/** Admin sets the opening balance for one retailer (once). `owes` false = advance. */
 export async function setOpeningBalance(input: {
   retailerId: string;
-  firmId: string;
   rupeeDigits: string;
   owes: boolean;
 }): Promise<LedgerResult> {
   const session = await requireRole(...rolesFor("setOpeningBalance"));
-  if (!isUuid(input.firmId) || !isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
-  await requireFirm(input.firmId);
-  const blocked = await writeBlock();
-  if (blocked) return { ok: false, error: blocked };
+  if (!isUuid(input.retailerId)) return { ok: false, error: "Retailer not found." };
   if (typeof input.rupeeDigits !== "string" || !/^\d{1,9}$/.test(input.rupeeDigits)) return { ok: false, error: "Enter the amount." };
   const paise = Number(input.rupeeDigits) * 100;
   const signed = input.owes ? paise : -paise;
@@ -35,18 +34,19 @@ export async function setOpeningBalance(input: {
     // Lock the retailer so two clicks cannot both post an opening balance.
     await tx.select({ id: retailers.id }).from(retailers).where(eq(retailers.id, input.retailerId)).for("no key update");
     const existing = await tx
-      .select({ kind: ledgerEntries.kind, firmId: ledgerEntries.firmId, retailerId: ledgerEntries.retailerId })
+      .select({ kind: ledgerEntries.kind, retailerId: ledgerEntries.retailerId })
       .from(ledgerEntries)
-      .where(
-        and(
-          eq(ledgerEntries.retailerId, input.retailerId),
-          eq(ledgerEntries.firmId, input.firmId),
-          eq(ledgerEntries.kind, "opening"),
-        ),
-      );
-    const entry = openingEntry(existing, input.retailerId, input.firmId, signed);
+      .where(and(eq(ledgerEntries.retailerId, input.retailerId), eq(ledgerEntries.kind, "opening")));
+    const entry = openingEntry(existing, input.retailerId, signed);
     if (!entry.ok) return entry;
-    await postEntry(tx, entry.entry, session.user.id, "Opening balance");
+    const id = await postEntry(tx, entry.entry, session.user.id, "Opening balance");
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "ledger",
+      entityId: id,
+      action: "opening",
+      details: { retailerId: input.retailerId, amountPaise: signed },
+    });
     return { ok: true };
   });
   if (res.ok) {
@@ -55,4 +55,46 @@ export async function setOpeningBalance(input: {
     revalidatePath("/approvals");
   }
   return res;
+}
+
+/**
+ * Admin adds an adjustment to one retailer's ledger: `amountPaise` is signed
+ * (+ the retailer owes more, - owes less). A reason is required.
+ * `requestId` is the form's one-time id: a second tap adds nothing more (request-rules.ts).
+ */
+export async function addAdjustment(input: {
+  retailerId: string;
+  amountPaise: number;
+  reason: string;
+  requestId: string;
+}): Promise<LedgerResult> {
+  const session = await requireRole(...rolesFor("adjustLedger"));
+  if (!isUuid(input?.retailerId)) return { ok: false, error: "Retailer not found." };
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
+  const plan = adjustmentEntry(input.retailerId, Number(input.amountPaise), input.reason);
+  if (!plan.ok) return plan;
+  const res = await saveOnce({ id: request.id, kind: "ledger_adjustment", actorId: session.user.id }, async (tx) => {
+    const [retailer] = await tx
+      .select({ id: retailers.id })
+      .from(retailers)
+      .where(eq(retailers.id, input.retailerId))
+      .for("no key update");
+    if (!retailer) return { ok: false, error: "Retailer not found." };
+    const id = await postEntry(tx, plan.entry, session.user.id, plan.note);
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "ledger",
+      entityId: id,
+      action: "adjustment",
+      details: { retailerId: input.retailerId, amountPaise: plan.entry.amountPaise, reason: plan.note },
+    });
+    return { ok: true, resultId: id };
+  });
+  if (!res.ok) return res;
+  revalidatePath("/ledger");
+  revalidatePath(`/ledger/${input.retailerId}`);
+  revalidatePath("/approvals");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }

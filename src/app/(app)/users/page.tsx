@@ -1,21 +1,17 @@
-import { asc, eq, isNull } from "drizzle-orm";
+import { asc, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { firms, user, userFirms } from "@/db/schema";
+import { user } from "@/db/schema";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { UsersView } from "./users-view";
 
 export default async function UsersPage() {
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
-  const [users, firmList, links] = await Promise.all([
-    db
-      .select({ id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role, banned: user.banned })
-      .from(user)
-      .where(isNull(user.deletedAt))
-      .orderBy(asc(user.name)),
-    db.select({ id: firms.id, name: firms.name }).from(firms).where(eq(firms.active, true)).orderBy(asc(firms.createdAt), asc(firms.slot)),
-    db.select().from(userFirms),
-  ]);
+  const users = await db
+    .select({ id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role, banned: user.banned })
+    .from(user)
+    .where(isNull(user.deletedAt))
+    .orderBy(asc(user.name));
   const rows = users.map((u) => ({
     id: u.id,
     name: u.name,
@@ -23,7 +19,6 @@ export default async function UsersPage() {
     phone: u.phone,
     role: u.role ?? "",
     active: !u.banned,
-    firmIds: links.filter((l) => l.userId === u.id).map((l) => l.firmId),
   }));
-  return <UsersView rows={rows} firms={firmList} myId={me.id} />;
+  return <UsersView rows={rows} myId={me.id} />;
 }

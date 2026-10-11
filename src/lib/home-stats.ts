@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, isNotNull, notExists, notInArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, notExists, notInArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
@@ -10,44 +10,61 @@ import {
   stockMovements,
   walletMovements,
 } from "@/db/schema";
-import { ordersUserMayDispatch } from "@/lib/dispatch-rules";
-import { cashInHandPaise, istDayStart, logisticsCounts, retailersWithDues, totalDuesPaise } from "@/lib/home-rules";
-import { firmPeople } from "@/lib/logistics";
+import {
+  cashInHandPaise,
+  isOpenOrderStatus,
+  istDayStart,
+  LAST_PAYMENT_SKIPS,
+  logisticsCounts,
+  retailersWithDues,
+  shopsWithoutSalesRep,
+  totalDuesPaise,
+  truckLoads,
+} from "@/lib/home-rules";
+import { ORDER_STATUSES } from "@/lib/order-rules";
+import { getBalances } from "@/lib/stock";
+import { getSuppliers } from "@/lib/suppliers";
+import { walletBalance } from "@/lib/wallet-rules";
 
-/** Read-only numbers for the home screens. Server-only. `firmIds` is the firms in view (never empty here). */
+/** Read-only numbers for the home screens. Server-only. */
 
 const n = (v: number | undefined) => v ?? 0;
 
-async function countOrders(firmIds: string[], where: ReturnType<typeof and>) {
-  const [row] = await db
-    .select({ c: count() })
-    .from(orders)
-    .where(and(inArray(orders.firmId, firmIds), where));
+async function countOrders(where: SQL | undefined) {
+  const [row] = await db.select({ c: count() }).from(orders).where(where);
   return n(row?.c);
 }
 
-async function dueRows(firmIds: string[]) {
+/** Balance per retailer; `salesRepId` limits it to that sales person's shops. */
+async function dueRows(salesRepId?: string) {
   return db
     .select({
       retailerId: ledgerEntries.retailerId,
-      firmId: ledgerEntries.firmId,
       amountPaise: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number),
     })
     .from(ledgerEntries)
-    .where(inArray(ledgerEntries.firmId, firmIds))
-    .groupBy(ledgerEntries.retailerId, ledgerEntries.firmId);
+    .innerJoin(retailers, eq(retailers.id, ledgerEntries.retailerId))
+    .where(salesRepId ? eq(retailers.salesRepId, salesRepId) : undefined)
+    .groupBy(ledgerEntries.retailerId);
 }
 
-export async function getSalesHome(userId: string, firmIds: string[], now = new Date()) {
+/** Waiting for accounts: placed with the rate filled (isWaitingApproval in rate-rules). */
+const waitingApproval = and(eq(orders.status, "placed"), isNotNull(orders.ratePaise));
+/** Ready for logistics: approved or partly dispatched. */
+const toDispatch = inArray(orders.status, ["approved", "partly_dispatched"]);
+
+export async function getSalesHome(userId: string, now = new Date()) {
   const [pendingRate, today, dues] = await Promise.all([
-    countOrders(firmIds, and(eq(orders.salesRepId, userId), eq(orders.status, "placed"))),
-    countOrders(firmIds, and(eq(orders.salesRepId, userId), gte(orders.createdAt, istDayStart(now)))),
-    dueRows(firmIds),
+    // "Rate to fill": my shops' placed orders with no rate yet.
+    countOrders(and(eq(orders.salesRepId, userId), eq(orders.status, "placed"), isNull(orders.ratePaise))),
+    countOrders(and(eq(orders.salesRepId, userId), gte(orders.createdAt, istDayStart(now)))),
+    dueRows(userId),
   ]);
-  return { pendingRate, today, retailersWithDues: retailersWithDues(dues) };
+  return { pendingRate, today, retailersWithDues: retailersWithDues(dues), duesPaise: totalDuesPaise(dues) };
 }
 
-async function pendingHandoverPaise(firmIds: string[]) {
+/** Handover requests nobody has answered yet: how many, and how much cash. */
+async function pendingHandovers() {
   const answer = db
     .select({ one: sql`1` })
     .from(sql`${walletMovements} as a`)
@@ -58,40 +75,43 @@ async function pendingHandoverPaise(firmIds: string[]) {
       ),
     );
   const [row] = await db
-    .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number) })
+    .select({
+      c: count(),
+      p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number),
+    })
     .from(walletMovements)
-    .where(
-      and(
-        inArray(walletMovements.firmId, firmIds),
-        eq(walletMovements.kind, "handover_request"),
-        notExists(answer),
-      ),
-    );
-  return n(row?.p);
+    .where(and(eq(walletMovements.kind, "handover_request"), notExists(answer)));
+  return { count: n(row?.c), paise: n(row?.p) };
 }
 
-export async function getAccountsHome(firmIds: string[]) {
-  const [approvals, unverified, cheques, cash] = await Promise.all([
-    countOrders(firmIds, eq(orders.status, "rate_filled")),
-    db
-      .select({ c: count() })
-      .from(receipts)
-      .where(and(eq(receipts.mode, "online"), eq(receipts.status, "unverified"), inArray(receipts.receivedFirmId, firmIds))),
-    db
-      .select({ c: count() })
-      .from(receipts)
-      .where(and(eq(receipts.mode, "cheque"), eq(receipts.status, "pending"), inArray(receipts.receivedFirmId, firmIds))),
-    pendingHandoverPaise(firmIds),
+async function countUnverifiedOnline() {
+  const [row] = await db
+    .select({ c: count() })
+    .from(receipts)
+    .where(and(eq(receipts.mode, "online"), eq(receipts.status, "unverified")));
+  return n(row?.c);
+}
+
+export async function getAccountsHome() {
+  const [approvals, unverifiedOnline, handovers] = await Promise.all([
+    countOrders(waitingApproval),
+    countUnverifiedOnline(),
+    pendingHandovers(),
   ]);
-  return {
-    approvals,
-    unverifiedOnline: n(unverified[0]?.c),
-    pendingCheques: n(cheques[0]?.c),
-    cashToConfirmPaise: cash,
-  };
+  return { approvals, unverifiedOnline, handoversToConfirm: handovers.count, cashToConfirmPaise: handovers.paise };
 }
 
-export async function stockByProduct(firmIds: string[]) {
+/** One staff member's cash: held now, and how much of it waits for accounts to confirm. */
+export async function getMyCash(userId: string) {
+  const rows = await db
+    .select({ id: walletMovements.id, kind: walletMovements.kind, amountPaise: walletMovements.amountPaise, refId: walletMovements.refId })
+    .from(walletMovements)
+    .where(eq(walletMovements.collectorId, userId));
+  const b = walletBalance(rows);
+  return { heldPaise: b.balancePaise, pendingPaise: b.pendingPaise };
+}
+
+export async function stockByProduct() {
   return db
     .select({
       productId: stockMovements.productId,
@@ -100,58 +120,71 @@ export async function stockByProduct(firmIds: string[]) {
     })
     .from(stockMovements)
     .innerJoin(products, eq(products.id, stockMovements.productId))
-    .where(inArray(stockMovements.firmId, firmIds))
     .groupBy(stockMovements.productId, products.name)
     .orderBy(products.name);
 }
 
-/** Orders waiting for this logistics person: the same ones the dispatch list shows them. */
-export async function getLogisticsHome(user: { id: string; role: string | null | undefined }, firmIds: string[]) {
-  const [open, people, stock] = await Promise.all([
-    db
-      .select({ firmId: orders.firmId, logisticsId: orders.logisticsId, status: orders.status })
-      .from(orders)
-      .where(and(inArray(orders.firmId, firmIds), inArray(orders.status, ["approved", "assigned", "partly_dispatched"]))),
-    firmPeople(db, firmIds),
-    stockByProduct(firmIds),
+/** Orders waiting for logistics (the same ones the dispatch list shows) and the bags on each truck now. */
+export async function getLogisticsHome() {
+  const [open, balances, names] = await Promise.all([
+    db.select({ status: orders.status }).from(orders).where(toDispatch),
+    getBalances(),
+    db.select({ id: products.id, name: products.name }).from(products),
   ]);
-  return { ...logisticsCounts(ordersUserMayDispatch(user, open, people)), stock };
+  const productName = new Map(names.map((p) => [p.id, p.name]));
+  const trucks = truckLoads(balances.map((b) => ({ ...b, productName: productName.get(b.productId) ?? "Product" })));
+  return { ...logisticsCounts(open), trucks };
 }
 
-export async function getAdminHome(firmIds: string[], now = new Date()) {
+export async function getAdminHome(now = new Date()) {
   const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals] = await Promise.all([
-    countOrders(firmIds, gte(orders.createdAt, start)),
+  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, suppliers, shops] = await Promise.all([
+    countOrders(gte(orders.createdAt, start)),
     db
-      .select({ b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
+      .select({
+        b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number),
+        // Today's sales = dispatched bags x the rate stored on each dispatch (bigint, so no overflow).
+        v: sql<number>`coalesce(sum(${dispatches.bags}::bigint * ${dispatches.ratePaise}), 0)`.mapWith(Number),
+      })
       .from(dispatches)
-      .where(and(inArray(dispatches.firmId, firmIds), gte(dispatches.createdAt, start))),
-    dueRows(firmIds),
-    stockByProduct(firmIds),
-    walletSum(firmIds, "collected"),
-    walletSum(firmIds, "handover_confirmed"),
-    walletSum(firmIds, "reversed"),
-    countOrders(firmIds, eq(orders.status, "rate_filled")),
+      .where(gte(dispatches.createdAt, start)),
+    dueRows(),
+    stockByProduct(),
+    walletSum("collected"),
+    walletSum("handover_confirmed"),
+    walletSum("reversed"),
+    countOrders(waitingApproval),
+    countOrders(toDispatch),
+    countUnverifiedOnline(),
+    getSuppliers(),
+    db.select({ active: retailers.active, salesRepId: retailers.salesRepId }).from(retailers),
   ]);
   return {
     todayOrders,
     bagsDispatched: n(bagsRow[0]?.b),
+    salesTodayPaise: n(bagsRow[0]?.v),
     duesPaise: totalDuesPaise(dues),
     stockBags: stock.reduce((s, p) => s + p.bags, 0),
     cashInHandPaise: cashInHandPaise(collected, confirmed, reversed),
     approvals,
+    toDispatch: dispatchable,
+    unverifiedOnline,
+    /** Each supplier (one per brand) with what we owe it. */
+    suppliers,
+    /** Switched-on shops with no sales person (admin should give them one). */
+    shopsWithoutSalesRep: shopsWithoutSalesRep(shops),
   };
 }
 
-async function walletSum(firmIds: string[], kind: string) {
+async function walletSum(kind: string) {
   const [row] = await db
     .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number) })
     .from(walletMovements)
-    .where(and(inArray(walletMovements.firmId, firmIds), eq(walletMovements.kind, kind)));
+    .where(eq(walletMovements.kind, kind));
   return n(row?.p);
 }
 
-/** A retailer login's own open orders and balance (all firms). Null if the login has no shop. */
+/** A retailer login's own open orders and balance. Null if the login has no shop. */
 export async function getRetailerHome(userId: string) {
   const [shop] = await db
     .select({ id: retailers.id })
@@ -162,10 +195,17 @@ export async function getRetailerHome(userId: string) {
   const [open] = await db
     .select({ c: count() })
     .from(orders)
-    .where(and(eq(orders.retailerId, shop.id), notInArray(orders.status, ["rejected", "delivered", "cancelled"])));
+    .where(and(eq(orders.retailerId, shop.id), inArray(orders.status, ORDER_STATUSES.filter(isOpenOrderStatus))));
   const [bal] = await db
     .select({ p: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
     .from(ledgerEntries)
     .where(eq(ledgerEntries.retailerId, shop.id));
-  return { openOrders: n(open?.c), balancePaise: n(bal?.p) };
+  // Own payments only: the newest one that still stands (not rejected or reversed).
+  const [last] = await db
+    .select({ totalPaise: receipts.totalPaise, createdAt: receipts.createdAt })
+    .from(receipts)
+    .where(and(eq(receipts.retailerId, shop.id), notInArray(receipts.status, [...LAST_PAYMENT_SKIPS])))
+    .orderBy(desc(receipts.createdAt))
+    .limit(1);
+  return { openOrders: n(open?.c), balancePaise: n(bal?.p), lastPayment: last ?? null };
 }

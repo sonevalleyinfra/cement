@@ -2,24 +2,31 @@
  * Who gets told what, as plain functions (no database, no request).
  * Source: docs/idea.md section 8 (Notifications).
  *
- * Spec rows used:
- * - Order placed: accounts, sales rep
- * - Rate edited: accounts, admin, sales rep (also used for the first "rate filled")
- * - Approved / rejected: placer, sales rep, admin
- * - Assigned: the logistics member picked for the order
- * - Dispatched: retailer, sales rep
- * - Payment recorded: admin
- * - Handover / online verified: collector
+ * Spec rows used for orders:
+ * - Order placed: accounts, and the shop's sales person when the rate is missing. A shop with no
+ *   sales person: every admin too (they can fill the rate or give the shop a sales person), so
+ *   nothing gets stuck. This holds whoever placed it (the retailer, or a sales person covering).
+ * - Approved / rejected: placer, sales person; approved also: every logistics person
+ * - Dispatched: retailer, sales person
+ * - Rate changed: accounts, sales person, admin
  * Where the spec is silent (simplest choice):
- * - Delivered: retailer, sales rep (same as dispatched)
- * - Cancelled: placer, sales rep, admin
- * - Handover rejected and receipt reversed: collector (same as handover confirmed)
+ * - Rate filled (by the sales person or admin on a placed order): accounts and the sales person,
+ *   so accounts know it is ready to approve.
+ * - Cancelled: placer, sales person, the shop's login.
+ * Money rows (section 8, plus the simplest choice where it is silent):
+ * - Online payment recorded and cash handover request: accounts.
+ * - Handover confirmed / partly confirmed / rejected: the staff member who handed over.
+ * - Online verified / rejected and payment reversed: the staff member who recorded the payment.
+ * - Cash payment recorded: every admin (spec section 8), so the owner sees cash coming in.
  * Rules: the person who did the action is never told about their own action; nobody
- * gets the same notification twice; every title starts with the firm name; ORDER
- * messages never contain a price (retailers also read these). Money messages go to
- * staff only, so they may show the amount.
+ * gets the same notification twice; ORDER messages never contain a price (retailers also read these),
+ * except "Rate changed", which goes to staff only and says old → new rate and the reason
+ * (never to the shop's login, even if it were on the list).
+ * Money messages go to staff only, so they may show the amount.
  */
 import { formatINR } from "@/lib/money";
+import { rateMoveText } from "@/lib/rate-rules";
+import { bagsText, isAre } from "@/lib/words";
 
 export const NOTIFICATION_EVENTS = [
   "placed",
@@ -27,30 +34,35 @@ export const NOTIFICATION_EVENTS = [
   "rate_edited",
   "approved",
   "rejected",
-  "assigned",
   "dispatched",
-  "delivered",
   "cancelled",
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
 export type OrderPeople = {
-  /** Sales rep on the order (may be empty). */
+  /** Sales person on the order (may be empty). */
   salesRepId: string | null;
+  /** False for an older shop with no sales person of its own (a sales person placing for it is on the order). */
+  shopHasSalesRep: boolean;
   placedBy: string;
   /** The login linked to the retailer shop (may be empty). */
   retailerUserId: string | null;
-  /** Logistics person assigned to the order (empty until approval). */
-  logisticsId: string | null;
-  /** Accounts people who work on the order's firm. */
+  /** True while the order has no rate (a retailer's order waiting for its sales person). */
+  rateMissing: boolean;
+  /** Accounts people (not banned). */
   accountsIds: readonly string[];
+  /** Logistics people (not banned). */
+  logisticsIds: readonly string[];
   adminIds: readonly string[];
 };
 
 /** Money events: not about one order, staff only. */
 export const MONEY_EVENTS = [
-  "payment_recorded",
+  "cash_recorded",
+  "online_recorded",
   "online_verified",
+  "online_rejected",
+  "handover_requested",
   "handover_confirmed",
   "handover_rejected",
   "receipt_reversed",
@@ -85,101 +97,130 @@ export function recipientIds(
   let list: (string | null)[];
   switch (event) {
     case "placed":
-      list = [...people.accountsIds, people.salesRepId];
+      list = [
+        people.rateMissing ? people.salesRepId : null,
+        ...people.accountsIds,
+        ...(people.shopHasSalesRep ? [] : people.adminIds),
+      ];
       break;
     case "rate_filled":
-    case "rate_edited":
-      list = [...people.accountsIds, ...people.adminIds, people.salesRepId];
+      list = [...people.accountsIds, people.salesRepId];
       break;
-    case "assigned":
-      list = [people.logisticsId];
+    case "rate_edited":
+      list = [...people.accountsIds, people.salesRepId, ...people.adminIds];
       break;
     case "approved":
+      list = [people.placedBy, people.salesRepId, ...people.logisticsIds];
+      break;
     case "rejected":
-    case "cancelled":
-      list = [people.placedBy, people.salesRepId, ...people.adminIds];
+      list = [people.placedBy, people.salesRepId];
       break;
     case "dispatched":
-    case "delivered":
       list = [people.retailerUserId, people.salesRepId];
+      break;
+    case "cancelled":
+      list = [people.placedBy, people.salesRepId, people.retailerUserId];
       break;
   }
   return uniqueRecipients(list, actorId);
 }
 
-const MESSAGES: Record<NotificationEvent, (what: string) => { title: string; body: string }> = {
+const MESSAGES: Record<NotificationEvent, (what: string, bags: number) => { title: string; body: string }> = {
   placed: (w) => ({ title: "New order", body: `${w} placed.` }),
-  rate_filled: (w) => ({ title: "Rate filled", body: `${w} is waiting for approval.` }),
-  rate_edited: (w) => ({ title: "Rate edited", body: `${w}.` }),
+  rate_filled: (w) => ({ title: "Rate filled", body: `${w} waiting for approval.` }),
+  rate_edited: (w) => ({ title: "Rate changed", body: `${w}.` }),
   approved: (w) => ({ title: "Order approved", body: `${w} approved.` }),
   rejected: (w) => ({ title: "Order rejected", body: `${w} rejected.` }),
-  assigned: (w) => ({ title: "Order assigned", body: `${w} to dispatch.` }),
-  dispatched: (w) => ({ title: "Order dispatched", body: `${w} is on its way.` }),
-  delivered: (w) => ({ title: "Order delivered", body: `${w} delivered.` }),
+  dispatched: (w, bags) => ({ title: "Order dispatched", body: `${w} ${isAre(bags)} on the way.` }),
   cancelled: (w) => ({ title: "Order cancelled", body: `${w} cancelled.` }),
 };
 
+/** A rate change for staff: "₹350 → ₹360. Reason: price up" (the old rate may be empty). */
+export type RateChange = { fromPaise: number | null; toPaise: number; reason: string };
+
+export function rateChangeText(rate: RateChange): string {
+  const move = rateMoveText(rate.fromPaise, rate.toPaise);
+  const reason = rate.reason.trim();
+  return reason ? `${move}. Reason: ${reason}` : move;
+}
+
 export function buildNotifications(input: {
   event: NotificationEvent;
-  firmName: string;
   retailerName: string;
   bags: number;
   people: OrderPeople;
   actorId: string | null;
+  /** Only used for "rate_edited": the old and new rate and why (staff only). */
+  rate?: RateChange | null;
 }): NotificationDraft[] {
-  const { event, firmName, retailerName, bags, people, actorId } = input;
-  const msg = MESSAGES[event](`${retailerName}, ${bags} ${bags === 1 ? "bag" : "bags"}`);
+  const { event, retailerName, bags, people, actorId } = input;
+  const what = `${retailerName}, ${bagsText(bags)}`;
+  const msg = MESSAGES[event](what, bags);
+  const staffBody = event === "rate_edited" && input.rate ? `${what}: ${rateChangeText(input.rate)}.` : msg.body;
   return recipientIds(event, people, actorId).map((userId) => ({
     userId,
     type: event,
-    title: `${firmName}: ${msg.title}`,
-    body: msg.body,
+    title: msg.title,
+    body: userId === people.retailerUserId ? msg.body : staffBody,
     link: null,
   }));
 }
 
+/** Events that go to accounts. A cash payment goes to admins; every other money event goes to the staff member it is about. */
+const TO_ACCOUNTS: readonly MoneyEvent[] = ["online_recorded", "handover_requested"];
+
+/** The people a money event may go to (all staff, never a retailer). */
+export type MoneyPeople = {
+  /** Accounts people (not banned). */
+  accountsIds: readonly string[];
+  /** Admins (not banned). */
+  adminIds: readonly string[];
+  /** The staff member the event is about (who recorded the payment / handed over the cash). */
+  collectorId: string | null;
+};
+
 /** Who is told about a money event. */
-export function moneyRecipientIds(
-  event: MoneyEvent,
-  people: { adminIds: readonly string[]; collectorId: string | null },
-  actorId: string | null,
-): string[] {
-  const list = event === "payment_recorded" ? people.adminIds : [people.collectorId];
+export function moneyRecipientIds(event: MoneyEvent, people: MoneyPeople, actorId: string | null): string[] {
+  const list =
+    event === "cash_recorded"
+      ? people.adminIds
+      : TO_ACCOUNTS.includes(event)
+        ? people.accountsIds
+        : [people.collectorId];
   return uniqueRecipients(list, actorId);
 }
 
 /** Where a money notification opens when the caller gives no link. */
 export function defaultMoneyLink(event: MoneyEvent): string {
-  return event === "handover_confirmed" || event === "handover_rejected" ? "/wallet" : "/receipts";
+  if (event === "online_recorded") return "/receipts/review";
+  return event.startsWith("handover_") ? "/wallet" : "/receipts";
 }
 
-/** "Firm A + Firm B" (blank and repeated names dropped). */
-export function joinFirmNames(firmNames: readonly string[]): string {
-  const names: string[] = [];
-  for (const n of firmNames) {
-    const clean = n.trim();
-    if (clean && !names.includes(clean)) names.push(clean);
-  }
-  return names.join(" + ");
-}
+type MoneyText = { amount: string; from: string; of: string };
 
-const MONEY_MESSAGES: Record<MoneyEvent, (amount: string, from: string) => { title: string; body: string }> = {
-  payment_recorded: (a, f) => ({ title: "Payment recorded", body: `${a}${f}.` }),
-  online_verified: (a, f) => ({ title: "Online payment verified", body: `${a}${f} verified.` }),
-  handover_confirmed: (a) => ({ title: "Handover confirmed", body: `${a} cash handover confirmed.` }),
-  handover_rejected: (a) => ({ title: "Handover rejected", body: `${a} cash handover rejected.` }),
-  receipt_reversed: (a, f) => ({ title: "Receipt reversed", body: `${a}${f} reversed.` }),
+const MONEY_MESSAGES: Record<MoneyEvent, (t: MoneyText) => { title: string; body: string }> = {
+  cash_recorded: (t) => ({ title: "Cash payment", body: `${t.amount} cash${t.from}.` }),
+  online_recorded: (t) => ({ title: "Online payment to verify", body: `${t.amount}${t.from}.` }),
+  online_verified: (t) => ({ title: "Online payment verified", body: `${t.amount}${t.from} verified.` }),
+  online_rejected: (t) => ({ title: "Online payment rejected", body: `${t.amount}${t.from} rejected.` }),
+  handover_requested: (t) => ({ title: "Cash handover", body: `${t.amount} cash to confirm.` }),
+  handover_confirmed: (t) =>
+    t.of
+      ? { title: "Handover partly confirmed", body: `${t.amount} of ${t.of} received. The rest stays with you.` }
+      : { title: "Handover confirmed", body: `${t.amount} cash handover confirmed.` },
+  handover_rejected: (t) => ({ title: "Handover rejected", body: `${t.amount} cash handover rejected.` }),
+  receipt_reversed: (t) => ({ title: "Payment reversed", body: `${t.amount}${t.from} reversed.` }),
 };
 
 export type MoneyNotificationInput = {
   event: MoneyEvent;
-  /** Every firm the money belongs to (a receipt can be split across firms). */
-  firmNames: readonly string[];
   /** The shop that paid, when there is one (not for handovers). */
   retailerName?: string | null;
   /** Integer paise. */
   amountPaise: number;
-  people: { adminIds: readonly string[]; collectorId: string | null };
+  /** For a handover confirmed in part: the amount that was asked for. */
+  requestedPaise?: number | null;
+  people: MoneyPeople;
   actorId: string | null;
   /** Internal path to open, e.g. "/receipts/<id>". Default: see defaultMoneyLink. */
   link?: string | null;
@@ -187,18 +228,22 @@ export type MoneyNotificationInput = {
   reason?: string | null;
 };
 
-/** Drafts for a money event, e.g. title "Firm A + Firm B: Payment recorded", body "₹5,000.00 from Raju Stores." */
+/** Drafts for a money event, e.g. title "Online payment verified", body "₹5,000.00 from Raju Stores verified." */
 export function buildMoneyNotifications(input: MoneyNotificationInput): NotificationDraft[] {
-  const firms = joinFirmNames(input.firmNames);
   const from = input.retailerName?.trim() ? ` from ${input.retailerName.trim()}` : "";
-  const msg = MONEY_MESSAGES[input.event](formatINR(input.amountPaise), from);
+  const part = input.requestedPaise != null && input.requestedPaise > input.amountPaise;
+  const msg = MONEY_MESSAGES[input.event]({
+    amount: formatINR(input.amountPaise),
+    from,
+    of: part ? formatINR(input.requestedPaise!) : "",
+  });
   const reason = input.reason?.trim();
   const body = reason ? `${msg.body} Reason: ${reason}` : msg.body;
   const link = input.link ?? defaultMoneyLink(input.event);
   return moneyRecipientIds(input.event, input.people, input.actorId).map((userId) => ({
     userId,
     type: input.event,
-    title: firms ? `${firms}: ${msg.title}` : msg.title,
+    title: msg.title,
     body,
     link,
   }));

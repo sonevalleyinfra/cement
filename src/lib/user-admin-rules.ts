@@ -1,4 +1,5 @@
 /** Rules for the users page. Plain functions: no database, no request. */
+import { formatINR } from "@/lib/money";
 import { checkTempPassword } from "@/lib/password-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/retailer-rules";
 import { isRole, parseRoles, type Role } from "@/lib/roles";
@@ -11,7 +12,6 @@ export type UserInput = {
   email: string;
   phone: string;
   roles: Role[];
-  firmIds: string[];
   password: string | null;
 };
 
@@ -19,15 +19,14 @@ export type UserCheck =
   | { ok: true; value: UserInput }
   | { ok: false; error: string };
 
-/** Checks the roles and firms chosen for a user. Returns an error message or null. */
-export function checkRolesAndFirms(roles: readonly string[], firmIds: readonly string[]): string | null {
+/** Checks the roles chosen for a user. Returns an error message or null. */
+export function checkRoles(roles: readonly string[]): string | null {
   if (roles.length === 0) return "Pick at least one role";
   if (!roles.every(isRole)) return "Unknown role";
   const set = new Set<string>(roles);
   if (set.has("retailer") && STAFF_ROLES.some((r) => set.has(r))) {
     return "A retailer cannot also have a staff role";
   }
-  if (!set.has("admin") && firmIds.length === 0) return "Pick at least one firm";
   return null;
 }
 
@@ -35,6 +34,21 @@ export function checkRolesAndFirms(roles: readonly string[], firmIds: readonly s
 export function cleanUserPhone(raw: string | null | undefined): string | null {
   const phone = normalizePhone(raw ?? "");
   return isValidIndianMobile(phone) ? phone : null;
+}
+
+/**
+ * The phone when admin edits a user. A phone that is typed must be a 10-digit mobile. Left empty
+ * is fine only for someone who never had one (users made before phones were asked for), so their
+ * roles or password can still be changed; a phone that was saved cannot be wiped.
+ * (Creating a user always needs a phone: validateNewUser.)
+ */
+export function checkEditedPhone(
+  raw: string | null | undefined,
+  savedPhone: string | null | undefined,
+): { ok: true; phone: string } | { ok: false; error: string } {
+  if ((raw ?? "").trim() === "" && !savedPhone) return { ok: true, phone: "" };
+  const phone = cleanUserPhone(raw);
+  return phone ? { ok: true, phone } : { ok: false, error: "Enter a 10-digit mobile" };
 }
 
 /** Cleans an email (trimmed, lower case). Returns it, or null if it does not look like an email. */
@@ -52,7 +66,6 @@ export function validateNewUser(raw: {
   email?: string | null;
   phone?: string | null;
   roles?: readonly string[];
-  firmIds?: readonly string[];
   password?: string | null;
 }): UserCheck {
   const name = (raw.name ?? "").trim().replace(/\s+/g, " ");
@@ -62,12 +75,11 @@ export function validateNewUser(raw: {
   const phone = cleanUserPhone(raw.phone);
   if (!phone) return { ok: false, error: "Enter a 10-digit mobile" };
   const roles = [...new Set(raw.roles ?? [])];
-  const firmIds = [...new Set(raw.firmIds ?? [])];
-  const problem = checkRolesAndFirms(roles, firmIds);
+  const problem = checkRoles(roles);
   if (problem) return { ok: false, error: problem };
   const password = checkTempPassword(raw.password);
   if (!password.ok) return password;
-  return { ok: true, value: { name, email, phone, roles: roles as Role[], firmIds, password: password.value } };
+  return { ok: true, value: { name, email, phone, roles: roles as Role[], password: password.value } };
 }
 
 /** An admin must not remove their own admin role. Returns an error or null. */
@@ -113,4 +125,19 @@ export function usersInTab<T extends { role: string; active: boolean }>(
     const roles = parseRoles(r.role);
     return tab === "none" ? roles.length === 0 : roles.includes(tab);
   });
+}
+
+/** True when these roles leave the person no staff role (so they could no longer hand over cash). */
+export function dropsAllStaffRoles(newRoles: readonly string[]): boolean {
+  return !newRoles.some((r) => (STAFF_ROLES as readonly string[]).includes(r));
+}
+
+/**
+ * Someone who still holds cash cannot be deactivated, deleted or lose every staff role: the cash
+ * would be stuck with nobody to hand it over. `heldPaise` = their cash held now (handovers still
+ * waiting for accounts count as held). Returns an error or null.
+ */
+export function checkCashHeld(heldPaise: number): string | null {
+  if (heldPaise > 0) return `Ask them to hand over ${formatINR(heldPaise, { hidePaise: true })} first.`;
+  return null;
 }

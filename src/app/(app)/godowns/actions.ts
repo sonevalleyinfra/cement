@@ -3,7 +3,7 @@
 import { eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { godowns, stockLocations } from "@/db/schema";
+import { godowns } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { changedFields } from "@/lib/audit-rules";
 import { isDuplicateName } from "@/lib/catalogue-rules";
@@ -22,7 +22,7 @@ function done(): GodownResult {
   return { ok: true };
 }
 
-/** Adds a godown (id null) or changes its name / address. Shared by all firms. Admin only. */
+/** Adds a godown (id null) or changes its name / address. Admin only. */
 export async function saveGodown(id: string | null, form: { name: string; address: string }): Promise<GodownResult> {
   const session = await requireRole(...rolesFor("manageStock"));
   if (id !== null && !isUuid(id)) return { ok: false, error: "Godown not found." };
@@ -42,8 +42,6 @@ export async function saveGodown(id: string | null, form: { name: string; addres
       const [before] = await tx.select().from(godowns).where(eq(godowns.id, id)).limit(1);
       if (!before) return { ok: false, error: "Godown not found." };
       await tx.update(godowns).set({ name, address, updatedAt: new Date() }).where(eq(godowns.id, id));
-      // Keep the old name copy on each firm's row in step (screens read the godown's own name).
-      await tx.update(stockLocations).set({ name }).where(eq(stockLocations.godownId, id));
       const diff = changedFields(before, { name, address });
       if (diff) await writeAudit(tx, { actorId, entity: "godown", entityId: id, action: "update", details: diff });
     } else {
@@ -55,12 +53,12 @@ export async function saveGodown(id: string | null, form: { name: string; addres
   return res.ok ? done() : res;
 }
 
-/** Switches a godown on or off for all firms. Off is refused while any firm has bags there. */
+/** Switches a godown on or off. Off is refused while it holds bags. */
 export async function setGodownActive(id: string, active: boolean): Promise<GodownResult> {
   const session = await requireRole(...rolesFor("manageStock"));
   if (!isUuid(id)) return { ok: false, error: "Godown not found." };
   const res = await db.transaction(async (tx): Promise<GodownResult> => {
-    // Stock entries share-lock the godown, so bags cannot arrive while we check.
+    // Stock entries lock the godown too, so bags cannot arrive while we check.
     const [row] = await tx.select().from(godowns).where(eq(godowns.id, id)).for("update");
     if (!row) return { ok: false, error: "Godown not found." };
     if (!active) {
