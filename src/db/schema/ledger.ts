@@ -9,6 +9,7 @@ import { retailers } from "./retailers";
 /**
  * Retailer ledger, one per retailer. Append-only: rows are never edited
  * or deleted, a mistake is fixed by adding a new compensating row.
+ * Enforced by DB triggers (drizzle/0037_books_append_only.sql).
  *
  * `amountPaise` is SIGNED: positive = the retailer owes more (debit),
  * negative = the retailer owes less (credit). Balance = sum of the amounts.
