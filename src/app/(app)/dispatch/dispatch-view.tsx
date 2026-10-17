@@ -223,7 +223,7 @@ export function DispatchView({
               <FormHint>
                 {firstMissing([
                   [Number(bags || 0) < 1, "Enter the bags"],
-                  [chosenPlace === "", "Pick where the bags come from"],
+                  [chosenPlace === "" && options.length > 0, "Pick where the bags come from"],
                 ])}
               </FormHint>
               <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1 || chosenPlace === ""}>
