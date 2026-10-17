@@ -5,11 +5,11 @@
  * A person with several staff roles gets the first match in that order.
  */
 import type { NavItem } from "@/components/app/bottom-nav";
-import { hasAnyRole, hasRole, isAdmin } from "./roles";
+import { hasRole, isAdmin } from "./roles";
 
 export function thirdTab(role: string | null | undefined): NavItem {
   if (isAdmin(role) || hasRole(role, "sales")) return { href: "/retailers", label: "Retailers", icon: "retailers" };
-  if (hasRole(role, "accounts")) return { href: "/receipts", label: "Payments", icon: "money" };
+  if (hasRole(role, "accounts")) return { href: "/receipts", label: "Payments", icon: "receipts" };
   if (hasRole(role, "logistics")) return { href: "/stock", label: "Stock", icon: "stock" };
   return { href: "/ledger", label: "Dues", icon: "money" };
 }
@@ -23,7 +23,7 @@ export function navFor(role: string | null | undefined): NavItem[] {
   ];
 }
 
-/** A shop's login already has Dues in the tabs, so More does not list Ledger a second time. */
+/** More does not repeat the role's own third tab (a shop's Ledger, accounts' Payments, logistics' Stock). */
 export function moreHides(role: string | null | undefined, href: string): boolean {
-  return href === "/ledger" && !hasAnyRole(role, ["sales", "accounts", "logistics"]);
+  return href === thirdTab(role).href;
 }

@@ -5,7 +5,7 @@ describe("navFor", () => {
   it("gives each role its third tab", () => {
     expect(thirdTab("sales").href).toBe("/retailers");
     expect(thirdTab("admin").href).toBe("/retailers");
-    expect(thirdTab("accounts")).toMatchObject({ href: "/receipts", label: "Payments" });
+    expect(thirdTab("accounts")).toMatchObject({ href: "/receipts", label: "Payments", icon: "receipts" });
     expect(thirdTab("logistics")).toMatchObject({ href: "/stock", label: "Stock" });
     expect(thirdTab("retailer")).toMatchObject({ href: "/ledger", label: "Dues" });
     expect(thirdTab(null).href).toBe("/ledger");
@@ -25,5 +25,12 @@ describe("moreHides", () => {
     expect(moreHides("accounts", "/ledger")).toBe(false);
     expect(moreHides("admin", "/ledger")).toBe(false);
     expect(moreHides("retailer", "/receipts")).toBe(false);
+  });
+  it("hides the row the third tab already shows", () => {
+    expect(moreHides("accounts", "/receipts")).toBe(true);
+    expect(moreHides("logistics", "/stock")).toBe(true);
+    expect(moreHides("accounts,logistics", "/stock")).toBe(false);
+    expect(moreHides("sales", "/stock")).toBe(false);
+    expect(moreHides("admin", "/stock")).toBe(false);
   });
 });
