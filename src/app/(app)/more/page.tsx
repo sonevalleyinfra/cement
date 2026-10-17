@@ -18,6 +18,7 @@ import {
 import Link from "next/link";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { Button } from "@/components/ui/button";
+import { moreHides } from "@/lib/nav-rules";
 import { can, type Action } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
 import { signOut } from "../dashboard/actions";
@@ -42,7 +43,7 @@ const rows: Row[] = [
 
 export default async function MorePage() {
   const { user } = await requireUser();
-  const visible = rows.filter((r) => !r.permission || can(user.role, r.permission));
+  const visible = rows.filter((r) => (!r.permission || can(user.role, r.permission)) && !moreHides(user.role, r.href));
   return (
     <ul className="flex flex-col gap-3">
       {visible.map((r, i) => (

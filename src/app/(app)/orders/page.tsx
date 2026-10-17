@@ -82,12 +82,12 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const sentOf = (id: string) => loadsOf(id).reduce((n, l) => n + l.bags, 0);
 
   const canPlace = canPlaceOrder(user.role);
-  const tabs = orderFilterTabs(user.role).map((f) => ({ value: orderFilterValue(f), label: ORDER_FILTER_LABELS[f] }));
+  const tabs = orderFilterTabs(user.role).map((f) => ({ value: orderFilterValue(f, user.role), label: ORDER_FILTER_LABELS[f] }));
 
   return (
     <>
       <div className="mb-3">
-        <FilterTabs path="/orders" param="show" value={orderFilterValue(filter)} tabs={tabs} label="Show orders" />
+        <FilterTabs path="/orders" param="show" value={orderFilterValue(filter, user.role)} tabs={tabs} label="Show orders" />
       </div>
       {rows.length === 0 ? (
         <EmptyState title={ORDER_FILTER_EMPTY[filter]} />

@@ -3,7 +3,8 @@
  * The picked tab is the `show` value in the address (`/orders?show=rate`), so Home cards can link to it.
  *
  * Choices where the spec is silent (kept short, one tab per job):
- * - "All" is the default (no `show` in the address): the list is what it always was.
+ * - The default tab (no `show` in the address) is the person's own job: sales "Rate to fill",
+ *   accounts "To approve", logistics "To send", a shop "Open", admin "All".
  * - Staff get a tab for each job they hold: sales "Rate to fill", accounts "To approve",
  *   logistics "To send" (admin holds every job), then "Open" and "All".
  * - Anyone else (a shop's own login) gets "Open", "Done" and "All". Nothing in a tab shows a price.
@@ -46,11 +47,17 @@ export function orderFilterTabs(role: string | null | undefined): OrderFilter[] 
   return [...tabs, "open", "all"];
 }
 
-/** The picked tab from the address: a tab this person has, else "All". */
+/** The tab shown when the address has none: the person's own job, admin and anyone unknown "All". */
+export function defaultOrderFilter(role: string | null | undefined): OrderFilter {
+  if (isAdmin(role)) return "all";
+  return orderFilterTabs(role)[0];
+}
+
+/** The picked tab from the address: a tab this person has, else their default tab. */
 export function parseOrderFilter(raw: unknown, role: string | null | undefined): OrderFilter {
   const value = Array.isArray(raw) ? raw[0] : raw;
   const tabs = orderFilterTabs(role);
-  return typeof value === "string" && (tabs as string[]).includes(value) ? (value as OrderFilter) : "all";
+  return typeof value === "string" && (tabs as string[]).includes(value) ? (value as OrderFilter) : defaultOrderFilter(role);
 }
 
 export type OrderFilterSpec = {
@@ -82,7 +89,7 @@ export function rateFilterOwnShopsOnly(role: string | null | undefined, filter: 
   return filter === "rate" && !isAdmin(role) && hasRole(role, "sales");
 }
 
-/** The address for a tab: "" for the default (All), else "?show=...". */
-export function orderFilterValue(filter: OrderFilter): string {
-  return filter === "all" ? "" : filter;
+/** The address for a tab: "" for this person's default tab, else "?show=...". */
+export function orderFilterValue(filter: OrderFilter, role: string | null | undefined): string {
+  return filter === defaultOrderFilter(role) ? "" : filter;
 }
