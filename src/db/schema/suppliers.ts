@@ -10,6 +10,7 @@ import { stockMovements } from "./stock";
  * Supplier accounts, one per brand: what the business owes each brand's company ("Prism account",
  * "UltraTech account"). Every row belongs to one brand. Append-only: rows are never edited or
  * deleted, a mistake is fixed by adding an adjustment with a reason.
+ * Enforced by DB triggers (drizzle/0037_books_append_only.sql).
  * (Called `prism_ledger_entries` before brands came back; migration 0034 renamed it.)
  *
  * `amountPaise` is SIGNED: positive = we owe the supplier more, negative = we owe less.
