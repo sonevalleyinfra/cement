@@ -33,7 +33,8 @@ export async function requestHandover(input: { amountPaise: number; requestId: s
     // Lock the staff member's row so two requests (or a reversal) cannot use the same cash.
     await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
     const rows = await tx.select().from(walletMovements).where(eq(walletMovements.collectorId, session.user.id));
-    const check = validateHandoverRequest(amount, walletBalance(rows).availablePaise);
+    const balance = walletBalance(rows);
+    const check = validateHandoverRequest(amount, balance.availablePaise, balance.pendingPaise);
     if (!check.ok) return check;
     const [request] = await tx
       .insert(walletMovements)
@@ -66,7 +67,7 @@ export async function requestHandover(input: { amountPaise: number; requestId: s
 }
 
 /**
- * Accounts or admin answer one handover request: "Received" for the full amount, a smaller
+ * Accounts or admin answer one handover request: "Confirm" for the full amount, a smaller
  * amount actually received (the rest stays with the staff member), or reject with a reason.
  */
 export async function answerHandover(requestId: string, answer: HandoverAnswer): Promise<WalletResult> {

@@ -56,7 +56,10 @@ export function ApprovalCard({
           {formatINR(orderTotalPaise(order.bags, order.ratePaise))}
         </div>
       </div>
-      <div className="text-xs text-muted-foreground">Dues {formatINR(duesPaise)}</div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">Dues</span>
+        <span className="tabular font-semibold">{formatINR(duesPaise)}</span>
+      </div>
       {rejecting ? (
         <div className="flex flex-col gap-2">
           <Input
@@ -67,7 +70,7 @@ export function ApprovalCard({
           />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <FormHint>{hint}</FormHint>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -86,7 +89,7 @@ export function ApprovalCard({
       ) : (
         <>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
               onClick={() => {

@@ -11,3 +11,4 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-10-18 · PR #39 · Sales shortcuts: Home Record payment, retailer sheet Record payment/New order with ?retailer prefill, picker overlay fix, order retailer label · t_dae52ece
 - 2026-10-18 · PR #41 · Polish: payment form retailer picker matches order form (label + chevron), retailer details re-indent · t_10ee41ab
 - 2026-10-18 · PR #43 · Deactivating a sales person who has shops is refused; shops whose rep is inactive count in Home's Without sales person card and notify admin · t_661eff2f
+- 2026-10-18 · PR #41 · Decision cards: dispatch card opens sheet + truck chips + take-from only places with enough bags; one Reject/Confirm layout on approvals, receipts verify, wallet; Verify/Confirm verbs, Cash recorded chip, handover pending error · t_15362fe7

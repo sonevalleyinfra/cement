@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDispatchFields, isDispatchable, planDispatch, truckAfterPlacePick } from "./dispatch-rules";
+import { checkDispatchFields, isDispatchable, planDispatch, placesWithEnough, truckAfterPlacePick, truckChips } from "./dispatch-rules";
 
 describe("isDispatchable", () => {
   it("allows approved and partly dispatched only", () => {
@@ -80,5 +80,57 @@ describe("truckAfterPlacePick", () => {
     expect(truckAfterPlacePick("BR01AB1234", "BR01AB1234", null)).toEqual({ truck: "", autoFilled: null });
     // Edited after it was filled in: the person typed it, so keep it.
     expect(truckAfterPlacePick("BR01AB9999", "BR01AB1234", null)).toEqual({ truck: "BR01AB9999", autoFilled: null });
+  });
+});
+
+describe("placesWithEnough", () => {
+  const places = [
+    { key: "godown:a", name: "Main", truck: null },
+    { key: "godown:b", name: "Old", truck: null },
+    { key: "vehicle:t", name: "Truck BR01", truck: "BR01" },
+  ];
+  const balances = [
+    { productId: "p1", placeKey: "godown:a", bags: 100 },
+    { productId: "p1", placeKey: "godown:b", bags: 0 },
+    { productId: "p2", placeKey: "godown:b", bags: 500 },
+    { productId: "p1", placeKey: "vehicle:t", bags: 40 },
+  ];
+  it("drops places with 0 bags of that product", () => {
+    expect(placesWithEnough(places, balances, "p1", 0).map((p) => p.key)).toEqual(["godown:a", "vehicle:t"]);
+    expect(placesWithEnough(places, balances, "p2", 10).map((p) => p.key)).toEqual(["godown:b"]);
+  });
+  it("drops places holding fewer bags than asked", () => {
+    expect(placesWithEnough(places, balances, "p1", 50).map((p) => p.key)).toEqual(["godown:a"]);
+    expect(placesWithEnough(places, balances, "p1", 40).map((p) => p.key)).toEqual(["godown:a", "vehicle:t"]);
+    expect(placesWithEnough(places, balances, "p1", 101)).toEqual([]);
+  });
+  it("reports the bags held", () => {
+    expect(placesWithEnough(places, balances, "p1", 1)[0].bagsHere).toBe(100);
+  });
+  it("lists nothing for a product with no stock", () => {
+    expect(placesWithEnough(places, balances, "p9", 1)).toEqual([]);
+  });
+});
+
+describe("truckChips", () => {
+  const recent = [
+    { truck: "BR02", driverName: "Ravi", driverPhone: "9" },
+    { truck: "BR01", driverName: "Sonu", driverPhone: "" },
+    { truck: "BR02", driverName: "Old driver", driverPhone: "1" },
+  ];
+  it("puts loaded trucks first, then recent ones, newest first, one chip per truck", () => {
+    expect(truckChips(["BR01", "BR09"], recent).map((c) => c.truck)).toEqual(["BR01", "BR09", "BR02"]);
+  });
+  it("fills the driver from the newest dispatch of that truck", () => {
+    expect(truckChips([], recent)[0]).toEqual({ truck: "BR02", driverName: "Ravi", driverPhone: "9" });
+    expect(truckChips(["BR09"], recent)[0]).toEqual({ truck: "BR09", driverName: "", driverPhone: "" });
+  });
+  it("caps the list", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ truck: `T${i}`, driverName: "d", driverPhone: "" }));
+    expect(truckChips([], many)).toHaveLength(6);
+    expect(truckChips([], many, 2)).toHaveLength(2);
+  });
+  it("is empty with no trucks", () => {
+    expect(truckChips([], [])).toEqual([]);
   });
 });

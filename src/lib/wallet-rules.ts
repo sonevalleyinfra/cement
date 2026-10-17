@@ -1,7 +1,7 @@
 /**
  * Cash held by staff ("wallet") as plain functions (no database) so they are easy to test.
  * Source: docs/idea.md section 6 (Cash: the cash is held by the staff member who recorded it;
- * they hand it over; accounts tap "Received", can confirm part, or reject a wrong request).
+ * they hand it over; accounts tap "Confirm", can confirm part, or reject a wrong request).
  *
  * Choices where the spec is silent:
  * - One wallet per staff member (the "collector"). Money is integer paise.
@@ -88,10 +88,15 @@ export function pendingRequestIds(movements: readonly WalletMovement[]): string[
 
 export type HandoverCheck = { ok: true } | { ok: false; error: string };
 
-export function validateHandoverRequest(amountPaise: number, availablePaise: number): HandoverCheck {
+export function validateHandoverRequest(amountPaise: number, availablePaise: number, pendingPaise = 0): HandoverCheck {
   if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0)
     return { ok: false, error: "Enter an amount above zero." };
-  if (amountPaise > availablePaise) return { ok: false, error: "That is more cash than you hold." };
+  if (amountPaise > availablePaise) {
+    // Cash already in an unanswered request cannot be handed over twice.
+    if (pendingPaise > 0 && amountPaise <= availablePaise + pendingPaise)
+      return { ok: false, error: "That cash is already pending handover." };
+    return { ok: false, error: "That is more cash than you hold." };
+  }
   return { ok: true };
 }
 

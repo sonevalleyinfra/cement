@@ -9,7 +9,7 @@ import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { ReasonAction, VerifyButton } from "../payment-actions";
 
-/** Online payments waiting for accounts: check the bank statement, then Verified or Reject. */
+/** Online payments waiting for accounts: check the bank statement, then Verify or Reject. */
 export default async function ReviewPage() {
   await requireRole(...rolesFor("verifyPayments"));
   const rows = await db
@@ -55,8 +55,7 @@ export default async function ReviewPage() {
                       <span className="tabular text-lg font-bold">{formatINR(r.totalPaise)}</span>
                     </div>
                     {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
-                    <VerifyButton receiptId={r.id} />
-                    <ReasonAction receiptId={r.id} action="reject" />
+                    <ReasonAction receiptId={r.id} action="reject" primary={<VerifyButton receiptId={r.id} />} />
                   </div>
                 }
               />
