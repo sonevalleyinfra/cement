@@ -108,14 +108,25 @@ export function truckLoads(
     .sort((a, b) => a.truck.localeCompare(b.truck));
 }
 
-/** A switched-on shop with no sales person (its orders would otherwise wait on nobody). */
-export function needsSalesRep(shop: { active: boolean; salesRepId: string | null }): boolean {
-  return shop.active && !shop.salesRepId;
+/**
+ * A switched-on shop with no sales person (its orders would otherwise wait on nobody).
+ * When `activeRepIds` is given, a sales person who is deactivated counts as nobody too.
+ */
+export function needsSalesRep(
+  shop: { active: boolean; salesRepId: string | null },
+  activeRepIds?: ReadonlySet<string>,
+): boolean {
+  if (!shop.active) return false;
+  if (!shop.salesRepId) return true;
+  return activeRepIds !== undefined && !activeRepIds.has(shop.salesRepId);
 }
 
 /** Admin home: how many shops need a sales person. Tapping it opens `/retailers?filter=no-rep` (only those shops). */
-export function shopsWithoutSalesRep(shops: readonly { active: boolean; salesRepId: string | null }[]): number {
-  return shops.filter(needsSalesRep).length;
+export function shopsWithoutSalesRep(
+  shops: readonly { active: boolean; salesRepId: string | null }[],
+  activeRepIds?: ReadonlySet<string>,
+): number {
+  return shops.filter((s) => needsSalesRep(s, activeRepIds)).length;
 }
 
 /** The Retailers page filter in the address that shows only the shops counted above. */

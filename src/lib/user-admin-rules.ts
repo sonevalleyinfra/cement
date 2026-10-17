@@ -133,6 +133,17 @@ export function dropsAllStaffRoles(newRoles: readonly string[]): boolean {
 }
 
 /**
+ * A sales person who still has shops cannot be deactivated: their orders would wait on nobody.
+ * Returns an error naming the count, or null.
+ */
+export function checkShopsOwned(shopCount: number): string | null {
+  if (shopCount > 0) {
+    return `They look after ${shopCount} ${shopCount === 1 ? "shop" : "shops"}. Give ${shopCount === 1 ? "it" : "them"} another sales person first.`;
+  }
+  return null;
+}
+
+/**
  * Someone who still holds cash cannot be deactivated, deleted or lose every staff role: the cash
  * would be stuck with nobody to hand it over. `heldPaise` = their cash held now (handovers still
  * waiting for accounts count as held). Returns an error or null.

@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, notExists, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, or, notExists, notInArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
@@ -8,6 +8,7 @@ import {
   receipts,
   retailers,
   stockMovements,
+  user,
   walletMovements,
 } from "@/db/schema";
 import {
@@ -138,7 +139,7 @@ export async function getLogisticsHome() {
 
 export async function getAdminHome(now = new Date()) {
   const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, suppliers, shops] = await Promise.all([
+  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, suppliers, shops, activePeople] = await Promise.all([
     countOrders(gte(orders.createdAt, start)),
     db
       .select({
@@ -158,6 +159,7 @@ export async function getAdminHome(now = new Date()) {
     countUnverifiedOnline(),
     getSuppliers(),
     db.select({ active: retailers.active, salesRepId: retailers.salesRepId }).from(retailers),
+    db.select({ id: user.id }).from(user).where(and(or(isNull(user.banned), eq(user.banned, false)), isNull(user.deletedAt))),
   ]);
   return {
     todayOrders,
@@ -172,7 +174,7 @@ export async function getAdminHome(now = new Date()) {
     /** Each supplier (one per brand) with what we owe it. */
     suppliers,
     /** Switched-on shops with no sales person (admin should give them one). */
-    shopsWithoutSalesRep: shopsWithoutSalesRep(shops),
+    shopsWithoutSalesRep: shopsWithoutSalesRep(shops, new Set(activePeople.map((u) => u.id))),
   };
 }
 

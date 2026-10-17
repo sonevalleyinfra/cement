@@ -46,7 +46,8 @@ export default async function RetailersPage({
   // Only admin adds, edits and turns off shops, picks their sales person and links a login.
   const canEdit = can(user.role, "editRetailers");
   const names = new Map(people.map((u) => [u.id, u.name]));
-  const shown = rows.filter((r) => !onlyNoRep || needsSalesRep(r)).map((r) => ({
+  const activeRepIds = new Set(people.filter((u) => !u.banned && !u.deletedAt).map((u) => u.id));
+  const shown = rows.filter((r) => !onlyNoRep || needsSalesRep(r, activeRepIds)).map((r) => ({
     ...r,
     salesRepName: r.salesRepId ? (names.get(r.salesRepId) ?? "") : "",
     loginName: r.userId ? (names.get(r.userId) ?? "") : "",

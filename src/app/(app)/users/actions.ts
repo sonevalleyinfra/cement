@@ -1,11 +1,11 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, count, eq, isNull, ne } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { user, walletMovements } from "@/db/schema";
+import { retailers, user, walletMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { env } from "@/env";
 import { auth } from "@/lib/auth";
@@ -21,6 +21,7 @@ import {
   checkDelete,
   checkEditedPhone,
   checkRoles,
+  checkShopsOwned,
   checkSelfDeactivate,
   checkSelfRoleChange,
   cleanEmail,
@@ -190,6 +191,13 @@ export async function setUserActive(userId: string, active: boolean): Promise<Us
   if (!active) {
     const held = checkCashHeld(await cashHeldBy(userId));
     if (held) return { ok: false, error: held };
+    // Their switched-on shops would be left with nobody for new orders.
+    const [owned] = await db
+      .select({ n: count() })
+      .from(retailers)
+      .where(and(eq(retailers.salesRepId, userId), eq(retailers.active, true)));
+    const shops = checkShopsOwned(owned?.n ?? 0);
+    if (shops) return { ok: false, error: shops };
   }
   const h = await headers();
   if (active) await auth.api.unbanUser({ headers: h, body: { userId } });

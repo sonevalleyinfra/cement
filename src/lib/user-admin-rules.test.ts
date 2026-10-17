@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkCashHeld,
+  checkShopsOwned,
   dropsAllStaffRoles,
   checkDelete,
   checkEditedPhone,
@@ -147,6 +148,16 @@ describe("usersInTab", () => {
   });
   it("puts people without a known role under none", () => {
     expect(ids(usersInTab(rows, "none", true))).toEqual(["4", "5"]);
+  });
+});
+
+describe("shops owned block deactivating", () => {
+  it("allows a sales person with no shops", () => {
+    expect(checkShopsOwned(0)).toBeNull();
+  });
+  it("refuses and names the count", () => {
+    expect(checkShopsOwned(6)).toBe("They look after 6 shops. Give them another sales person first.");
+    expect(checkShopsOwned(1)).toBe("They look after 1 shop. Give it another sales person first.");
   });
 });
 

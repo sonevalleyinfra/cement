@@ -89,6 +89,11 @@ function uniqueRecipients(list: readonly (string | null | undefined)[], actorId:
   return out;
 }
 
+/** True when the shop has a sales person who can still sign in (a deactivated one counts as nobody). */
+export function shopHasActiveSalesRep(shopRepId: string | null, activeIds: readonly string[]): boolean {
+  return shopRepId !== null && activeIds.includes(shopRepId);
+}
+
 export function recipientIds(
   event: NotificationEvent,
   people: OrderPeople,
