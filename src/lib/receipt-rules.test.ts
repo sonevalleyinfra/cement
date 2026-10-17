@@ -155,6 +155,7 @@ describe("receiptChip", () => {
     for (const s of RECEIPT_STATUSES) expect(receiptChip(s).label).not.toBe(s);
   });
   it("rejected is red, reversed grey, unverified waiting", () => {
+    expect(receiptChip("received").label).toBe("Cash recorded");
     expect(receiptChip("rejected").status).toBe("rejected");
     expect(receiptChip("reversed").status).toBe("cancelled");
     expect(receiptChip("unverified").status).toBe("placed");
