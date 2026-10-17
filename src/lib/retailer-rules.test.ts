@@ -4,6 +4,7 @@ import {
   matchesRetailerSearch,
   normalizePhone,
   pickableRetailerLogins,
+  pickPrefillRetailerId,
   planShopEdit,
   type RetailerLogin,
   validateRetailer,
@@ -150,5 +151,23 @@ describe("planShopEdit", () => {
     expect(unlink.ok && unlink.userId).toBeNull();
     const same = planShopEdit(linked, { ...form, userId: "u9" }, facts);
     expect(same.ok && same.userId).toBeUndefined();
+  });
+});
+
+describe("pickPrefillRetailerId", () => {
+  const allowed = [{ id: "a1" }, { id: "b2" }];
+  it("accepts an id the user may pick", () => {
+    expect(pickPrefillRetailerId("b2", allowed)).toBe("b2");
+  });
+  it("ignores an id the user cannot access", () => {
+    expect(pickPrefillRetailerId("zzz", allowed)).toBeNull();
+  });
+  it("ignores missing, empty and repeated params", () => {
+    expect(pickPrefillRetailerId(undefined, allowed)).toBeNull();
+    expect(pickPrefillRetailerId("", allowed)).toBeNull();
+    expect(pickPrefillRetailerId(["a1", "b2"], allowed)).toBeNull();
+  });
+  it("ignores everything when the list is empty", () => {
+    expect(pickPrefillRetailerId("a1", [])).toBeNull();
   });
 });

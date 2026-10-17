@@ -91,6 +91,10 @@ export async function SalesHome({ userId }: { userId: string }) {
   const s = await getSalesHome(userId);
   return (
     <Cards>
+      {/* The most frequent field job; the cards below are plain, so it is the one highlight. */}
+      <Link href="/receipts/new" className={cn(buttonVariants({ size: "lg" }), "w-full")}>
+        Record payment
+      </Link>
       <Card index={0} href="/orders?show=rate" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
       <Card
         index={1}

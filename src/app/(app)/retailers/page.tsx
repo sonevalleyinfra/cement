@@ -62,6 +62,14 @@ export default async function RetailersPage({
     ? pickableSalesReps(people).map((u) => ({ id: u.id, label: u.name }))
     : null;
   return (
-    <RetailersView rows={shown} canEdit={canEdit} logins={logins} salesReps={salesReps} onlyNoRep={onlyNoRep} />
+    <RetailersView
+      rows={shown}
+      canEdit={canEdit}
+      logins={logins}
+      salesReps={salesReps}
+      onlyNoRep={onlyNoRep}
+      canRecordPayment={can(user.role, "recordReceipt")}
+      canOrder={can(user.role, "placeOrder")}
+    />
   );
 }

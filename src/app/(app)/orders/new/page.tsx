@@ -3,11 +3,16 @@ import { EmptyState } from "@/components/app/empty-state";
 import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getProducts } from "@/lib/catalogue";
+import { pickPrefillRetailerId } from "@/lib/retailer-rules";
 import { isStaff, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { NewOrderForm } from "./new-order-form";
 
-export default async function NewOrderPage() {
+export default async function NewOrderPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { user } = await requireRole(...rolesFor("placeOrder"));
   // Staff pick any active shop and type the rate; a retailer orders for their own shop only.
   const retailerOnly = !isStaff(user.role);
@@ -39,6 +44,7 @@ export default async function NewOrderPage() {
       retailers={retailerRows}
       products={productRows}
       fixedRetailerId={retailerOnly ? retailerRows[0].id : null}
+      initialRetailerId={retailerOnly ? null : pickPrefillRetailerId((await searchParams).retailer, retailerRows)}
       askRate={!retailerOnly}
     />
   );

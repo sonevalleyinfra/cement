@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
@@ -19,9 +19,16 @@ import { loadDues, saveReceipt } from "../actions";
 
 type RetailerRow = { id: string; name: string; place: string };
 
-export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
+export function ReceiptForm({
+  retailers,
+  initialRetailerId = null,
+}: {
+  retailers: RetailerRow[];
+  /** From `?retailer=`, already checked against `retailers` on the server. */
+  initialRetailerId?: string | null;
+}) {
   const router = useRouter();
-  const [retailer, setRetailer] = useState<RetailerRow | null>(null);
+  const [retailer, setRetailer] = useState<RetailerRow | null>(retailers.find((r) => r.id === initialRetailerId) ?? null);
   const [pickOpen, setPickOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [digits, setDigits] = useState("");
@@ -60,6 +67,17 @@ export function ReceiptForm({ retailers }: { retailers: RetailerRow[] }) {
       else setError(res.error, [r.id, digits, mode, utr, note]);
     });
   }
+
+  // A prefilled shop loads its dues once, as if it had just been picked.
+  useEffect(() => {
+    if (!initialRetailerId) return;
+    start(async () => {
+      const res = await loadDues(initialRetailerId);
+      if (res.ok) setDuesPaise(res.duesPaise);
+    });
+    // Once on open: later picks load their own dues.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function submit() {
     if (!retailer) return;
