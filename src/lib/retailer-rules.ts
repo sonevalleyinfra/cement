@@ -142,3 +142,15 @@ export function planShopEdit(
   }
   return { ok: true, details: check.value, salesRepId, userId };
 }
+
+/**
+ * `?retailer=<id>` prefill: only an id that is in the list this user may pick from counts.
+ * Anything else (missing, repeated, unknown, not allowed) is ignored.
+ */
+export function pickPrefillRetailerId(
+  param: string | string[] | undefined,
+  allowed: ReadonlyArray<{ id: string }>,
+): string | null {
+  if (typeof param !== "string" || param === "") return null;
+  return allowed.some((r) => r.id === param) ? param : null;
+}

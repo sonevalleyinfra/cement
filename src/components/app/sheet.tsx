@@ -24,7 +24,7 @@ export function Sheet({
       <Dialog.Portal>
         <Dialog.Backdrop
           className={cn(
-            "fixed inset-0 z-40 bg-foreground/35 backdrop-blur-[2px] transition-opacity duration-300 ease-out",
+            "fixed inset-0 z-40 bg-foreground/35 transition-opacity duration-300 ease-out",
             "data-ending-style:opacity-0 data-starting-style:opacity-0",
           )}
         />
