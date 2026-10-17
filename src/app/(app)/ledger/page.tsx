@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { db } from "@/db";
@@ -26,6 +27,8 @@ export default async function LedgerPage() {
     .where(own ? eq(retailers.id, own) : undefined)
     .orderBy(asc(retailers.name));
 
+  // A shop with one login sees one ledger: go straight to it.
+  if (own && list.length === 1) redirect(`/ledger/${list[0].id}`);
   if (list.length === 0) return <EmptyState title="No retailers yet" />;
   return (
     <div className="flex flex-col gap-3">

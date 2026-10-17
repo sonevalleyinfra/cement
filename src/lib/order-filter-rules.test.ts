@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   orderFilterSpec,
   orderFilterTabs,
+  defaultOrderFilter,
   orderFilterValue,
   ORDER_FILTERS,
   ORDER_FILTER_EMPTY,
@@ -26,18 +27,30 @@ describe("orderFilterTabs", () => {
   });
 });
 
+describe("defaultOrderFilter", () => {
+  it("lands each role on its job", () => {
+    expect(defaultOrderFilter("sales")).toBe("rate");
+    expect(defaultOrderFilter("accounts")).toBe("approve");
+    expect(defaultOrderFilter("logistics")).toBe("send");
+    expect(defaultOrderFilter("retailer")).toBe("open");
+    expect(defaultOrderFilter("admin")).toBe("all");
+    expect(defaultOrderFilter(null)).toBe("open");
+  });
+});
+
 describe("parseOrderFilter", () => {
   it("accepts a tab the person has", () => {
     expect(parseOrderFilter("rate", "sales")).toBe("rate");
     expect(parseOrderFilter(["send", "x"], "logistics")).toBe("send");
   });
   it("falls back to All for anything else", () => {
-    expect(parseOrderFilter(undefined, "sales")).toBe("all");
-    expect(parseOrderFilter("nonsense", "sales")).toBe("all");
+    expect(parseOrderFilter(undefined, "sales")).toBe("rate");
+    expect(parseOrderFilter("nonsense", "sales")).toBe("rate");
     // a tab of another job
-    expect(parseOrderFilter("approve", "sales")).toBe("all");
-    expect(parseOrderFilter("send", "retailer")).toBe("all");
-    expect(parseOrderFilter("rate", "retailer")).toBe("all");
+    expect(parseOrderFilter("approve", "sales")).toBe("rate");
+    expect(parseOrderFilter("send", "retailer")).toBe("open");
+    expect(parseOrderFilter("rate", "retailer")).toBe("open");
+    expect(parseOrderFilter("all", "accounts")).toBe("all");
   });
 });
 
@@ -77,8 +90,10 @@ describe("rateFilterOwnShopsOnly", () => {
 });
 
 describe("orderFilterValue", () => {
-  it("All is the default and leaves the address clean", () => {
-    expect(orderFilterValue("all")).toBe("");
-    expect(orderFilterValue("rate")).toBe("rate");
+  it("the role's default leaves the address clean", () => {
+    expect(orderFilterValue("all", "admin")).toBe("");
+    expect(orderFilterValue("rate", "sales")).toBe("");
+    expect(orderFilterValue("all", "sales")).toBe("all");
+    expect(orderFilterValue("rate", "admin")).toBe("rate");
   });
 });
