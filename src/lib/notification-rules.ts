@@ -11,7 +11,7 @@
  * - Rate changed: accounts, sales person, admin
  * Where the spec is silent (simplest choice):
  * - Rate filled (by the sales person or admin on a placed order): accounts and the sales person,
- *   so accounts know it is ready to approve.
+ *   titled "Ready to approve" (the spec has no separate "rate filled" step; this is accounts' go-signal).
  * - Cancelled: placer, sales person, the shop's login.
  * Money rows (section 8, plus the simplest choice where it is silent):
  * - Online payment recorded and cash handover request: accounts.
@@ -132,7 +132,7 @@ export function recipientIds(
 
 const MESSAGES: Record<NotificationEvent, (what: string, bags: number) => { title: string; body: string }> = {
   placed: (w) => ({ title: "New order", body: `${w} placed.` }),
-  rate_filled: (w) => ({ title: "Rate filled", body: `${w} waiting for approval.` }),
+  rate_filled: (w) => ({ title: "Ready to approve", body: `${w} waiting for approval.` }),
   rate_edited: (w) => ({ title: "Rate changed", body: `${w}.` }),
   approved: (w) => ({ title: "Order approved", body: `${w} approved.` }),
   rejected: (w) => ({ title: "Order rejected", body: `${w} rejected.` }),

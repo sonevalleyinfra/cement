@@ -15,7 +15,7 @@ import {
   canDecide,
   canFillRate,
   checkRateChange,
-  checkRateDigits,
+  checkRateInput,
   checkRejectReason,
   RATE_FILLED,
   rateEditReason,
@@ -43,7 +43,7 @@ function refresh(orderId?: string) {
 
 /**
  * Places an order. Sales, retailer and admin only.
- * Staff type the rate (whole rupees per bag); a retailer never sends one.
+ * Staff type the rate (rupees and paise per bag); a retailer never sends one.
  * `requestId` is the form's one-time id: a second tap places nothing more (request-rules.ts).
  */
 export async function placeOrder(input: {
@@ -129,13 +129,13 @@ export async function placeOrder(input: {
 
 /**
  * The order's sales person (or admin) fills the empty rate of a placed order (rate-rules.ts).
- * `rupeeDigits` = whole rupees per bag. The status stays "placed"; accounts can now approve it.
+ * `rateText` = rupees per bag, paise allowed ("335.50"). The status stays "placed"; accounts can now approve it.
  * A rate that is set is changed with changeRate (logistics or admin, reason needed).
  */
-export async function fillRate(orderId: string, rupeeDigits: string): Promise<PlaceOrderResult> {
+export async function fillRate(orderId: string, rateText: string): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("fillRate"));
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
-  const rate = checkRateDigits(String(rupeeDigits ?? ""));
+  const rate = checkRateInput(String(rateText ?? ""));
   if (!rate.ok) return rate;
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
@@ -173,7 +173,7 @@ export async function fillRate(orderId: string, rupeeDigits: string): Promise<Pl
  * (reason needed; rate-rules.ts). It is billed on the bags dispatched from now on; bags already sent
  * keep their rate. Accounts, the shop's sales person and admin are told (old → new rate and why).
  */
-export async function changeRate(orderId: string, rupeeDigits: string, reason: string): Promise<PlaceOrderResult> {
+export async function changeRate(orderId: string, rateText: string, reason: string): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("changeRate"));
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
 
@@ -181,7 +181,7 @@ export async function changeRate(orderId: string, rupeeDigits: string, reason: s
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!o) return { ok: false, error: "Order not found." };
     if (!canChangeRate(me.role, o)) return { ok: false, error: "The rate of this order cannot be changed." };
-    const check = checkRateChange(o.ratePaise, rupeeDigits, reason);
+    const check = checkRateChange(o.ratePaise, rateText, reason);
     if (!check.ok) return check;
     await tx.update(orders).set({ ratePaise: check.ratePaise, updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(orderEvents).values({

@@ -5,42 +5,56 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatINR } from "@/lib/money";
 import { orderTotalPaise } from "@/lib/order-rules";
-import { checkRateDigits } from "@/lib/rate-rules";
+import { checkRateInput, cleanRateInput, rateChangePreview } from "@/lib/rate-rules";
 
 /**
- * The one way to type a rate per bag (whole rupees): new order, filling a retailer's order, changing
- * a rate. A 48px number field; `bags` (when given) shows the total under it. `value` is the digits.
+ * The one way to type a rate per bag (rupees and paise, "335.50"): new order, filling a retailer's
+ * order, changing a rate. A 48px decimal field; `value` is the cleaned text (cleanRateInput).
+ * `bags` (when given) shows the total under it. With `billedPaise` > 0 (a rate change on a partly
+ * sent order) it shows the not-sent bags' amount and the whole order total instead.
  */
 export function RateField({
   value,
   onChange,
   bags,
+  billedPaise,
   label = "Rate per bag (₹)",
   autoFocus,
 }: {
   value: string;
-  onChange: (digits: string) => void;
+  onChange: (text: string) => void;
   bags?: number;
+  billedPaise?: number;
   label?: string;
   autoFocus?: boolean;
 }) {
   const id = useId();
-  const check = checkRateDigits(value);
+  const check = checkRateInput(value);
+  const showTotal = check.ok && bags !== undefined && bags > 0;
+  const split =
+    check.ok && bags !== undefined && billedPaise !== undefined && billedPaise > 0
+      ? rateChangePreview({ unsentBags: bags, billedPaise, newRatePaise: check.paise })
+      : null;
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
-        inputMode="numeric"
+        inputMode="decimal"
         value={value}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
-        maxLength={5}
+        onChange={(e) => onChange(cleanRateInput(e.target.value))}
         autoComplete="off"
         autoFocus={autoFocus}
         aria-invalid={value !== "" && !check.ok}
       />
       {value !== "" && !check.ok && <p className="text-sm text-destructive">{check.error}</p>}
-      {check.ok && bags !== undefined && bags > 0 && (
+      {showTotal && split && (
+        <div className="tabular text-sm text-muted-foreground">
+          <p>Unsent bags {formatINR(split.unsentPaise, { hidePaise: true })}</p>
+          <p>Order total {formatINR(split.orderTotalPaise, { hidePaise: true })}</p>
+        </div>
+      )}
+      {showTotal && !split && (
         <p className="tabular text-sm text-muted-foreground">Total {formatINR(orderTotalPaise(bags, check.paise))}</p>
       )}
     </div>

@@ -152,6 +152,7 @@ describe("buildNotifications", () => {
   });
   it("a filled rate says the order waits, without a verb that clashes with 'bags'", () => {
     const list = buildNotifications({ ...base, event: "rate_filled", bags: 50 });
+    expect(list[0].title).toBe("Ready to approve");
     expect(list[0].body).toBe("Raju Stores, 50 bags waiting for approval.");
   });
 });

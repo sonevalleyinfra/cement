@@ -6,35 +6,106 @@ import {
   canFillRate,
   canLinkRetailerUser,
   checkRateChange,
-  checkRateDigits,
+  checkRateInput,
   checkRejectReason,
+  cleanRateInput,
   isRateEvent,
   isWaitingApproval,
   MAX_RATE_RUPEES_PER_BAG,
   RATE_FILLED,
+  rateChangePreview,
   rateEditReason,
   rateEventLabel,
   rateOnPlace,
 } from "./rate-rules";
 
-describe("checkRateDigits", () => {
-  it("turns whole rupees into paise", () => expect(checkRateDigits("385")).toEqual({ ok: true, paise: 38500 }));
+const TOO_HIGH = { ok: false, error: "Rate looks too high (max ₹2,000 per bag)." };
+const ASK = { ok: false, error: "Enter a rate per bag." };
+
+describe("checkRateInput", () => {
+  it("turns whole rupees into paise", () => expect(checkRateInput("385")).toEqual({ ok: true, paise: 38500 }));
   it("amount = bags x rate in paise", () => {
-    const r = checkRateDigits("385");
+    const r = checkRateInput("385");
     expect(r.ok && orderTotalPaise(100, r.paise)).toBe(3850000);
+  });
+  it("takes rupees and paise", () => {
+    const cases: [string, number][] = [
+      ["335.50", 33550],
+      ["335.5", 33550],
+      ["335.", 33500],
+      [".5", 50],
+      [".05", 5],
+      ["3.50", 350], // the old digits-only field turned this into ₹350 (35000)
+      ["0.01", 1],
+    ];
+    for (const [text, paise] of cases) expect(checkRateInput(text)).toEqual({ ok: true, paise });
+  });
+  it("refuses more than 2 digits after the dot (never rounds)", () => {
+    expect(checkRateInput("335.505")).toEqual({ ok: false, error: "Use at most 2 digits after the dot." });
   });
   it("is capped at ₹2,000 per bag", () => {
     expect(MAX_RATE_RUPEES_PER_BAG).toBe(2000);
-    expect(checkRateDigits("2000")).toEqual({ ok: true, paise: 200000 });
-    expect(checkRateDigits("2001")).toEqual({ ok: false, error: "Rate looks too high (max ₹2,000 per bag)." });
-    expect(checkRateDigits("38500").ok).toBe(false);
+    expect(checkRateInput("2000")).toEqual({ ok: true, paise: 200000 });
+    expect(checkRateInput("2000.01")).toEqual(TOO_HIGH);
+    expect(checkRateInput("2001")).toEqual(TOO_HIGH);
+    expect(checkRateInput("123456")).toEqual(TOO_HIGH);
   });
-  it("asks for a rate when empty, zero or not digits", () => {
-    for (const d of ["", "0", "3.5", "abc", "-5"]) {
-      expect(checkRateDigits(d)).toEqual({ ok: false, error: "Enter a rate per bag." });
+  it("asks for a rate when empty, zero or not a number", () => {
+    for (const d of ["1.2.3", "abc", "", ".", "-5", "0", "0.00"]) expect(checkRateInput(d)).toEqual(ASK);
+  });
+  it("ignores leading zeros", () => {
+    expect(checkRateInput("00335.5")).toEqual({ ok: true, paise: 33550 });
+    expect(checkRateInput("0.5")).toEqual({ ok: true, paise: 50 });
+  });
+  it("ignores spaces around the rate", () => expect(checkRateInput(" 385 ")).toEqual({ ok: true, paise: 38500 }));
+  it("answers huge input quickly", () => {
+    for (const text of ["1".repeat(100_000), "1".repeat(100_000) + ".5"]) {
+      const start = performance.now();
+      expect(checkRateInput(text)).toEqual(TOO_HIGH);
+      expect(performance.now() - start).toBeLessThan(50);
     }
   });
-  it("ignores spaces around the digits", () => expect(checkRateDigits(" 385 ")).toEqual({ ok: true, paise: 38500 }));
+});
+
+describe("cleanRateInput", () => {
+  it("drops the rupee sign, Rs, INR, commas and spaces", () => {
+    expect(cleanRateInput("₹ 335.50")).toBe("335.50");
+    expect(cleanRateInput("Rs. 350")).toBe("350");
+    expect(cleanRateInput("rs350")).toBe("350");
+    expect(cleanRateInput("INR 1,234.50")).toBe("1234.50");
+    expect(cleanRateInput("33 5")).toBe("335");
+  });
+  it("keeps every digit and dot, and never cuts the length", () => {
+    expect(cleanRateInput("335.50")).toBe("335.50");
+    expect(cleanRateInput("3.50")).toBe("3.50");
+    expect(cleanRateInput("1,23,456")).toBe("123456");
+    expect(checkRateInput(cleanRateInput("1,23,456"))).toEqual(TOO_HIGH);
+  });
+  it("keeps a comma that is not a thousands group, so it is refused (never ₹350 for 3,50)", () => {
+    expect(cleanRateInput("3,50")).toBe("3,50");
+    expect(checkRateInput(cleanRateInput("3,50"))).toEqual({ ok: false, error: "Use a dot for paise, like 335.50." });
+    expect(cleanRateInput("1,999.50")).toBe("1999.50");
+  });
+  it("a pasted rate round-trips to paise", () => {
+    expect(checkRateInput(cleanRateInput("₹ 335.50"))).toEqual({ ok: true, paise: 33550 });
+  });
+});
+
+describe("rateChangePreview", () => {
+  it("40-bag order, 15 sent at ₹330, 25 left at a new ₹340", () => {
+    const billedPaise = orderTotalPaise(15, 33000);
+    expect(billedPaise).toBe(495000);
+    expect(rateChangePreview({ unsentBags: 25, billedPaise, newRatePaise: 34000 })).toEqual({
+      unsentPaise: 850000,
+      orderTotalPaise: 1345000,
+    });
+  });
+  it("works with a paise rate (₹335.50)", () => {
+    expect(rateChangePreview({ unsentBags: 25, billedPaise: 495000, newRatePaise: 33550 })).toEqual({
+      unsentPaise: 838750,
+      orderTotalPaise: 1333750,
+    });
+  });
 });
 
 describe("rateOnPlace", () => {
@@ -114,6 +185,10 @@ describe("checkRateChange", () => {
   });
   it("the same rate is not a change", () => {
     expect(checkRateChange(35000, "350", "x")).toEqual({ ok: false, error: "That is the rate already." });
+    expect(checkRateChange(33500, "335.00", "x")).toEqual({ ok: false, error: "That is the rate already." });
+  });
+  it("takes a paise rate", () => {
+    expect(checkRateChange(33500, "335.50", "x")).toEqual({ ok: true, ratePaise: 33550, reason: "x" });
   });
 });
 
