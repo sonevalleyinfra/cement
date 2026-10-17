@@ -260,6 +260,13 @@
       "when": 1791662102785,
       "tag": "0036_correctness_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792264247793,
+      "tag": "0037_books_append_only",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,7 @@ export const godowns = pgTable(
  * deleted: fix mistakes by adding a new movement (reversal or adjustment).
  * The place is a godown OR a truck: exactly one of `godownId` / `vehicleId` is set.
  * Stock = sum of `bags` per product per place.
+ * Enforced by DB triggers (drizzle/0037_books_append_only.sql).
  */
 export const stockMovements = pgTable(
   "stock_movements",
@@ -56,5 +57,6 @@ export const stockMovements = pgTable(
     check("stock_movements_unit_cost_positive", sql`${t.unitCostPaise} is null or ${t.unitCostPaise} > 0`),
     check("stock_movements_one_place", sql`num_nonnulls(${t.godownId}, ${t.vehicleId}) = 1`),
     check("stock_movements_type_valid", oneOf(t.type, MOVEMENT_TYPES)),
+    check("stock_movements_actor_required", sql`${t.actorId} is not null`),
   ],
 );

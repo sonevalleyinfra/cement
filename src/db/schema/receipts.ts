@@ -14,6 +14,7 @@ import { retailers } from "./retailers";
  * A received or verified payment can become "reversed"; `reversedAt`, `reversedBy` and `reversalReason`
  * say when, who and why. `utr` is stored without spaces in capitals and is unique among online
  * payments that still stand (a rejected or reversed payment frees its UTR).
+ * Never deleted: enforced by DB triggers (drizzle/0037_books_append_only.sql).
  */
 export const receipts = pgTable(
   "receipts",
@@ -61,6 +62,7 @@ export const receipts = pgTable(
  * `refId` points a confirmed / rejected row at the handover request it answers. A confirmed row
  * holds the amount actually received (it may be less than the request); a rejected row holds
  * the reason in `note`.
+ * Enforced by DB triggers (drizzle/0037_books_append_only.sql).
  */
 export const walletMovements = pgTable(
   "wallet_movements",

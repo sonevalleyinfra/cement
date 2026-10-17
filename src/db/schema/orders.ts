@@ -11,6 +11,7 @@ import { retailers } from "./retailers";
  * `ratePaise` is the current price per bag in paise; empty until the sales person fills it.
  * It may change after approval; each dispatch saves the rate it was billed at.
  * `salesRepId` is the retailer's sales person when the order was placed (see sales-rep-rules.ts).
+ * Never deleted: enforced by DB triggers (drizzle/0037_books_append_only.sql).
  */
 export const orders = pgTable(
   "orders",
@@ -48,6 +49,7 @@ export const orders = pgTable(
  * fill or change (status stays the same; the reason says "Rate filled" / "Rate edited: ...").
  * A rate row also keeps the rate before and after (`fromRatePaise` / `toRatePaise`, staff only;
  * empty on other rows and on the first fill's "before").
+ * Append-only: enforced by DB triggers (drizzle/0037_books_append_only.sql).
  */
 export const orderEvents = pgTable(
   "order_events",

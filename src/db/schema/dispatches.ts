@@ -13,6 +13,7 @@ import { vehicles } from "./vehicles";
  * Each dispatch posts one ledger debit: bags x ratePaise.
  * `salesRepId` is the order's sales person at the moment of dispatch, so the sales report by sales person
  * does not change when admin later gives the shop to someone else (empty = nobody).
+ * Append-only: enforced by DB triggers (drizzle/0037_books_append_only.sql).
  */
 export const dispatches = pgTable(
   "dispatches",
