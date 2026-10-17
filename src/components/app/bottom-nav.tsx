@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Home, MoreHorizontal, Package, Store, Truck, Wallet } from "lucide-react";
+import { ClipboardList, Home, MoreHorizontal, Package, Receipt, Store, Truck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ const icons = {
   orders: ClipboardList,
   stock: Package,
   money: Wallet,
+  receipts: Receipt,
   retailers: Store,
   vehicles: Truck,
   more: MoreHorizontal,
