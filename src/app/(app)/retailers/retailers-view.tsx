@@ -183,28 +183,28 @@ function ShopDetail({
       <div className="flex flex-col gap-4">
         {shortcuts}
         <dl className="flex flex-col gap-3 text-base">
-        <div>
-          <dt className="text-xs text-muted-foreground">Phone</dt>
-          <dd>
-            <a
-              href={`tel:${row.phone}`}
-              className="tabular -my-1 inline-flex min-h-12 items-center font-semibold underline underline-offset-2"
-            >
-              {row.phone}
-            </a>
-          </dd>
-        </div>
-        {row.place && (
           <div>
-            <dt className="text-xs text-muted-foreground">Place</dt>
-            <dd>{row.place}</dd>
+            <dt className="text-xs text-muted-foreground">Phone</dt>
+            <dd>
+              <a
+                href={`tel:${row.phone}`}
+                className="tabular -my-1 inline-flex min-h-12 items-center font-semibold underline underline-offset-2"
+              >
+                {row.phone}
+              </a>
+            </dd>
           </div>
-        )}
-        <div>
-          <dt className="text-xs text-muted-foreground">Sales person</dt>
-          <dd>{row.salesRepName || "None"}</dd>
-        </div>
-      </dl>
+          {row.place && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Place</dt>
+              <dd>{row.place}</dd>
+            </div>
+          )}
+          <div>
+            <dt className="text-xs text-muted-foreground">Sales person</dt>
+            <dd>{row.salesRepName || "None"}</dd>
+          </div>
+        </dl>
       </div>
     );
   }

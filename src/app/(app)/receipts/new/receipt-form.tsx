@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
@@ -105,14 +106,21 @@ export function ReceiptForm({
     <div className="flex flex-col gap-5">
       <h1 className="text-xl font-bold">New payment</h1>
 
-      <button
-        type="button"
-        onClick={() => setPickOpen(true)}
-        className="flex min-h-14 items-center justify-between rounded-2xl bg-card p-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
-      >
-        {retailer ? (retailer.place ? `${retailer.name} · ${retailer.place}` : retailer.name) : "Pick retailer"}
-        <span className="text-sm font-medium text-muted-foreground">Change</span>
-      </button>
+      <div className="flex flex-col gap-1.5">
+        <Label>Retailer</Label>
+        <button
+          type="button"
+          onClick={() => setPickOpen(true)}
+          className="flex min-h-14 items-center justify-between gap-2 rounded-2xl bg-card px-4 py-3 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
+        >
+          {retailer ? (
+            retailer.place ? `${retailer.name} · ${retailer.place}` : retailer.name
+          ) : (
+            <span className="text-muted-foreground">Pick retailer</span>
+          )}
+          <ChevronDown className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+        </button>
+      </div>
       <Sheet open={pickOpen} onOpenChange={setPickOpen} title="Retailer">
         <Input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-3" />
         <ul className="flex flex-col gap-2">
