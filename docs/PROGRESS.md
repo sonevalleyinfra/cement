@@ -9,3 +9,4 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-10-18 · PR #37 · Role nav and default tabs: per-role Orders default tab, Stock/Payments tab, one-shop ledger redirect · t_a20b5f83
 - 2026-10-18 · PR #40 · seed:demo writes activity-log rows for everything it creates (Books check all ✓ on demo data) · t_a18ea377
 - 2026-10-18 · PR #39 · Sales shortcuts: Home Record payment, retailer sheet Record payment/New order with ?retailer prefill, picker overlay fix, order retailer label · t_dae52ece
+- 2026-10-18 · PR #41 · Polish: payment form retailer picker matches order form (label + chevron), retailer details re-indent · t_10ee41ab
