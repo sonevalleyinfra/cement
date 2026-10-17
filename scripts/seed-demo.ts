@@ -13,6 +13,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  auditLog,
   brands,
   cementTypes,
   dispatches,
@@ -31,9 +32,10 @@ import {
   walletMovements,
 } from "@/db/schema";
 import { env } from "@/env";
+import type { AuditEntry } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { toISTDateKey } from "@/lib/datetime";
-import { postEntry } from "@/lib/ledger";
+import { postEntry, type DbOrTx } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
 import { productName } from "@/lib/catalogue-rules";
 import { postSupplierEntry } from "@/lib/suppliers";
@@ -56,6 +58,20 @@ async function ensureUser(email: string, name: string, role: string, phone: stri
   await db.update(user).set({ phone }).where(and(eq(user.id, id), eq(user.phone, "")));
   return id;
 }
+
+/**
+ * One activity-log row for something the seed created, dated like that row (so the log reads in
+ * the right order and the Books check finds it). Insert only: the log is append-only.
+ */
+const log = (conn: DbOrTx, entry: AuditEntry, createdAt: Date) =>
+  conn.insert(auditLog).values({
+    actorId: entry.actorId,
+    entity: entry.entity,
+    entityId: entry.entityId,
+    action: entry.action,
+    details: entry.details ?? {},
+    createdAt,
+  });
 
 /** Days before today, as "YYYY-MM-DD" (India). */
 const daysAgo = (n: number) => toISTDateKey(Date.now() - n * 86_400_000);
@@ -118,7 +134,26 @@ async function seedPrism(adminId: string, prismId: string, productRows: { id: st
         reference: b.invoice,
         description: `${b.bags} bags ${b.p.name} at Rs ${b.costPaise / 100}`,
       });
-      await postSupplierEntry(tx, entry(owed), adminId, moved.id);
+      await postSupplierEntry(tx, entry(owed), adminId, moved.id, { audit: false });
+      await log(
+        tx,
+        {
+          actorId: adminId,
+          entity: "stock",
+          entityId: moved.id,
+          action: "purchase",
+          details: {
+            productId: b.p.id,
+            bags: b.bags,
+            place: `godown:${godownId}`,
+            unitCostPaise: b.costPaise,
+            amountPaise: b.bags * b.costPaise,
+            brandId: b.p.brandId,
+            invoiceNo: b.invoice,
+          },
+        },
+        at(b.ago),
+      );
     }
     await postSupplierEntry(tx, entry(paymentEntry(prismId, 50_000_000, "bank", "DEMOUTRPRISM1", daysAgo(10))), adminId);
     await postSupplierEntry(tx, entry(creditEntry(prismId, 1_500_000, "Demo festival scheme", daysAgo(3))), adminId);
@@ -163,7 +198,26 @@ async function seedUltraTech(adminId: string) {
       reference: "DEMO-UT-1",
       description: `100 bags ${product.name} at Rs 390`,
     });
-    await postSupplierEntry(tx, entry(owed), adminId, moved.id);
+    await postSupplierEntry(tx, entry(owed), adminId, moved.id, { audit: false });
+    await log(
+      tx,
+      {
+        actorId: adminId,
+        entity: "stock",
+        entityId: moved.id,
+        action: "purchase",
+        details: {
+          productId: product.id,
+          bags: 100,
+          place: `godown:${godownId}`,
+          unitCostPaise: 39_000,
+          amountPaise: 100 * 39_000,
+          brandId: brand.id,
+          invoiceNo: "DEMO-UT-1",
+        },
+      },
+      at(6),
+    );
     await postSupplierEntry(tx, entry(paymentEntry(brand.id, 2_000_000, "bank", "DEMOUTRULTRA1", daysAgo(2))), adminId);
   });
   console.log("[seed-demo] UltraTech account ready.");
@@ -249,14 +303,27 @@ async function main() {
     .from(godowns)
     .where(sql`lower(${godowns.name}) = 'main godown'`);
   if (!godown) [godown] = await db.insert(godowns).values({ name: "Main Godown" }).returning({ id: godowns.id });
-  await db.insert(stockMovements).values(
-    productRows.map((p) => ({
-      productId: p.id,
-      godownId: godown.id,
-      type: "opening",
-      bags: 500,
-      reason: "Demo opening stock",
+  const opened = await db
+    .insert(stockMovements)
+    .values(
+      productRows.map((p) => ({
+        productId: p.id,
+        godownId: godown.id,
+        type: "opening",
+        bags: 500,
+        reason: "Demo opening stock",
+        actorId: admin.id,
+        createdAt: at(120),
+      })),
+    )
+    .returning({ id: stockMovements.id, productId: stockMovements.productId });
+  await db.insert(auditLog).values(
+    opened.map((m) => ({
       actorId: admin.id,
+      entity: "stock",
+      entityId: m.id,
+      action: "opening",
+      details: { productId: m.productId, bags: 500, place: `godown:${godown.id}` },
       createdAt: at(120),
     })),
   );
@@ -295,17 +362,18 @@ async function main() {
       orderIds.push(o.id);
 
       // History, one second apart so it shows in the right order.
-      let at = Date.now() - 60_000;
+      let clock = Date.now() - 60_000;
       let from: string | null = null;
+      const facts = { retailerId: shop.id, productId: prod.id, bags };
       const event = async (to: string, actorId: string, reason = "") => {
-        await tx.insert(orderEvents).values({
-          orderId: o.id,
-          fromStatus: from,
-          toStatus: to,
-          actorId,
-          reason,
-          createdAt: new Date((at += 1000)),
-        });
+        const when = new Date((clock += 1000));
+        await tx.insert(orderEvents).values({ orderId: o.id, fromStatus: from, toStatus: to, actorId, reason, createdAt: when });
+        // The activity log row shares the history row's moment (the Books check matches on it).
+        const action = ({ placed: "place", approved: "approve", cancelled: "cancel" } as const)[to as "placed"];
+        if (action) {
+          const details = to === "cancelled" ? { ...facts, cancelledBags: bags, reason } : { ...facts, ratePaise: o.ratePaise };
+          await log(tx, { actorId, entity: "order", entityId: o.id, action, details } as AuditEntry, when);
+        }
         from = to;
       };
       await event("placed", byRetailer ? ids.retailer : ids.sales);
@@ -315,17 +383,31 @@ async function main() {
       let sent = 0;
       for (const load of loads) {
         sent += load;
-        await tx.insert(dispatches).values({
-          orderId: o.id,
-          bags: load,
-          vehicleId: truck.id,
-          driverName: truck.driverName,
-          driverPhone: truck.driverPhone,
-          fromGodownId: godown.id,
-          ratePaise: RATE,
-          salesRepId: ids.sales,
-          dispatchedBy: ids.logistics,
-        });
+        const [sentRow] = await tx
+          .insert(dispatches)
+          .values({
+            orderId: o.id,
+            bags: load,
+            vehicleId: truck.id,
+            driverName: truck.driverName,
+            driverPhone: truck.driverPhone,
+            fromGodownId: godown.id,
+            ratePaise: RATE,
+            salesRepId: ids.sales,
+            dispatchedBy: ids.logistics,
+          })
+          .returning({ id: dispatches.id, createdAt: dispatches.createdAt });
+        await log(
+          tx,
+          {
+            actorId: ids.logistics,
+            entity: "dispatch",
+            entityId: sentRow.id,
+            action: "create",
+            details: { ...facts, orderId: o.id, bags: load, ratePaise: RATE, amountPaise: load * RATE, from: `godown:${godown.id}`, truck: truck.number },
+          },
+          sentRow.createdAt,
+        );
         await tx.insert(stockMovements).values({
           productId: prod.id,
           godownId: godown.id,
@@ -375,22 +457,39 @@ async function main() {
         { orderId: o.id, fromStatus: null, toStatus: "placed", actorId: ids.sales, createdAt: placedAt },
         { orderId: o.id, fromStatus: "placed", toStatus: "approved", actorId: ids.accounts, createdAt: placedAt },
       ]);
+      const facts = { retailerId: o.retailerId, productId: product.id, bags, ratePaise: rate };
+      await log(tx, { actorId: ids.sales, entity: "order", entityId: o.id, action: "place", details: facts }, placedAt);
+      await log(tx, { actorId: ids.accounts, entity: "order", entityId: o.id, action: "approve", details: facts }, placedAt);
       let sent = 0;
       for (const [load, ago] of loads) {
         sent += load;
         const when = at(ago);
-        await tx.insert(dispatches).values({
-          orderId: o.id,
-          bags: load,
-          vehicleId: truck.id,
-          driverName: truck.driverName,
-          driverPhone: truck.driverPhone,
-          fromGodownId: godown.id,
-          ratePaise: rate,
-          salesRepId: ids.sales,
-          dispatchedBy: ids.logistics,
-          createdAt: when,
-        });
+        const [sentRow] = await tx
+          .insert(dispatches)
+          .values({
+            orderId: o.id,
+            bags: load,
+            vehicleId: truck.id,
+            driverName: truck.driverName,
+            driverPhone: truck.driverPhone,
+            fromGodownId: godown.id,
+            ratePaise: rate,
+            salesRepId: ids.sales,
+            dispatchedBy: ids.logistics,
+            createdAt: when,
+          })
+          .returning({ id: dispatches.id });
+        await log(
+          tx,
+          {
+            actorId: ids.logistics,
+            entity: "dispatch",
+            entityId: sentRow.id,
+            action: "create",
+            details: { ...facts, orderId: o.id, bags: load, amountPaise: load * rate, from: `godown:${godown.id}`, truck: truck.number },
+          },
+          when,
+        );
         await tx.insert(stockMovements).values({
           productId: product.id,
           godownId: godown.id,
@@ -437,6 +536,17 @@ async function main() {
         updatedAt: at(50),
       })
       .returning();
+    await log(
+      tx,
+      {
+        actorId: ids.sales,
+        entity: "payment",
+        entityId: r.id,
+        action: "record",
+        details: { receiptNo: r.receiptNo, retailerId: r.retailerId, mode: "cash", amountPaise: r.totalPaise },
+      },
+      at(50),
+    );
     await tx.insert(ledgerEntries).values({
       retailerId: r.retailerId,
       kind: "receipt_credit",
@@ -461,6 +571,9 @@ async function main() {
       actorId: ids.accounts,
       createdAt: at(49),
     });
+    const handoverFacts = { collectorId: ids.sales, amountPaise: r.totalPaise, requestedPaise: r.totalPaise };
+    await log(tx, { actorId: ids.sales, entity: "handover", entityId: req.id, action: "request", details: { collectorId: ids.sales, amountPaise: r.totalPaise } }, at(49));
+    await log(tx, { actorId: ids.accounts, entity: "handover", entityId: req.id, action: "confirm", details: handoverFacts }, at(49));
   });
 
   // Payments (spec section 6). Amounts in paise.
@@ -475,8 +588,21 @@ async function main() {
         .returning();
       await postEntry(tx, plan.ledger, by, `Payment #${r.receiptNo}`, r.id);
       await tx.insert(walletMovements).values({ collectorId: by, kind: "collected", amountPaise: paise, receiptId: r.id, actorId: by });
+      await log(
+        tx,
+        { actorId: by, entity: "payment", entityId: r.id, action: "record", details: paymentFacts(r) },
+        r.createdAt,
+      );
       return r;
     });
+  const paymentFacts = (r: { receiptNo: number; retailerId: string; mode: string; totalPaise: number; receivedBy: string; utr?: string | null }) => ({
+    receiptNo: r.receiptNo,
+    retailerId: r.retailerId,
+    mode: r.mode,
+    amountPaise: r.totalPaise,
+    collectorId: r.receivedBy,
+    ...(r.utr ? { utr: r.utr } : {}),
+  });
   // Online is "unverified" (dues unchanged) until accounts verify or reject it.
   const online = async (shopIdx: number, paise: number, by: string, utr: string, result: "unverified" | "verified" | "rejected") => {
     const plan = planReceipt({ retailerId: shopRows[shopIdx].id, mode: "online", totalPaise: paise, utr });
@@ -496,6 +622,21 @@ async function main() {
           rejectReason: result === "rejected" ? "Not in the bank statement" : "",
         })
         .returning();
+      // Recorded first, then verified or rejected, as in the app.
+      await log(tx, { actorId: by, entity: "payment", entityId: r.id, action: "record", details: paymentFacts(r) }, r.createdAt);
+      if (result !== "unverified") {
+        await log(
+          tx,
+          {
+            actorId: ids.accounts,
+            entity: "payment",
+            entityId: r.id,
+            action: result === "verified" ? "verify" : "reject",
+            details: { ...paymentFacts(r), ...(result === "rejected" ? { reason: "Not in the bank statement" } : {}) },
+          },
+          new Date(r.createdAt.getTime() + 1000),
+        );
+      }
       if (result === "verified") {
         const v = planVerify("accounts", { ...r, status: "unverified" });
         if (!v.ok) throw new Error(v.error);
@@ -508,14 +649,17 @@ async function main() {
       .insert(walletMovements)
       .values({ collectorId: by, kind: "handover_request", amountPaise: paise, actorId: by })
       .returning();
+    await log(db, { actorId: by, entity: "handover", entityId: req.id, action: "request", details: { collectorId: by, amountPaise: paise } }, req.createdAt);
     if (answer === "confirmed") {
-      await db.insert(walletMovements).values({
-        collectorId: by,
-        kind: "handover_confirmed",
-        amountPaise: paise,
-        refId: req.id,
-        actorId: ids.accounts,
-      });
+      const [done] = await db
+        .insert(walletMovements)
+        .values({ collectorId: by, kind: "handover_confirmed", amountPaise: paise, refId: req.id, actorId: ids.accounts })
+        .returning();
+      await log(
+        db,
+        { actorId: ids.accounts, entity: "handover", entityId: req.id, action: "confirm", details: { collectorId: by, amountPaise: paise, requestedPaise: paise } },
+        done.createdAt,
+      );
     }
   };
 
@@ -544,6 +688,17 @@ async function main() {
       .update(receipts)
       .set({ status: "reversed", reversedAt: new Date(), reversedBy: ids.accounts, reversalReason: plan.reason })
       .where(eq(receipts.id, wrong.id));
+    await log(
+      tx,
+      {
+        actorId: ids.accounts,
+        entity: "payment",
+        entityId: wrong.id,
+        action: "reverse",
+        details: { ...paymentFacts(wrong), reason: plan.reason, cashWith: "holder" },
+      },
+      new Date(),
+    );
   });
   // Sales hands over Rs 6,000 (confirmed by accounts) and keeps Rs 4,000.
   await handover(ids.sales, 600_000, "confirmed");
