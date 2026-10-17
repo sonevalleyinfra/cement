@@ -1,4 +1,4 @@
-import { BookOpen, ChartColumn, Coins, Factory, Hourglass, Package, Users, Wallet, type LucideIcon } from "lucide-react";
+import { BookOpen, ChartColumn, Coins, Factory, Hourglass, Package, ShieldCheck, Users, Wallet, type LucideIcon } from "lucide-react";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { RangeForm } from "@/components/app/range-form";
@@ -6,6 +6,7 @@ import { Stat } from "@/components/app/stat";
 import { rolesFor } from "@/lib/permissions";
 import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getCashHolders, getDuesAging, getProfitReport, getSalesReport, getSupplierClosings } from "@/lib/reports";
+import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
 import { supplierHomeLines } from "@/lib/supplier-rules";
 import { money, num } from "./report-frame";
@@ -13,7 +14,7 @@ import { money, num } from "./report-frame";
 type Card = { href: string; title: string; icon: LucideIcon; tone: Tone; stats: { label: string; value: string }[] };
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireRole(...rolesFor("viewReports"));
+  const session = await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
   const [sales, dues, cash, suppliers, profit] = await Promise.all([
@@ -39,6 +40,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       stats: supplierHomeLines(suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) })),
     },
     { href: `/reports/staff?${q}`, title: "Staff activity", icon: Users, tone: "violet", stats: [] },
+    ...(isAdmin(session.user.role) ? [{ href: "/reports/books", title: "Books check", icon: ShieldCheck, tone: "slate" as const, stats: [] }] : []),
   ];
 
   return (
