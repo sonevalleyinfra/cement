@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { FormHint } from "@/components/app/form-hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { MAX_REASON } from "@/lib/receipt-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { rejectOnline, reverseReceipt, verifyOnline } from "./actions";
 
-/** Accounts tap "Verified" after finding the payment on the bank statement. */
+/** Accounts tap "Verify" after finding the payment on the bank statement. */
 export function VerifyButton({ receiptId }: { receiptId: string }) {
   const router = useRouter();
   const { error, setError, clearError } = useFormError();
@@ -19,6 +19,7 @@ export function VerifyButton({ receiptId }: { receiptId: string }) {
   return (
     <div className="flex flex-col gap-1">
       <Button
+        className="w-full"
         disabled={pending}
         onClick={() => {
           clearError();
@@ -31,7 +32,7 @@ export function VerifyButton({ receiptId }: { receiptId: string }) {
           });
         }}
       >
-        {pending ? "Saving…" : "Verified"}
+        {pending ? "Saving…" : "Verify"}
       </Button>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
@@ -49,10 +50,13 @@ export function ReasonAction({
   receiptId,
   action,
   cashHolder = null,
+  primary,
 }: {
   receiptId: string;
   action: "reject" | "reverse";
   cashHolder?: string | null;
+  /** The primary button of a decision (Verify): shown beside the outline button, two equal halves. */
+  primary?: ReactNode;
 }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
@@ -68,6 +72,15 @@ export function ReasonAction({
   ]);
 
   if (!asking) {
+    if (primary)
+      return (
+        <div className="grid grid-cols-2 items-start gap-2">
+          <Button className="w-full" variant="outline" onClick={() => setAsking(true)}>
+            {label}
+          </Button>
+          {primary}
+        </div>
+      );
     return (
       <Button variant="outline" onClick={() => setAsking(true)}>
         {label}
@@ -107,7 +120,7 @@ export function ReasonAction({
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
       <FormHint>{hint}</FormHint>
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Button
           variant="outline"
           onClick={() => {

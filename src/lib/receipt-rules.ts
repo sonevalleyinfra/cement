@@ -40,7 +40,7 @@ export function receiptChip(status: string): {
 } {
   switch (status) {
     case "received":
-      return { status: "approved", label: "Received" };
+      return { status: "approved", label: "Cash recorded" };
     case "unverified":
       return { status: "placed", label: "Not verified" };
     case "verified":

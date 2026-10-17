@@ -11,7 +11,7 @@ import { StatusChip } from "@/components/app/status-chip";
 import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { truckAfterPlacePick } from "@/lib/dispatch-rules";
+import { placesWithEnough, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { isOrderStatus, remainingBags } from "@/lib/order-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -36,11 +36,13 @@ export function DispatchView({
   isAdmin,
   orders,
   places,
+  truckChips,
   balances,
 }: {
   isAdmin: boolean;
   orders: OrderRow[];
   places: Place[];
+  truckChips: TruckChip[];
   balances: Balance[];
 }) {
   const router = useRouter();
@@ -60,7 +62,9 @@ export function DispatchView({
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
     // Start with the place holding the most bags of this product, and an empty truck box.
-    const fullest = [...places].sort((a, b) => stockHere(o, b.key) - stockHere(o, a.key))[0];
+    const fullest = placesWithEnough(places, balances, o.productId, remainingBags(o.bags, o.sent)).sort(
+      (a, b) => b.bagsHere - a.bagsHere,
+    )[0];
     pickPlace(fullest?.key ?? "", "", null);
     setDriverName("");
     setDriverPhone("");
@@ -76,9 +80,17 @@ export function DispatchView({
     setAutoTruck(next.autoFilled);
   }
 
-  function stockHere(o: OrderRow, key: string) {
-    return balances.find((b) => b.productId === o.productId && b.placeKey === key)?.bags ?? 0;
+  /** A chip fills the truck number and the driver; a number filled this way is a typed one (it stays). */
+  function pickChip(c: TruckChip) {
+    setTruck(c.truck);
+    setAutoTruck(null);
+    setDriverName(c.driverName);
+    setDriverPhone(c.driverPhone);
   }
+
+  // Only places holding enough of this product for the bags typed; a pick that no longer fits is dropped.
+  const options = open ? placesWithEnough(places, balances, open.productId, Number(bags || 0)) : [];
+  const chosenPlace = options.some((p) => p.key === fromPlace) ? fromPlace : "";
 
   function submit() {
     if (!open) return;
@@ -89,7 +101,7 @@ export function DispatchView({
           orderId: open.id,
           bags: Number(bags),
           vehicleNumber: truck,
-          fromPlace: fromPlace || null,
+          fromPlace: chosenPlace || null,
           driverName,
           driverPhone,
           requestId,
@@ -126,7 +138,7 @@ export function DispatchView({
               <li key={o.id}>
                 <ListCard
                   index={i}
-                  href={`/orders/${o.id}`}
+                  {...(places.length === 0 || left === 0 ? { href: `/orders/${o.id}` } : { onClick: () => openSheet(o) })}
                   title={o.retailer}
                   top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
                   bottom={
@@ -136,11 +148,6 @@ export function DispatchView({
                     </div>
                   }
                 />
-                <div className="mt-2">
-                  <Button className="w-full" onClick={() => openSheet(o)} disabled={places.length === 0 || left === 0}>
-                    Dispatch
-                  </Button>
-                </div>
               </li>
             );
           })}
@@ -149,8 +156,11 @@ export function DispatchView({
       <Sheet open={open !== null} onOpenChange={(v) => !v && setOpen(null)} title="Dispatch">
         {open && (
           <div className="flex flex-col gap-3">
-            <div className="text-sm text-muted-foreground">
-              {open.retailer} · {open.product} · {remainingBags(open.bags, open.sent)} bags left
+            <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span>
+                {open.retailer} · {open.product} · {remainingBags(open.bags, open.sent)} bags left
+              </span>
+              <TextLink href={`/orders/${open.id}`}>Order</TextLink>
             </div>
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Bags
@@ -162,10 +172,29 @@ export function DispatchView({
             </label>
             <SelectField
               label="Take from"
-              value={fromPlace}
+              value={chosenPlace}
               onChange={(key) => pickPlace(key)}
-              options={places.map((p) => ({ value: p.key, label: `${p.name} (${stockHere(open, p.key)} bags)` }))}
+              options={options.map((p) => ({ value: p.key, label: `${p.name} (${p.bagsHere} bags)` }))}
             />
+            {options.length === 0 && <p className="text-sm text-destructive">No place holds {Number(bags || 1)} bags.</p>}
+            {truckChips.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-semibold">Recent trucks</span>
+                <div className="flex flex-wrap gap-2">
+                  {truckChips.map((c) => (
+                    <button
+                      key={c.truck}
+                      type="button"
+                      onClick={() => pickChip(c)}
+                      aria-pressed={truck === c.truck}
+                      className={`tabular min-h-12 rounded-xl px-3 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${truck === c.truck ? "bg-primary text-primary-foreground ring-primary" : "bg-card ring-foreground/10"}`}
+                    >
+                      {c.truck}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Truck number
               <Input
@@ -191,8 +220,13 @@ export function DispatchView({
             </label>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div>
-              <FormHint>{firstMissing([[Number(bags || 0) < 1, "Enter the bags"]])}</FormHint>
-              <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1}>
+              <FormHint>
+                {firstMissing([
+                  [Number(bags || 0) < 1, "Enter the bags"],
+                  [chosenPlace === "" && options.length > 0, "Pick where the bags come from"],
+                ])}
+              </FormHint>
+              <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1 || chosenPlace === ""}>
                 Dispatch {bagsText(Number(bags || 0))}
               </Button>
             </div>

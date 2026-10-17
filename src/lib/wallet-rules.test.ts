@@ -63,6 +63,12 @@ describe("validateHandoverRequest", () => {
     expect(validateHandoverRequest(60000, 60000).ok).toBe(true);
     expect(validateHandoverRequest(60001, 60000).ok).toBe(false);
   });
+  it("says the cash is pending when an open request already covers it", () => {
+    const r = validateHandoverRequest(60000, 0, 60000);
+    expect(r).toEqual({ ok: false, error: "That cash is already pending handover." });
+    expect(validateHandoverRequest(60001, 0, 60000)).toEqual({ ok: false, error: "That is more cash than you hold." });
+    expect(validateHandoverRequest(100, 0)).toEqual({ ok: false, error: "That is more cash than you hold." });
+  });
   it("refuses zero, negative and fractional paise", () => {
     expect(validateHandoverRequest(0, 100).ok).toBe(false);
     expect(validateHandoverRequest(-5, 100).ok).toBe(false);

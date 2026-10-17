@@ -103,3 +103,51 @@ export function truckAfterPlacePick(
   if (autoFilled !== null && current === autoFilled) return { truck: "", autoFilled: null };
   return { truck: current, autoFilled: null };
 }
+
+type StockPlace = { key: string; name: string; truck: string | null };
+type StockBalance = { productId: string; placeKey: string; bags: number };
+
+/**
+ * The "Take from" list for one product: only places holding at least `bags` of it
+ * (a place with 0 bags, or fewer than asked, could never cover the dispatch).
+ * `bags` below 1 counts as 1, so an empty box still hides empty places.
+ */
+export function placesWithEnough<P extends StockPlace>(
+  places: readonly P[],
+  balances: readonly StockBalance[],
+  productId: string,
+  bags: number,
+): (P & { bagsHere: number })[] {
+  const need = Number.isFinite(bags) && bags > 1 ? Math.floor(bags) : 1;
+  return places
+    .map((p) => ({
+      ...p,
+      bagsHere: balances.filter((b) => b.productId === productId && b.placeKey === p.key).reduce((s, b) => s + b.bags, 0),
+    }))
+    .filter((p) => p.bagsHere >= need);
+}
+
+export type TruckChip = { truck: string; driverName: string; driverPhone: string };
+
+/** How many truck chips the dispatch sheet shows. */
+export const MAX_TRUCK_CHIPS = 6;
+
+/**
+ * Chips for the dispatch sheet: trucks holding bags now first (they usually leave as they are),
+ * then trucks from recent dispatches, newest first. One chip per truck number; a recent dispatch
+ * supplies the driver. `recent` must be newest first.
+ */
+export function truckChips(loaded: readonly string[], recent: readonly TruckChip[], max = MAX_TRUCK_CHIPS): TruckChip[] {
+  const lastFor = new Map<string, TruckChip>();
+  for (const r of recent) if (!lastFor.has(r.truck)) lastFor.set(r.truck, r);
+  const out: TruckChip[] = [];
+  const seen = new Set<string>();
+  const add = (truck: string) => {
+    if (seen.has(truck) || out.length >= max) return;
+    seen.add(truck);
+    out.push(lastFor.get(truck) ?? { truck, driverName: "", driverPhone: "" });
+  };
+  loaded.forEach(add);
+  recent.forEach((r) => add(r.truck));
+  return out;
+}

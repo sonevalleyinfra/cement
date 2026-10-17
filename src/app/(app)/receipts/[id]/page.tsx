@@ -109,10 +109,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       )}
 
       {toCheck && (
-        <div className="flex flex-col gap-2">
-          <VerifyButton receiptId={r.id} />
-          <ReasonAction receiptId={r.id} action="reject" />
-        </div>
+        <ReasonAction receiptId={r.id} action="reject" primary={<VerifyButton receiptId={r.id} />} />
       )}
       {showReverse && (
         <ReasonAction receiptId={r.id} action="reverse" cashHolder={r.mode === "cash" ? r.collector : null} />

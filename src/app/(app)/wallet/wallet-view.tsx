@@ -150,7 +150,7 @@ export function WalletView({
                               setAnswering(r);
                             }}
                           >
-                            Received
+                            Confirm
                           </Button>
                         )}
                       </>
@@ -170,12 +170,14 @@ export function WalletView({
                   <ListCard
                     index={i}
                     title={h.name}
-                    top={
-                      h.pendingPaise > 0 ? (
-                        <span className="text-xs text-muted-foreground">{formatINR(h.pendingPaise)} to confirm</span>
-                      ) : undefined
+                    bottom={
+                      <div className="flex flex-col gap-1">
+                        <span className="tabular text-lg font-bold">{formatINR(h.balancePaise)}</span>
+                        {h.pendingPaise > 0 && (
+                          <span className="text-xs text-muted-foreground">{formatINR(h.pendingPaise)} to confirm</span>
+                        )}
+                      </div>
                     }
-                    bottom={<span className="tabular text-lg font-bold">{formatINR(h.balancePaise)}</span>}
                   />
                 </li>
               ))}
@@ -218,14 +220,8 @@ export function WalletView({
             <Label htmlFor="received">Received (₹)</Label>
             <Input id="received" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} />
           </div>
-          <div>
-            <FormHint>{receivedHint}</FormHint>
-            <Button className="w-full" disabled={pending || receivedHint !== null} onClick={() => answer("confirm")}>
-              Received
-            </Button>
-          </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reject-reason">Reason</Label>
+            <Label htmlFor="reject-reason">Reason (to reject)</Label>
             <Input id="reject-reason" maxLength={MAX_REASON} value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
           {rejecting && answering && rejectHint === null ? (
@@ -239,18 +235,23 @@ export function WalletView({
             />
           ) : (
             <div>
-              <FormHint>{rejectHint}</FormHint>
-              <Button
-                className="w-full"
-                variant="outline"
-                disabled={pending || rejectHint !== null}
-                onClick={() => {
-                  clearError();
-                  setRejecting(true);
-                }}
-              >
-                Reject
-              </Button>
+              <FormHint>{receivedHint}</FormHint>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  disabled={pending || rejectHint !== null}
+                  onClick={() => {
+                    clearError();
+                    setRejecting(true);
+                  }}
+                >
+                  Reject
+                </Button>
+                <Button className="w-full" disabled={pending || receivedHint !== null} onClick={() => answer("confirm")}>
+                  Confirm
+                </Button>
+              </div>
             </div>
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
