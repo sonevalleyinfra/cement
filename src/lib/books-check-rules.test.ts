@@ -47,7 +47,9 @@ describe("summarize", () => {
     expect(line.ok).toBe(false);
     expect(line.problems).toBe(1);
     expect(line.label).toBe("1 problem");
-    expect(line.rows).toEqual([{ href: "/orders/o1", text: "Order · Shah · 120 bags · expected 100 bags" }]);
+    expect(line.rows).toEqual([
+      { href: "/orders/o1", text: "Order · Shah · 120 bags · expected 100 bags", title: "Order · Shah", detail: "120 bags · expected 100 bags" },
+    ]);
     expect(line.more).toBe(0);
   });
 

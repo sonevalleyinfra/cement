@@ -46,7 +46,8 @@ export type BooksRow = {
 
 export type CheckResult = { id: CheckId; total: number; rows: BooksRow[] } | { id: CheckId; error: true };
 
-export type ShownRow = { href: string | null; text: string };
+/** `text` is the whole row; `title` / `detail` are its two parts for a two-line row. */
+export type ShownRow = { href: string | null; text: string; title: string; detail: string };
 
 export type BooksLine = {
   id: CheckId;
@@ -91,7 +92,12 @@ const amount = (unit: string | null, v: number) => (unit === "paise" ? formatINR
 
 /** "Order · Shah Traders · 120 bags · expected 100 bags". */
 export function describeRow(row: BooksRow): string {
-  const parts = [row.what];
+  return [row.what, rowDetail(row)].filter(Boolean).join(" · ");
+}
+
+/** The numbers part of a row: "120 bags · expected 100 bags", or "" when there are none. */
+export function rowDetail(row: BooksRow): string {
+  const parts: string[] = [];
   if (row.got != null) parts.push(amount(row.unit, Number(row.got)));
   if (row.want != null) parts.push(`expected ${amount(row.unit, Number(row.want))}`);
   return parts.join(" · ");
@@ -106,7 +112,7 @@ export function summarize(results: readonly CheckResult[]): BooksLine[] {
       return { ...c, ok: false, error: true, problems: 0, label: "Could not run", rows: [], more: 0 };
     }
     const problems = Math.max(r.total, r.rows.length);
-    const rows = r.rows.slice(0, ROW_CAP).map((row) => ({ href: rowHref(row.kind, row.ref), text: describeRow(row) }));
+    const rows = r.rows.slice(0, ROW_CAP).map((row) => ({ href: rowHref(row.kind, row.ref), text: describeRow(row), title: row.what, detail: rowDetail(row) }));
     return { ...c, ok: problems === 0, error: false, problems, label: problemsLabel(problems), rows, more: problems - rows.length };
   });
 }
