@@ -10,6 +10,7 @@ import {
   notificationTarget,
   rateChangeText,
   recipientIds,
+  shopHasActiveSalesRep,
   type OrderPeople,
 } from "./notification-rules";
 
@@ -40,6 +41,13 @@ describe("recipientIds (spec section 8)", () => {
     const noRep = { ...people, salesRepId: null, shopHasSalesRep: false, placedBy: "shop", rateMissing: true };
     expect(recipientIds("placed", noRep, "shop")).toEqual(["acc1", "acc2", "adm"]);
     expect(recipientIds("placed", { ...noRep, rateMissing: false, placedBy: "adm" }, "adm")).toEqual(["acc1", "acc2"]);
+  });
+  it("a shop whose sales person is deactivated counts as having none, so admins are told", () => {
+    expect(shopHasActiveSalesRep("s1", ["s1", "adm"])).toBe(true);
+    expect(shopHasActiveSalesRep("gone", ["s1", "adm"])).toBe(false);
+    expect(shopHasActiveSalesRep(null, ["s1"])).toBe(false);
+    const stale = { ...people, shopHasSalesRep: shopHasActiveSalesRep("gone", ["adm"]), placedBy: "shop", rateMissing: true };
+    expect(recipientIds("placed", stale, "shop")).toContain("adm");
   });
   it("placed by a sales person for a shop with no sales person (the order is theirs): admins are told too", () => {
     const covering = { ...people, salesRepId: "sales2", shopHasSalesRep: false, placedBy: "sales2", rateMissing: false };

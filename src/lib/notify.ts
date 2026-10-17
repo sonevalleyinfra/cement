@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { notifications, orders, retailers, user } from "@/db/schema";
 import type { DbOrTx } from "@/lib/ledger";
 import {
+  shopHasActiveSalesRep,
   buildMoneyNotifications,
   buildNotifications,
   type MoneyNotificationInput,
@@ -87,7 +88,11 @@ export async function notify(
     rate,
     people: {
       salesRepId: row.salesRepId,
-      shopHasSalesRep: row.shopSalesRepId !== null,
+      // A deactivated sales person is nobody: admin hears about the order instead.
+      shopHasSalesRep: shopHasActiveSalesRep(
+        row.shopSalesRepId,
+        people.map((p) => p.id),
+      ),
       placedBy: row.placedBy,
       retailerUserId: row.retailerUserId,
       rateMissing: row.ratePaise === null,

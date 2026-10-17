@@ -137,8 +137,24 @@ describe("shopsWithoutSalesRep", () => {
       { id: "b", active: true, salesRepId: "s1" },
       { id: "c", active: false, salesRepId: null },
     ];
-    expect(shops.filter(needsSalesRep).map((s) => s.id)).toEqual(["a"]);
-    expect(shops.filter(needsSalesRep)).toHaveLength(shopsWithoutSalesRep(shops));
+    expect(shops.filter((s) => needsSalesRep(s)).map((s) => s.id)).toEqual(["a"]);
+    expect(shops.filter((s) => needsSalesRep(s))).toHaveLength(shopsWithoutSalesRep(shops));
+  });
+});
+
+describe("shops whose sales person is deactivated", () => {
+  const active = new Set(["s1"]);
+  it("count as having nobody when the rep is not active", () => {
+    const shops = [
+      { active: true, salesRepId: "s1" },
+      { active: true, salesRepId: "gone" },
+      { active: true, salesRepId: null },
+      { active: false, salesRepId: "gone" },
+    ];
+    expect(shopsWithoutSalesRep(shops, active)).toBe(2);
+    expect(shopsWithoutSalesRep(shops)).toBe(1);
+    expect(needsSalesRep(shops[1]!, active)).toBe(true);
+    expect(needsSalesRep(shops[0]!, active)).toBe(false);
   });
 });
 
