@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type FormEvent, useState, useTransition } from "react";
 import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
@@ -9,11 +10,12 @@ import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { TextLink } from "@/components/app/text-link";
 import { Sheet } from "@/components/app/sheet";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { firstMissing } from "@/lib/form-rules";
 import { matchesRetailerSearch } from "@/lib/retailer-rules";
+import { cn } from "@/lib/utils";
 import { useFormError } from "@/lib/use-form-error";
 import { addRetailer, saveShop, setRetailerActive } from "./actions";
 
@@ -36,6 +38,8 @@ export function RetailersView({
   logins,
   salesReps,
   onlyNoRep = false,
+  canRecordPayment = false,
+  canOrder = false,
 }: {
   rows: Row[];
   /** Admin: add, edit and turn off shops. */
@@ -46,6 +50,9 @@ export function RetailersView({
   salesReps: Login[] | null;
   /** Only the shops that need a sales person are listed (`?filter=no-rep`, from Home). */
   onlyNoRep?: boolean;
+  /** Shortcuts in the shop sheet: record a payment / place an order with this shop filled in. */
+  canRecordPayment?: boolean;
+  canOrder?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -89,7 +96,7 @@ export function RetailersView({
                       <span className="tabular">{r.phone}</span>
                       {r.place && ` · ${r.place}`}
                     </span>
-                    <span>{r.salesRepName || "No sales person"}</span>
+                    {salesReps && <span>{r.salesRepName || "No sales person"}</span>}
                   </div>
                 }
               />
@@ -110,6 +117,8 @@ export function RetailersView({
             canEdit={canEdit}
             logins={logins}
             salesReps={salesReps}
+            canRecordPayment={canRecordPayment}
+            canOrder={canOrder}
             onDone={() => setDetailId(null)}
           />
         )}
@@ -130,12 +139,16 @@ function ShopDetail({
   canEdit,
   logins,
   salesReps,
+  canRecordPayment,
+  canOrder,
   onDone,
 }: {
   row: Row;
   canEdit: boolean;
   logins: Login[] | null;
   salesReps: Login[] | null;
+  canRecordPayment: boolean;
+  canOrder: boolean;
   onDone: () => void;
 }) {
   const [name, setName] = useState(row.name);
@@ -147,9 +160,29 @@ function ShopDetail({
   const { error, setError, clearError } = useFormError([name, phone, place, repId, loginId, turningOff]);
   const [pending, start] = useTransition();
 
+  const shortcuts = row.active && (canRecordPayment || canOrder) && (
+    <div className="flex gap-2">
+      {canRecordPayment && (
+        <Link href={`/receipts/new?retailer=${row.id}`} className={cn(buttonVariants({ size: "lg" }), "flex-1")}>
+          Record payment
+        </Link>
+      )}
+      {canOrder && (
+        <Link
+          href={`/orders/new?retailer=${row.id}`}
+          className={cn(buttonVariants({ size: "lg", variant: canRecordPayment ? "outline" : "default" }), "flex-1")}
+        >
+          New order
+        </Link>
+      )}
+    </div>
+  );
+
   if (!canEdit) {
     return (
-      <dl className="flex flex-col gap-3 text-base">
+      <div className="flex flex-col gap-4">
+        {shortcuts}
+        <dl className="flex flex-col gap-3 text-base">
         <div>
           <dt className="text-xs text-muted-foreground">Phone</dt>
           <dd>
@@ -172,6 +205,7 @@ function ShopDetail({
           <dd>{row.salesRepName || "None"}</dd>
         </div>
       </dl>
+      </div>
     );
   }
 
@@ -218,6 +252,7 @@ function ShopDetail({
 
   return (
     <div className="flex flex-col gap-4">
+      {shortcuts}
       <form onSubmit={save} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="shop-name">Name</Label>

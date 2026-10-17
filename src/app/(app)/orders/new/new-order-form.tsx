@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormHint } from "@/components/app/form-hint";
@@ -10,6 +11,7 @@ import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { productGroups } from "@/lib/catalogue-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -23,16 +25,19 @@ export function NewOrderForm({
   retailers,
   products,
   fixedRetailerId,
+  initialRetailerId = null,
   askRate,
 }: {
   retailers: Retailer[];
   products: Product[];
   fixedRetailerId: string | null;
+  /** From `?retailer=`, already checked against `retailers` on the server. */
+  initialRetailerId?: string | null;
   /** Staff type the rate per bag; a retailer never sees it. */
   askRate: boolean;
 }) {
   const router = useRouter();
-  const [retailerId, setRetailerId] = useState<string | null>(fixedRetailerId);
+  const [retailerId, setRetailerId] = useState<string | null>(fixedRetailerId ?? initialRetailerId);
   const [productId, setProductId] = useState<string | null>(products[0]?.id ?? null);
   const [bags, setBags] = useState("");
   const [rate, setRate] = useState("");
@@ -77,13 +82,17 @@ export function NewOrderForm({
           {retailer?.name}
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex h-14 items-center justify-between rounded-2xl bg-card px-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
-        >
-          {retailer ? retailer.name : <span className="text-muted-foreground">Retailer</span>}
-        </button>
+        <div className="flex flex-col gap-1.5">
+          <Label>Retailer</Label>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="flex h-14 items-center justify-between gap-2 rounded-2xl bg-card px-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
+          >
+            {retailer ? retailer.name : <span className="text-muted-foreground">Pick retailer</span>}
+            <ChevronDown className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+          </button>
+        </div>
       )}
 
       <SelectField label="Product" value={productId ?? ""} onChange={setProductId} groups={productGroups(products)} />
