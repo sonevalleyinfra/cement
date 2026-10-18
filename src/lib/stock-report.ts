@@ -11,7 +11,8 @@
  * does not know); the screen flags it.
  *
  * Choices where the spec is silent:
- * - "Moved" = transfers between places; for one product they normally add up to 0.
+ * - "± moved" = transfers between places; for one product the net is normally 0, so the screen shows
+ *   bags moved in and out (godown↔truck) instead of the net.
  * - "Opening" = opening stock entered during the range (a first count of a place), shown apart
  *   from "Fixed" = admin corrections (damage, burst, shortage, count).
  * - "Dispatched" = bags sent to shops, shown as a plus number.
@@ -37,6 +38,10 @@ export type StockFlow = {
   purchasedBags: number;
   dispatchedBags: number;
   movedBags: number;
+  /** Bags that arrived in a place by a transfer (a plus number). Net `movedBags` is 0 per product, so this shows the move. */
+  movedInBags: number;
+  /** Bags that left a place by a transfer (a plus number). */
+  movedOutBags: number;
   fixedBags: number;
   closingBags: number;
   reconciles: boolean;
@@ -62,6 +67,8 @@ export function stockFlows(rows: readonly StockMoveRow[], range: { start: Date; 
         purchasedBags: 0,
         dispatchedBags: 0,
         movedBags: 0,
+        movedInBags: 0,
+        movedOutBags: 0,
         fixedBags: 0,
         closingBags: 0,
         reconciles: true,
@@ -75,7 +82,11 @@ export function stockFlows(rows: readonly StockMoveRow[], range: { start: Date; 
     }
     if (r.type === "purchase") f.purchasedBags += r.bags;
     else if (r.type === "dispatch") f.dispatchedBags -= r.bags;
-    else if (r.type === "transfer") f.movedBags += r.bags;
+    else if (r.type === "transfer") {
+      f.movedBags += r.bags;
+      if (r.bags > 0) f.movedInBags += r.bags;
+      else f.movedOutBags -= r.bags;
+    }
     else if (r.type === "opening") f.openingStockBags += r.bags;
     else if (r.type === "adjustment") f.fixedBags += r.bags;
     // Any other type is counted in closing only, so the row will not reconcile (and is flagged).
@@ -96,6 +107,8 @@ export function totalFlow(flows: readonly StockFlow[]): Omit<StockFlow, "product
     purchasedBags: 0,
     dispatchedBags: 0,
     movedBags: 0,
+    movedInBags: 0,
+    movedOutBags: 0,
     fixedBags: 0,
     closingBags: 0,
     reconciles: true,
@@ -106,6 +119,8 @@ export function totalFlow(flows: readonly StockFlow[]): Omit<StockFlow, "product
     t.purchasedBags += f.purchasedBags;
     t.dispatchedBags += f.dispatchedBags;
     t.movedBags += f.movedBags;
+    t.movedInBags += f.movedInBags;
+    t.movedOutBags += f.movedOutBags;
     t.fixedBags += f.fixedBags;
     t.closingBags += f.closingBags;
     t.reconciles &&= f.reconciles;

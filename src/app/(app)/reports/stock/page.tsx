@@ -9,6 +9,9 @@ import { Mismatch, num, ReportFrame, Section, signedNum, Stats } from "../report
 /** A change of bags in a stacked card: "–" when nothing moved, so the card only lists what happened. */
 const moved = (v: number) => (v === 0 ? "–" : signedNum(v));
 
+/** Transfers between places: "+30 / −30" (in / out), "–" when nothing moved. Net is 0 per product, so the net alone hides moves. */
+const movedPair = (inBags: number, outBags: number) => (inBags === 0 && outBags === 0 ? "–" : `+${num(inBags)} / −${num(outBags)}`);
+
 export default async function StockReportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
@@ -57,7 +60,7 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
             { label: "Opening" },
             { label: "Bought" },
             { label: "Sent" },
-            { label: "Moved" },
+            { label: "± moved" },
             { label: "Fixed" },
             { label: "End" },
           ]}
@@ -70,7 +73,7 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
             moved(f.openingStockBags),
             moved(f.purchasedBags),
             moved(-f.dispatchedBags),
-            moved(f.movedBags),
+            movedPair(f.movedInBags, f.movedOutBags),
             moved(f.fixedBags),
             num(f.closingBags),
           ])}
@@ -80,7 +83,7 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
             moved(total.openingStockBags),
             moved(total.purchasedBags),
             moved(-total.dispatchedBags),
-            moved(total.movedBags),
+            movedPair(total.movedInBags, total.movedOutBags),
             moved(total.fixedBags),
             num(total.closingBags),
           ]}
