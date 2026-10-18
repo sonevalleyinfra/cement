@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
+import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
@@ -18,16 +19,31 @@ export default async function NotificationsPage() {
     .limit(50);
   const hasUnread = rows.some((r) => !r.readAt);
 
-  if (rows.length === 0) return <EmptyState title="No notifications" />;
+  const header = (
+    <PageHeader
+      title="Notifications"
+      action={
+        hasUnread && (
+          <form action={markAllRead}>
+            <Button type="submit" variant="ghost" size="sm">
+              Mark all read
+            </Button>
+          </form>
+        )
+      }
+    />
+  );
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <EmptyState title="No notifications" />
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
-      {hasUnread && (
-        <form action={markAllRead} className="self-end">
-          <Button type="submit" variant="ghost" size="sm">
-            Mark all read
-          </Button>
-        </form>
-      )}
+      <div className="mb-1">{header}</div>
       {rows.map((n) => (
         <form key={n.id} action={openNotification.bind(null, n.id)}>
           <button

@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/app/page-header";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
@@ -102,17 +103,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-end">
-        {isOrderStatus(o.status) && <StatusChip status={o.status} />}
-      </div>
-      <div>
-        <h1 className="text-xl font-bold">{o.retailer}</h1>
-        <p className="text-sm text-muted-foreground">
+      <PageHeader title={o.retailer} back="/orders" action={isOrderStatus(o.status) && <StatusChip status={o.status} />}>
+        <p>
           {o.product} · <span className="tabular">{bagsText(o.bags)}</span>
         </p>
-        {cancelled && <p className="text-sm text-muted-foreground">{cancelled}</p>}
-        {o.notes && <p className="mt-1 text-sm">{o.notes}</p>}
-      </div>
+        {cancelled && <p>{cancelled}</p>}
+      </PageHeader>
+      {o.notes && <p className="text-sm">{o.notes}</p>}
       {amount && (
         <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <div className="text-xs text-muted-foreground">{amount.caption}</div>

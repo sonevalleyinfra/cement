@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { ConfirmStep } from "@/components/app/confirm-step";
 import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,7 +95,7 @@ export function WalletView({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Cash</h1>
+      <PageHeader title="Cash" />
       <ListCard
         index={0}
         title="My cash held"

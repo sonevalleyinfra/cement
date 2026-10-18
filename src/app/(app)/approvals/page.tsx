@@ -1,5 +1,6 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
+import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { orders, products, retailers } from "@/db/schema";
 import { getAllBalances } from "@/lib/ledger";
@@ -30,26 +31,31 @@ export default async function ApprovalsPage() {
     getAllBalances(),
   ]);
 
-  if (rows.length === 0) return <EmptyState title="Nothing waiting for approval" />;
-
   const balanceOf = new Map(balances.map((b) => [b.retailerId, b.balancePaise]));
   return (
-    <ul className="flex flex-col gap-3">
-      {rows.map((r, i) => (
-        <li key={r.id}>
-          <ApprovalCard
-            index={i}
-            order={{
-              id: r.id,
-              retailer: r.retailer,
-              product: r.product,
-              bags: r.bags,
-              ratePaise: r.ratePaise ?? 0,
-            }}
-            duesPaise={duesFrom(balanceOf.get(r.retailerId) ?? 0)}
-          />
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Approvals" />
+      {rows.length === 0 ? (
+        <EmptyState title="Nothing waiting for approval" />
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {rows.map((r, i) => (
+            <li key={r.id}>
+              <ApprovalCard
+                index={i}
+                order={{
+                  id: r.id,
+                  retailer: r.retailer,
+                  product: r.product,
+                  bags: r.bags,
+                  ratePaise: r.ratePaise ?? 0,
+                }}
+                duesPaise={duesFrom(balanceOf.get(r.retailerId) ?? 0)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

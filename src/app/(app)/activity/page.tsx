@@ -1,6 +1,7 @@
 import { History } from "lucide-react";
 import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
+import { PageHeader } from "@/components/app/page-header";
 import { FilterSelect, RangeForm } from "@/components/app/range-form";
 import { activityPeople, getActivity } from "@/lib/activity";
 import { ACTIVITY_GROUP_LABELS, ACTIVITY_GROUPS, isActivityGroup } from "@/lib/audit-rules";
@@ -35,7 +36,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Activity</h1>
+      <PageHeader title="Activity" />
       <RangeForm from={range.from} to={range.to}>
         <div className="grid grid-cols-2 gap-2">
           <FilterSelect

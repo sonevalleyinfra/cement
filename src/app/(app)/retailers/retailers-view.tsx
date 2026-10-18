@@ -6,9 +6,9 @@ import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
-import { TextLink } from "@/components/app/text-link";
 import { Sheet } from "@/components/app/sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,10 +62,7 @@ export function RetailersView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">Retailers</h1>
-        {onlyNoRep && <TextLink href="/retailers">All retailers</TextLink>}
-      </div>
+      <PageHeader title="Retailers" back={onlyNoRep ? "/retailers" : undefined} />
       {rows.length > 0 && (
         <Input
           type="search"

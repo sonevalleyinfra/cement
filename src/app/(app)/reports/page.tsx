@@ -1,6 +1,7 @@
 import { BookOpen, ChartColumn, Coins, Factory, Hourglass, Package, ShieldCheck, Users, Wallet, type LucideIcon } from "lucide-react";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { RangeForm } from "@/components/app/range-form";
 import { Stat } from "@/components/app/stat";
 import { rolesFor } from "@/lib/permissions";
@@ -45,7 +46,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Reports</h1>
+      <PageHeader title="Reports" />
       <RangeForm from={range.from} to={range.to} />
       <div className="flex flex-col gap-3">
         {cards.map((c, i) => (

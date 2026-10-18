@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { PageHeader } from "@/components/app/page-header";
 import { StatusChip } from "@/components/app/status-chip";
-import { TextLink } from "@/components/app/text-link";
 import { runBooksCheck } from "@/lib/books-check";
 import { summarize, type BooksLine, type ShownRow } from "@/lib/books-check-rules";
 import { requireRole } from "@/lib/session";
@@ -25,10 +25,7 @@ export default async function BooksCheckPage() {
   const lines = problemsFirst(summarize(await runBooksCheck()));
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">Books check</h1>
-        <TextLink href="/reports">Reports</TextLink>
-      </div>
+      <PageHeader title="Books check" back="/reports" />
       <div className="flex flex-col gap-3">
         {lines.map((l, i) => (
           <section

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/app/page-header";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
 import { receipts, retailers, user as users } from "@/db/schema";
@@ -67,19 +68,10 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <span className="inline-flex h-6 items-center rounded-full bg-muted px-2.5 text-xs font-medium">
-          {MODE_LABELS[r.mode] ?? r.mode}
-        </span>
-        <StatusChip status={chip.status} label={chip.label} />
-      </div>
-      <div>
-        <h1 className="text-xl font-bold">{r.retailer}</h1>
-        <p className="text-sm text-muted-foreground">
-          #{r.no} · {formatDateTime(r.createdAt)}
-          {staffDetails ? ` · ${r.collector}` : ""}
-        </p>
-      </div>
+      <PageHeader title={r.retailer} back="/receipts" action={<StatusChip status={chip.status} label={chip.label} />}>
+        {MODE_LABELS[r.mode] ?? r.mode} · #{r.no} · {formatDateTime(r.createdAt)}
+        {staffDetails ? ` · ${r.collector}` : ""}
+      </PageHeader>
       <div className="tabular text-3xl font-bold">{formatINR(r.totalPaise)}</div>
 
       {r.mode === "online" && (

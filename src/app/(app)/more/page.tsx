@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
+import { PageHeader } from "@/components/app/page-header";
 import { SectionCaption } from "@/components/app/section-caption";
 import { Button } from "@/components/ui/button";
 import { moreGroups } from "@/lib/nav-rules";
@@ -47,41 +48,44 @@ export default async function MorePage() {
   const { user } = await requireUser();
   let i = 0;
   return (
-    <div className="flex flex-col gap-6">
-      {moreGroups(user.role).map((g) => (
-        <section key={g.title} className="flex flex-col gap-2">
-          <SectionCaption>{g.title}</SectionCaption>
-          <ul className="flex flex-col gap-3">
-            {g.rows.map((r) => {
-              const look = looks[r.href];
-              return (
-                <li key={r.href} className="animate-in-up" style={delay(i++)}>
-                  <Link
-                    href={r.href}
-                    className="group flex w-full items-center gap-3 rounded-2xl bg-card p-3 pr-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6 transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <IconTile icon={look.icon} tone={look.tone} />
-                    <span className="flex-1">{r.label}</span>
-                    <ChevronRight
-                      aria-hidden
-                      className="size-5 text-muted-foreground/60 transition-transform duration-200 group-hover:translate-x-0.5"
-                    />
-                  </Link>
+    <div className="flex flex-col gap-4">
+      <PageHeader title="More" />
+      <div className="flex flex-col gap-6">
+        {moreGroups(user.role).map((g) => (
+          <section key={g.title} className="flex flex-col gap-2">
+            <SectionCaption>{g.title}</SectionCaption>
+            <ul className="flex flex-col gap-3">
+              {g.rows.map((r) => {
+                const look = looks[r.href];
+                return (
+                  <li key={r.href} className="animate-in-up" style={delay(i++)}>
+                    <Link
+                      href={r.href}
+                      className="group flex w-full items-center gap-3 rounded-2xl bg-card p-3 pr-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6 transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <IconTile icon={look.icon} tone={look.tone} />
+                      <span className="flex-1">{r.label}</span>
+                      <ChevronRight
+                        aria-hidden
+                        className="size-5 text-muted-foreground/60 transition-transform duration-200 group-hover:translate-x-0.5"
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
+              {g.title === "Account" && (
+                <li className="animate-in-up" style={delay(i++)}>
+                  <form action={signOut}>
+                    <Button type="submit" variant="outline" className="w-full">
+                      Sign out
+                    </Button>
+                  </form>
                 </li>
-              );
-            })}
-            {g.title === "Account" && (
-              <li className="animate-in-up" style={delay(i++)}>
-                <form action={signOut}>
-                  <Button type="submit" variant="outline" className="w-full">
-                    Sign out
-                  </Button>
-                </form>
-              </li>
-            )}
-          </ul>
-        </section>
-      ))}
+              )}
+            </ul>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

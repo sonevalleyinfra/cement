@@ -2,6 +2,7 @@ import { desc, eq, type SQL } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { StatusChip } from "@/components/app/status-chip";
 import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
@@ -53,24 +54,26 @@ export default async function ReceiptsPage() {
           .limit(100);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Payments</h1>
-        {staff && (
-          <div className="flex gap-4">
-            {can(user.role, "verifyPayments") && (
-              <TextLink href="/receipts/review" strong>
-                Verify
-              </TextLink>
-            )}
-            {can(user.role, "recordReceipt") && (
-              <TextLink href="/receipts/new" strong>
-                New payment
-              </TextLink>
-            )}
-          </div>
-        )}
-      </div>
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="Payments"
+        action={
+          staff && (
+            <>
+              {can(user.role, "verifyPayments") && (
+                <TextLink href="/receipts/review" strong>
+                  Verify
+                </TextLink>
+              )}
+              {can(user.role, "recordReceipt") && (
+                <TextLink href="/receipts/new" strong>
+                  New payment
+                </TextLink>
+              )}
+            </>
+          )
+        }
+      />
       {rows.length === 0 ? (
         <EmptyState title="No payments yet" />
       ) : (

@@ -14,3 +14,4 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-10-18 · PR #42 · Decision cards: dispatch card opens sheet + truck chips + take-from only places with enough bags; one Reject/Confirm layout on approvals, receipts verify, wallet; Verify/Confirm verbs, Cash recorded chip, handover pending error · t_15362fe7
 - 2026-10-18 · PR #45 · Admin Home To do/Overview captions, More grouped (Money, Goods, People, Records, Account) + Books check row, Stock action tiles 2×2 · t_cc4e3a09
 - 2026-10-18 · PR #46 · Polish: Verify online reject form inline in the card, wallet sheets use the Dispatch header rhythm, one "Reason for rejecting" label · t_e5e891d9
+- 2026-10-18 · PR #47 · PageHeader on every screen (Home excepted), 48px back chevron on sub-screens replacing right-side back links, status chip on order/receipt title row, Account one Save per card, /admin kit page removed · t_aff01680

@@ -1,4 +1,5 @@
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { dispatches, orders, products, retailers, vehicles } from "@/db/schema";
 import { truckChips } from "@/lib/dispatch-rules";
@@ -62,12 +63,15 @@ export default async function DispatchPage() {
   ];
 
   return (
-    <DispatchView
-      isAdmin={isAdmin(user.role)}
-      orders={rows}
-      places={places}
-      truckChips={chips}
-      balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
-    />
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Dispatch" />
+      <DispatchView
+        isAdmin={isAdmin(user.role)}
+        orders={rows}
+        places={places}
+        truckChips={chips}
+        balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
+      />
+    </div>
   );
 }

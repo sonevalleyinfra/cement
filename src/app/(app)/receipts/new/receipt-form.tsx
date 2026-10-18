@@ -6,6 +6,7 @@ import { useEffect, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
@@ -104,7 +105,7 @@ export function ReceiptForm({
 
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-xl font-bold">New payment</h1>
+      <PageHeader title="New payment" back="/receipts" />
 
       <div className="flex flex-col gap-1.5">
         <Label>Retailer</Label>
