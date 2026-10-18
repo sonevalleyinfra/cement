@@ -111,8 +111,8 @@ export function checkDelete(isSelf: boolean, isActive: boolean): string | null {
   return null;
 }
 
-/** The users page groups people by role. "none" collects anyone without a known role. */
-export type RoleTab = Role | "none";
+/** The users page groups people by role. "all" is everyone; "none" collects anyone without a known role. */
+export type RoleTab = "all" | Role | "none";
 
 /** Users who hold `tab` (a person with several roles shows under each) and match `active`. */
 export function usersInTab<T extends { role: string; active: boolean }>(
@@ -122,6 +122,7 @@ export function usersInTab<T extends { role: string; active: boolean }>(
 ): T[] {
   return rows.filter((r) => {
     if (r.active !== active) return false;
+    if (tab === "all") return true;
     const roles = parseRoles(r.role);
     return tab === "none" ? roles.length === 0 : roles.includes(tab);
   });

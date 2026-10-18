@@ -16,3 +16,4 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-10-18 · PR #46 · Polish: Verify online reject form inline in the card, wallet sheets use the Dispatch header rhythm, one "Reason for rejecting" label · t_e5e891d9
 - 2026-10-18 · PR #47 · PageHeader on every screen (Home excepted), 48px back chevron on sub-screens replacing right-side back links, status chip on order/receipt title row, Account one Save per card, /admin kit page removed · t_aff01680
 - 2026-10-18 · PR #44 · Rate box takes paise exactly (335.50; stray dot/comma never 100× a rate); rate change shows Unsent bags + Order total; rate-fill notification titled Ready to approve · t_05bc3877
+- 2026-10-18 · PR #48 · Admin forms and row actions: purchase order with RateField cost, adjust reasons 2×2, labelled truck fields, Godowns/Catalogue/Users rows open one sheet with ConfirmStep, Users All tab + count badges + masked password, Off chip only on switched-off rows · t_45b3f658

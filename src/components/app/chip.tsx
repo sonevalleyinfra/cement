@@ -11,3 +11,17 @@ export function chipClass(on: boolean, className?: string) {
     className,
   );
 }
+
+/** A count badge inside a chip ("Sales 3"), set apart from the label. `on` matches the chip's state. */
+export function ChipCount({ n, on }: { n: number; on: boolean }) {
+  return (
+    <span
+      className={cn(
+        "tabular ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold",
+        on ? "bg-white/20" : "bg-foreground/8",
+      )}
+    >
+      {n}
+    </span>
+  );
+}

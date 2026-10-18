@@ -1,15 +1,17 @@
 "use client";
 
-import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
+import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
+import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
+import { StatusChip } from "@/components/app/status-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,41 +61,25 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "types", label: "Types" },
 ];
 
-const rowClass = "flex items-center justify-between gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6";
+/** The row whose sheet is open: a product, or an item of one of the lists. */
+type Detail = { kind: "product" | CatalogueList; id: string };
 
-/** One list row with an on/off button (and an optional rename button). */
-function Row({
-  title,
-  sub,
-  active,
-  pending,
-  onToggle,
-  onRename,
-}: {
-  title: string;
-  sub?: string;
-  active: boolean;
-  pending: boolean;
-  onToggle: () => void;
-  onRename?: () => void;
-}) {
+/** One list row: tap opens its sheet. Switched-off rows are faded with an "Off" chip. */
+function Row({ title, sub, active, onOpen }: { title: string; sub?: string; active: boolean; onOpen: () => void }) {
   return (
-    <li className={rowClass}>
-      <div className={active ? "flex min-w-0 flex-1 flex-col" : "flex min-w-0 flex-1 flex-col opacity-60"}>
-        <span className="truncate font-semibold">{title}</span>
-        {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
-      </div>
-      {onRename && (
-        <Button variant="ghost" size="icon" aria-label={`Rename ${title}`} disabled={pending} onClick={onRename}>
-          <Pencil className="size-4" />
-        </Button>
-      )}
-      <Button variant="ghost" disabled={pending} onClick={onToggle}>
-        {active ? "Turn off" : "Turn on"}
-      </Button>
+    <li>
+      <ListCard
+        title={title}
+        onClick={onOpen}
+        className={active ? undefined : "opacity-60"}
+        top={active ? undefined : <StatusChip status="cancelled" label="Off" />}
+        bottom={sub ? <span className="text-xs text-muted-foreground">{sub}</span> : undefined}
+      />
     </li>
   );
 }
+
+const productSub = (p: Product) => `${p.typeCode} ${p.grade} · ${p.bagKg} kg`;
 
 export function CatalogueView({
   products,
@@ -109,8 +95,8 @@ export function CatalogueView({
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("products");
   const [sheet, setSheet] = useState<null | "product" | "brand" | "type" | "grade">(null);
-  // The brand being renamed (its sheet is open while this is set).
-  const [renaming, setRenaming] = useState<Brand | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [turningOff, setTurningOff] = useState(false);
   const [pending, start] = useTransition();
 
   // Add-product drop-downs, in order: brand → channel → type → grade → bag size.
@@ -157,7 +143,10 @@ export function CatalogueView({
       const res = await fn();
       if (res.ok) {
         clearError();
-        if (closeOnOk) setSheet(null);
+        if (closeOnOk) {
+          setSheet(null);
+          setDetail(null);
+        }
         router.refresh();
       } else setError(res.error);
     });
@@ -166,7 +155,7 @@ export function CatalogueView({
   function close(isOpen: boolean) {
     if (isOpen) return;
     setSheet(null);
-    setRenaming(null);
+    setDetail(null);
     clearError();
   }
 
@@ -175,21 +164,49 @@ export function CatalogueView({
     setSheet(which);
   }
 
-  function toggleItem(list: CatalogueList, id: string, active: boolean) {
-    run(() => setListItemActive(list, id, active));
+  function openDetail(d: Detail) {
+    clearError();
+    setTurningOff(false);
+    setDetail(d);
+  }
+
+  // The open row, read from the latest props so it is fresh after a refresh.
+  const shown = (() => {
+    if (!detail) return null;
+    if (detail.kind === "product") {
+      const p = products.find((x) => x.id === detail.id);
+      return p && { title: p.name, sub: productSub(p), active: p.active };
+    }
+    if (detail.kind === "brand") {
+      const b = brands.find((x) => x.id === detail.id);
+      return b && { title: b.name, sub: "", active: b.active };
+    }
+    if (detail.kind === "cement_type") {
+      const t = types.find((x) => x.id === detail.id);
+      return t && { title: t.code, sub: t.name, active: t.active };
+    }
+    const g = grades.find((x) => x.id === detail.id);
+    const t = types.find((x) => x.id === g?.typeId);
+    return g && { title: `${t?.code ?? ""} ${g.name}`.trim(), sub: "", active: g.active };
+  })();
+
+  function switchTo(d: Detail, active: boolean) {
+    run(() => (d.kind === "product" ? setProductActive(d.id, active) : setListItemActive(d.kind, d.id, active)), true);
+  }
+
+  function renameBrand(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (detail?.kind !== "brand") return;
+    const id = detail.id;
+    const name = String(new FormData(e.currentTarget).get("name") ?? "");
+    run(() => renameListItem("brand", id, { name }), true);
   }
 
   function submitText(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const text = (k: string) => String(f.get(k) ?? "");
-    if (sheet === "brand" && renaming) {
-      run(async () => {
-        const res = await renameListItem("brand", renaming.id, { name: text("name") });
-        if (res.ok) setRenaming(null);
-        return res;
-      }, true);
-    } else if (sheet === "brand") run(() => addBrand(text("name")), true);
+    if (sheet === "brand") run(() => addBrand(text("name")), true);
     if (sheet === "type") run(() => addCementType({ code: text("code"), name: text("name") }), true);
     if (sheet === "grade") run(() => addGrade({ typeId: text("typeId"), name: text("name") }), true);
   }
@@ -207,7 +224,7 @@ export function CatalogueView({
           </button>
         ))}
       </div>
-      {error && !sheet && <p className="text-sm text-destructive">{error}</p>}
+      {error && !sheet && !detail && <p className="text-sm text-destructive">{error}</p>}
 
       {tab === "products" &&
         (products.length === 0 ? (
@@ -221,10 +238,9 @@ export function CatalogueView({
                   <Row
                     key={p.id}
                     title={p.name}
-                    sub={`${p.typeCode} ${p.grade} · ${p.bagKg} kg`}
+                    sub={productSub(p)}
                     active={p.active}
-                    pending={pending}
-                    onToggle={() => run(() => setProductActive(p.id, !p.active))}
+                    onOpen={() => openDetail({ kind: "product", id: p.id })}
                   />
                 ))}
               </ul>
@@ -242,13 +258,7 @@ export function CatalogueView({
                 title={b.name}
                 sub={`${count} ${count === 1 ? "product" : "products"} on`}
                 active={b.active}
-                pending={pending}
-                onToggle={() => toggleItem("brand", b.id, !b.active)}
-                onRename={() => {
-                  clearError();
-                  setRenaming(b);
-                  setSheet("brand");
-                }}
+                onOpen={() => openDetail({ kind: "brand", id: b.id })}
               />
             );
           })}
@@ -264,8 +274,7 @@ export function CatalogueView({
                   title={t.code}
                   sub={t.name}
                   active={t.active}
-                  pending={pending}
-                  onToggle={() => toggleItem("cement_type", t.id, !t.active)}
+                  onOpen={() => openDetail({ kind: "cement_type", id: t.id })}
                 />
               </ul>
               <ul className="flex flex-col gap-2 pl-4">
@@ -276,8 +285,7 @@ export function CatalogueView({
                       key={g.id}
                       title={`${t.code} ${g.name}`}
                       active={g.active}
-                      pending={pending}
-                      onToggle={() => toggleItem("grade", g.id, !g.active)}
+                      onOpen={() => openDetail({ kind: "grade", id: g.id })}
                     />
                   ))}
               </ul>
@@ -349,10 +357,10 @@ export function CatalogueView({
       <Sheet
         open={sheet === "brand" || sheet === "type" || sheet === "grade"}
         onOpenChange={close}
-        title={sheet === "brand" ? (renaming ? "Rename brand" : "New brand") : sheet === "type" ? "New type" : "New grade"}
+        title={sheet === "brand" ? "New brand" : sheet === "type" ? "New type" : "New grade"}
       >
         <form
-          key={`${sheet ?? "none"}-${renaming?.id ?? ""}`}
+          key={sheet ?? "none"}
           onSubmit={submitText}
           onInput={clearError}
           className="flex flex-col gap-4"
@@ -365,7 +373,6 @@ export function CatalogueView({
                 name="name"
                 autoComplete="off"
                 placeholder="UltraTech"
-                defaultValue={renaming?.name ?? ""}
                 maxLength={40}
               />
             </div>
@@ -388,6 +395,54 @@ export function CatalogueView({
             Save
           </Button>
         </form>
+      </Sheet>
+
+      <Sheet open={Boolean(shown)} onOpenChange={close} title={shown?.title ?? ""}>
+        {detail && shown && (
+          <div key={detail.id} className="flex flex-col gap-4">
+            {shown.sub && <p className="text-sm text-muted-foreground">{shown.sub}</p>}
+            {detail.kind === "brand" && (
+              <form onSubmit={renameBrand} onInput={clearError} className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="brand-name">Brand name</Label>
+                  <Input id="brand-name" name="name" autoComplete="off" defaultValue={shown.title} maxLength={40} />
+                </div>
+                {!turningOff && (
+                  <Button type="submit" disabled={pending}>
+                    Save
+                  </Button>
+                )}
+              </form>
+            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            {turningOff ? (
+              <ConfirmStep
+                question={`Turn off ${shown.title}?`}
+                confirmLabel="Turn off"
+                destructive
+                pending={pending}
+                onBack={() => setTurningOff(false)}
+                onConfirm={() => switchTo(detail, false)}
+              />
+            ) : shown.active ? (
+              <Button
+                variant="ghost"
+                className="text-destructive"
+                disabled={pending}
+                onClick={() => {
+                  clearError();
+                  setTurningOff(true);
+                }}
+              >
+                Turn off
+              </Button>
+            ) : (
+              <Button variant="outline" disabled={pending} onClick={() => switchTo(detail, true)}>
+                Turn on
+              </Button>
+            )}
+          </div>
+        )}
       </Sheet>
     </div>
   );

@@ -8,6 +8,7 @@ import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { hasManyBrands, productGroups, startBrand } from "@/lib/catalogue-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
@@ -120,13 +121,10 @@ export function TransferForm({
         {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
-      <Input
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="Note (optional)"
-        aria-label="Note (optional)"
-        maxLength={200}
-      />
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="transfer-note">Note (optional)</Label>
+        <Input id="transfer-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
+      </div>
       {error && (
         <p role="status" className="text-sm text-destructive">
           {error}

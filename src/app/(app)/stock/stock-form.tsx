@@ -1,19 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { RateField } from "@/components/app/rate-field";
 import { SelectField } from "@/components/app/select-field";
 import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
 import { firstMissing } from "@/lib/form-rules";
-import { formatINR, parseRupeesToPaise } from "@/lib/money";
-import { purchaseAmountPaise } from "@/lib/supplier-rules";
+import { parseRupeesToPaise } from "@/lib/money";
 import {
   NEW_TRUCK_PLACE,
   placeGroups,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/stock-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
+import { bagsText } from "@/lib/words";
 import { recordAdjustment, recordOpening, recordPurchase } from "./actions";
 import { TruckFields, type TruckInput } from "./truck-fields";
 
@@ -42,6 +44,16 @@ const copy = {
 } as const;
 
 const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
+
+function NoteField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} maxLength={200} />
+    </div>
+  );
+}
 
 /**
  * Purchase, opening stock and stock correction. The product is picked with drop-downs that only offer
@@ -89,7 +101,7 @@ export function StockForm({
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
   const costPaise = parseRupeesToPaise(costText);
-  const owedPaise = costPaise === null ? null : purchaseAmountPaise(bags, costPaise);
+  const reasonId = useId();
 
   const hint = firstMissing([
     [!product, "Pick a product"],
@@ -189,7 +201,30 @@ export function StockForm({
       {newTruck ? (
         <TruckFields value={truck} onChange={setTruck} />
       ) : (
-        <p className="text-sm text-muted-foreground">In stock here now: {current} bags</p>
+        <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>
+      )}
+      {mode === "purchase" && (
+        <>
+          <RateField
+            label="Cost per bag (₹)"
+            value={costText}
+            onChange={setCostText}
+            bags={bags}
+            allowPaise
+            totalLabel={`Owed to ${brandName}`}
+          />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="stock-invoice">Invoice no. (optional)</Label>
+            <Input
+              id="stock-invoice"
+              value={invoiceNo}
+              onChange={(e) => setInvoiceNo(e.target.value)}
+              autoComplete="off"
+              maxLength={60}
+            />
+          </div>
+          <NoteField label={copy.purchase.note} value={note} onChange={setNote} />
+        </>
       )}
       {mode === "adjust" && (
         <div className="grid grid-cols-2 gap-2">
@@ -207,55 +242,26 @@ export function StockForm({
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
       {mode === "adjust" && (
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Reason">
-          {STOCK_FIX_REASONS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="radio"
-              aria-checked={reason === r}
-              className={chipClass(reason === r)}
-              onClick={() => setReason(r)}
-            >
-              {STOCK_FIX_LABELS[r]}
-            </button>
-          ))}
-        </div>
-      )}
-      {mode === "purchase" && (
         <>
-          <Input
-            value={costText}
-            onChange={(e) => setCostText(e.target.value)}
-            placeholder="Cost per bag (₹)"
-            aria-label="Cost per bag"
-            inputMode="decimal"
-            autoComplete="off"
-            maxLength={10}
-          />
-          {owedPaise !== null && (
-            <div className="tabular text-center text-sm text-muted-foreground" aria-live="polite">
-              Owed to {brandName} <span className="font-semibold text-foreground">{formatINR(owedPaise)}</span>
+          <div className="flex flex-col gap-1.5">
+            <Label id={reasonId}>Reason</Label>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby={reasonId}>
+              {STOCK_FIX_REASONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  role="radio"
+                  aria-checked={reason === r}
+                  className={chipClass(reason === r, "w-full")}
+                  onClick={() => setReason(r)}
+                >
+                  {STOCK_FIX_LABELS[r]}
+                </button>
+              ))}
             </div>
-          )}
-          <Input
-            value={invoiceNo}
-            onChange={(e) => setInvoiceNo(e.target.value)}
-            placeholder="Invoice no. (optional)"
-            aria-label="Invoice number"
-            autoComplete="off"
-            maxLength={60}
-          />
+          </div>
+          <NoteField label={copy.adjust.note} value={note} onChange={setNote} />
         </>
-      )}
-      {mode !== "opening" && (
-        <Input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder={copy[mode].note}
-          aria-label={copy[mode].note}
-          maxLength={200}
-        />
       )}
       {error && (
         <p role="status" className="text-sm text-destructive">

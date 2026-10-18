@@ -2,15 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
+import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
+import { StatusChip } from "@/components/app/status-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormError } from "@/lib/use-form-error";
+import { formatCount } from "@/lib/words";
 import { saveGodown, setGodownActive } from "./actions";
 
 type Row = { id: string; name: string; address: string; active: boolean; bags: number };
@@ -19,12 +22,14 @@ export function GodownsView({ rows }: { rows: Row[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
+  const [turningOff, setTurningOff] = useState(false);
   // The fields are read with FormData, so the form's onInput clears the error.
   const { error, setError, clearError } = useFormError();
   const [pending, start] = useTransition();
 
   function openSheet(row: Row | null) {
     setEditing(row);
+    setTurningOff(false);
     clearError();
     setOpen(true);
   }
@@ -47,19 +52,20 @@ export function GodownsView({ rows }: { rows: Row[] }) {
     });
   }
 
-  function toggle(r: Row) {
+  function switchTo(r: Row, active: boolean) {
     clearError();
     start(async () => {
-      const res = await setGodownActive(r.id, !r.active);
-      if (res.ok) router.refresh();
-      else setError(res.error);
+      const res = await setGodownActive(r.id, active);
+      if (res.ok) {
+        setOpen(false);
+        router.refresh();
+      } else setError(res.error);
     });
   }
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Godowns" />
-      {error && !open && <p className="text-sm text-destructive">{error}</p>}
       {rows.length === 0 ? (
         <EmptyState title="No godowns" />
       ) : (
@@ -69,26 +75,17 @@ export function GodownsView({ rows }: { rows: Row[] }) {
               <ListCard
                 index={i}
                 title={r.name}
+                onClick={() => openSheet(r)}
                 className={r.active ? undefined : "opacity-60"}
                 top={
                   <>
-                    <span className="text-xs text-muted-foreground">{r.active ? "Active" : "Inactive"}</span>
-                    <span className="tabular text-sm font-semibold">{r.bags} bags</span>
+                    {!r.active && <StatusChip status="cancelled" label="Off" />}
+                    <span className="tabular ml-auto text-sm font-semibold">
+                      {formatCount(r.bags)} {r.bags === 1 ? "bag" : "bags"}
+                    </span>
                   </>
                 }
-                bottom={
-                  <>
-                    {r.address && <div className="text-xs text-muted-foreground">{r.address}</div>}
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => openSheet(r)}>
-                        Edit
-                      </Button>
-                      <Button variant="ghost" disabled={pending} onClick={() => toggle(r)}>
-                        {r.active ? "Turn off" : "Turn on"}
-                      </Button>
-                    </div>
-                  </>
-                }
+                bottom={r.address ? <div className="text-xs text-muted-foreground">{r.address}</div> : undefined}
               />
             </li>
           ))}
@@ -115,10 +112,42 @@ export function GodownsView({ rows }: { rows: Row[] }) {
             <Input id="address" name="address" defaultValue={editing?.address ?? ""} autoComplete="off" maxLength={200} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={pending}>
-            Save
-          </Button>
+          {!turningOff && (
+            <Button type="submit" disabled={pending}>
+              Save
+            </Button>
+          )}
         </form>
+        {editing && (
+          <div className="mt-4 flex flex-col">
+            {turningOff ? (
+              <ConfirmStep
+                question={`Turn off ${editing.name}?`}
+                confirmLabel="Turn off"
+                destructive
+                pending={pending}
+                onBack={() => setTurningOff(false)}
+                onConfirm={() => switchTo(editing, false)}
+              />
+            ) : editing.active ? (
+              <Button
+                variant="ghost"
+                className="text-destructive"
+                disabled={pending}
+                onClick={() => {
+                  clearError();
+                  setTurningOff(true);
+                }}
+              >
+                Turn off
+              </Button>
+            ) : (
+              <Button variant="outline" disabled={pending} onClick={() => switchTo(editing, true)}>
+                Turn on
+              </Button>
+            )}
+          </div>
+        )}
       </Sheet>
     </div>
   );
