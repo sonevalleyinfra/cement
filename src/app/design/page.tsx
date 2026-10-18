@@ -1,4 +1,4 @@
-import { BadgeCheck, Banknote, CalendarDays, Package, Receipt, Wallet } from "lucide-react";
+import { BadgeCheck, Banknote, CalendarDays, Package, Receipt, Users, Wallet } from "lucide-react";
 import { notFound } from "next/navigation";
 import type { NavItem } from "@/components/app/bottom-nav";
 import { AppShell, AppTitle } from "@/components/app/app-shell";
@@ -79,8 +79,9 @@ export default function DesignPage() {
           <IconTile icon={Banknote} tone="rose" />
           <IconTile icon={Package} tone="blue" />
           <IconTile icon={Wallet} tone="green" />
-          <IconTile icon={BadgeCheck} tone="violet" />
+          <IconTile icon={BadgeCheck} tone="moss" />
           <IconTile icon={Receipt} tone="teal" />
+          <IconTile icon={Users} tone="slate" />
         </div>
         <ListCard
           index={2}

@@ -16,6 +16,9 @@ function assertPaise(paise: number): void {
   }
 }
 
+/** U+2212, the typographic minus sign (same width as "+", unlike the hyphen). */
+const MINUS = "−";
+
 const inrFormatter = new Intl.NumberFormat(LOCALE, {
   style: "currency",
   currency: CURRENCY,
@@ -34,11 +37,13 @@ const inrWholeFormatter = new Intl.NumberFormat(LOCALE, {
  * 12345678 paise → "₹1,23,456.78" (Indian lakh/crore digit grouping).
  * `hidePaise` drops ".00" from whole-rupee amounts only ("₹37,000"); an amount with paise
  * always shows them ("₹36,999.50"), so nothing is ever rounded away.
+ * Negatives use the true minus sign with no space ("−₹15,000.00"); zero is always "₹0.00", never "−₹0.00".
  */
 export function formatINR(paise: Paise, opts: { hidePaise?: boolean } = {}): string {
   assertPaise(paise);
-  if (opts.hidePaise && paise % 100 === 0) return inrWholeFormatter.format(paise / 100);
-  return inrFormatter.format(paise / 100);
+  const abs = Math.abs(paise);
+  const text = opts.hidePaise && abs % 100 === 0 ? inrWholeFormatter.format(abs / 100) : inrFormatter.format(abs / 100);
+  return paise < 0 ? `${MINUS}${text}` : text;
 }
 
 /**
@@ -48,7 +53,7 @@ export function formatINR(paise: Paise, opts: { hidePaise?: boolean } = {}): str
 export function formatINRCompact(paise: Paise): string {
   assertPaise(paise);
   const rupees = Math.abs(paise) / 100;
-  const sign = paise < 0 ? "-" : "";
+  const sign = paise < 0 ? MINUS : "";
   const short = (value: number) =>
     new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 }).format(value);
 

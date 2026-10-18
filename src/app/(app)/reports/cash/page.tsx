@@ -4,6 +4,7 @@ import { rolesFor } from "@/lib/permissions";
 import { param, reportRange } from "@/lib/report-range";
 import { getCashReport } from "@/lib/reports";
 import { requireRole } from "@/lib/session";
+import { daysText } from "@/lib/words";
 import { money, num, ReportFrame, Section, Stats } from "../report-frame";
 
 export default async function CashReportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -19,7 +20,7 @@ export default async function CashReportPage({ searchParams }: { searchParams: P
           { label: "Cash held by staff", value: money(r.heldPaise) },
           { label: "Online to verify", value: num(r.online.count) },
           { label: "Waiting amount", value: money(r.online.amountPaise) },
-          { label: "Oldest waiting", value: r.online.oldestDays === null ? "–" : `${num(r.online.oldestDays)} days` },
+          { label: "Oldest waiting", value: r.online.oldestDays === null ? "–" : daysText(r.online.oldestDays) },
         ]}
       />
       <Section title="Cash held now" />

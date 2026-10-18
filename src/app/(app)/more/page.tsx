@@ -21,6 +21,7 @@ import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { PageHeader } from "@/components/app/page-header";
 import { SectionCaption } from "@/components/app/section-caption";
 import { Button } from "@/components/ui/button";
+import { stagger } from "@/lib/motion";
 import { moreGroups } from "@/lib/nav-rules";
 import { requireUser } from "@/lib/session";
 import { signOut } from "../dashboard/actions";
@@ -30,19 +31,17 @@ const looks: Record<string, { icon: LucideIcon; tone: Tone }> = {
   "/wallet": { icon: Wallet, tone: "green" },
   "/ledger": { icon: BookOpen, tone: "rose" },
   "/suppliers": { icon: Factory, tone: "amber" },
-  "/approvals": { icon: BadgeCheck, tone: "violet" },
+  "/approvals": { icon: BadgeCheck, tone: "moss" },
   "/stock": { icon: Package, tone: "blue" },
   "/dispatch": { icon: Truck, tone: "blue" },
   "/godowns": { icon: Warehouse, tone: "blue" },
   "/catalogue": { icon: Tags, tone: "blue" },
-  "/users": { icon: Users, tone: "violet" },
+  "/users": { icon: Users, tone: "slate" },
   "/reports": { icon: ChartColumn, tone: "orange" },
   "/activity": { icon: History, tone: "slate" },
   "/reports/books": { icon: ShieldCheck, tone: "slate" },
   "/account": { icon: KeyRound, tone: "orange" },
 };
-
-const delay = (i: number) => ({ animationDelay: `${Math.min(i, 6) * 30}ms` });
 
 export default async function MorePage() {
   const { user } = await requireUser();
@@ -58,7 +57,7 @@ export default async function MorePage() {
               {g.rows.map((r) => {
                 const look = looks[r.href];
                 return (
-                  <li key={r.href} className="animate-in-up" style={delay(i++)}>
+                  <li key={r.href} className="animate-in-up" style={stagger(i++)}>
                     <Link
                       href={r.href}
                       className="group flex w-full items-center gap-3 rounded-2xl bg-card p-3 pr-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6 transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-ring"
@@ -74,7 +73,7 @@ export default async function MorePage() {
                 );
               })}
               {g.title === "Account" && (
-                <li className="animate-in-up" style={delay(i++)}>
+                <li className="animate-in-up" style={stagger(i++)}>
                   <form action={signOut}>
                     <Button type="submit" variant="outline" className="w-full">
                       Sign out

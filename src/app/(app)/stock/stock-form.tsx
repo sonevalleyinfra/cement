@@ -237,7 +237,7 @@ export function StockForm({
         </div>
       )}
       <div className="tabular text-center text-4xl font-bold" aria-live="polite">
-        {mode === "adjust" && minus ? "-" : ""}
+        {mode === "adjust" && minus ? "−" : ""}
         {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />

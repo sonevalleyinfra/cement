@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFormError } from "@/lib/use-form-error";
-import { formatCount } from "@/lib/words";
+import { bagsText } from "@/lib/words";
 import { saveGodown, setGodownActive } from "./actions";
 
 type Row = { id: string; name: string; address: string; active: boolean; bags: number };
@@ -81,7 +81,7 @@ export function GodownsView({ rows }: { rows: Row[] }) {
                   <>
                     {!r.active && <StatusChip status="cancelled" label="Off" />}
                     <span className="tabular ml-auto text-sm font-semibold">
-                      {formatCount(r.bags)} {r.bags === 1 ? "bag" : "bags"}
+                      {bagsText(r.bags)}
                     </span>
                   </>
                 }

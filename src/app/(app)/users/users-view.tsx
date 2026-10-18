@@ -124,7 +124,7 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
       <div className="mb-4">
         <PageHeader title="Users" />
       </div>
-      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="scroll-x-fade -mx-4 mb-3 flex gap-2 px-4 pb-1">
         {tabs.map((t) => (
           <button key={t} type="button" className={tabChip(tab === t)} onClick={() => setTab(t)}>
             {t === "all" ? "All" : t === "none" ? "No role" : roleLabel(t)}

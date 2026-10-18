@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bagsText, emptyListTitle, formatCount, isAre, roleLabel, roleLabels } from "./words";
+import { bagsText, daysText, emptyListTitle, formatCount, isAre, roleLabel, roleLabels } from "./words";
 
 describe("bagsText / isAre", () => {
   it("uses the singular for exactly one bag", () => {
@@ -8,6 +8,19 @@ describe("bagsText / isAre", () => {
     expect(bagsText(50)).toBe("50 bags");
     expect(isAre(1)).toBe("is");
     expect(isAre(2)).toBe("are");
+  });
+  it("groups big bag counts the Indian way", () => {
+    expect(bagsText(8350)).toBe("8,350 bags");
+    expect(bagsText(125000)).toBe("1,25,000 bags");
+  });
+});
+
+describe("daysText", () => {
+  it("uses the singular for exactly one day and groups big counts", () => {
+    expect(daysText(0)).toBe("0 days");
+    expect(daysText(1)).toBe("1 day");
+    expect(daysText(2)).toBe("2 days");
+    expect(daysText(1200)).toBe("1,200 days");
   });
 });
 

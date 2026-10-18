@@ -40,7 +40,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       tone: "amber",
       stats: supplierHomeLines(suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) })),
     },
-    { href: `/reports/staff?${q}`, title: "Staff activity", icon: Users, tone: "violet", stats: [] },
+    { href: `/reports/staff?${q}`, title: "Staff activity", icon: Users, tone: "slate", stats: [] },
     ...(isAdmin(session.user.role) ? [{ href: "/reports/books", title: "Books check", icon: ShieldCheck, tone: "slate" as const, stats: [] }] : []),
   ];
 

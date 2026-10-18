@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { firstMissing } from "@/lib/form-rules";
 import { formatINR } from "@/lib/money";
+import { stagger } from "@/lib/motion";
 import { orderTotalPaise } from "@/lib/order-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { decideOrder } from "../orders/actions";
@@ -42,7 +43,7 @@ export function ApprovalCard({
   return (
     <div
       className="animate-in-up flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6"
-      style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
+      style={stagger(index)}
     >
       <Link href={`/orders/${order.id}`} className="-my-2 flex min-h-12 items-center text-base font-semibold">
         {order.retailer}
@@ -50,15 +51,15 @@ export function ApprovalCard({
       <div className="flex items-end justify-between">
         <div className="text-xs text-muted-foreground">
           {order.product} · <span className="tabular">{order.bags}</span> bags at{" "}
-          {formatINR(order.ratePaise)}
+          {formatINR(order.ratePaise, { hidePaise: true })}
         </div>
         <div className="tabular text-lg font-semibold">
-          {formatINR(orderTotalPaise(order.bags, order.ratePaise))}
+          {formatINR(orderTotalPaise(order.bags, order.ratePaise), { hidePaise: true })}
         </div>
       </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">Dues</span>
-        <span className="tabular font-semibold">{formatINR(duesPaise)}</span>
+        <span className="tabular font-semibold">{formatINR(duesPaise, { hidePaise: true })}</span>
       </div>
       {rejecting ? (
         <div className="flex flex-col gap-2">

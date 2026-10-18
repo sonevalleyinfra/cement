@@ -53,7 +53,7 @@ export default async function ReviewPage() {
                       <span className="text-sm">
                         UTR <span className="tabular font-semibold">{r.utr}</span>
                       </span>
-                      <span className="tabular text-lg font-bold">{formatINR(r.totalPaise)}</span>
+                      <span className="tabular text-lg font-bold">{formatINR(r.totalPaise, { hidePaise: true })}</span>
                     </div>
                     {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
                     <ReasonAction receiptId={r.id} action="reject" inline primary={<VerifyButton receiptId={r.id} />} />

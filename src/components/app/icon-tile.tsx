@@ -2,14 +2,14 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Fixed set of soft colours for icon tiles. Pick one per section so screens stay easy to scan. */
-export type Tone = "orange" | "rose" | "blue" | "green" | "violet" | "teal" | "amber" | "slate";
+export type Tone = "orange" | "rose" | "blue" | "green" | "moss" | "teal" | "amber" | "slate";
 
 const tones: Record<Tone, string> = {
   orange: "bg-orange-100 text-orange-600",
   rose: "bg-rose-100 text-rose-600",
   blue: "bg-sky-100 text-sky-600",
   green: "bg-emerald-100 text-emerald-600",
-  violet: "bg-violet-100 text-violet-600",
+  moss: "bg-moss-100 text-moss-600",
   teal: "bg-teal-100 text-teal-600",
   amber: "bg-amber-100 text-amber-600",
   slate: "bg-stone-100 text-stone-600",

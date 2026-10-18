@@ -11,9 +11,14 @@ export function formatCount(n: number): string {
   return countFormatter.format(n);
 }
 
-/** "1 bag" / "50 bags". */
+/** "1 bag" / "8,350 bags". */
 export function bagsText(n: number): string {
-  return `${n} ${n === 1 ? "bag" : "bags"}`;
+  return `${formatCount(n)} ${n === 1 ? "bag" : "bags"}`;
+}
+
+/** "1 day" / "1,200 days". */
+export function daysText(n: number): string {
+  return `${formatCount(n)} ${n === 1 ? "day" : "days"}`;
 }
 
 /** "is" for one bag, "are" for more: "1 bag is on the way", "50 bags are on the way". */

@@ -53,41 +53,45 @@ export function DataTable({
   }
   const align = (i: number) => (columns[i]?.align ?? (i === 0 ? "left" : "right")) === "right" ? "text-right" : "text-left";
   const sticky = "sticky left-0 z-10 bg-card";
+  // 16px at both outer edges: at scroll end the last column's padding is exactly the 16px fade.
+  const pad = (i: number) => cn(i === 0 && "pl-4", i === columns.length - 1 && "pr-4");
   return (
-    <div className={cn("animate-in-up overflow-x-auto rounded-2xl bg-card shadow-card ring-1 ring-foreground/6", className)}>
-      <table className="tabular w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-border/70 text-xs text-muted-foreground">
-            {columns.map((c, i) => (
-              <th key={c.label} scope="col" className={cn("px-3 py-2 font-medium whitespace-nowrap", align(i), i === 0 && sticky)}>
-                {c.label}
-              </th>
+    <div className={cn("animate-in-up overflow-hidden rounded-2xl bg-card shadow-card ring-1 ring-foreground/6", className)}>
+      <div className="scroll-x-fade-end">
+        <table className="tabular w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border/70 text-xs text-muted-foreground">
+              {columns.map((c, i) => (
+                <th key={c.label} scope="col" className={cn("px-3 py-2 font-medium whitespace-nowrap", align(i), pad(i), i === 0 && sticky)}>
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, ri) => (
+              <tr key={ri} className="border-b border-border/40 last:border-0">
+                {r.map((cell, i) => (
+                  <td key={i} className={cn("px-3 py-2", align(i), pad(i), i === 0 ? cn(sticky, "max-w-40 font-medium") : "whitespace-nowrap")}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, ri) => (
-            <tr key={ri} className="border-b border-border/40 last:border-0">
-              {r.map((cell, i) => (
-                <td key={i} className={cn("px-3 py-2", align(i), i === 0 ? cn(sticky, "max-w-40 font-medium") : "whitespace-nowrap")}>
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-        {total && (
-          <tfoot>
-            <tr className="border-t border-border font-bold">
-              {total.map((cell, i) => (
-                <td key={i} className={cn("px-3 py-2 whitespace-nowrap", align(i), i === 0 && sticky)}>
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          </tfoot>
-        )}
-      </table>
+          </tbody>
+          {total && (
+            <tfoot>
+              <tr className="border-t border-border font-bold">
+                {total.map((cell, i) => (
+                  <td key={i} className={cn("px-3 py-2 whitespace-nowrap", align(i), pad(i), i === 0 && sticky)}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
     </div>
   );
 }

@@ -114,7 +114,7 @@ export async function AccountsHome() {
   const s = await getAccountsHome();
   return (
     <Cards>
-      <Card index={0} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+      <Card index={0} href="/approvals" title="Approvals" icon={BadgeCheck} tone="moss" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
       <Card index={1} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
       <Card
         index={2}
@@ -173,7 +173,7 @@ export async function AdminHome() {
       <div className="flex flex-col gap-2">
         <SectionCaption>To do</SectionCaption>
         <Cards>
-          <Card index={1} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+          <Card index={1} href="/approvals" title="Approvals" icon={BadgeCheck} tone="moss" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
           <Card index={2} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
           <Card index={3} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
           {s.shopsWithoutSalesRep > 0 && (

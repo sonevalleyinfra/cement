@@ -6,6 +6,7 @@ import { FilterSelect, RangeForm } from "@/components/app/range-form";
 import { activityPeople, getActivity } from "@/lib/activity";
 import { ACTIVITY_GROUP_LABELS, ACTIVITY_GROUPS, isActivityGroup } from "@/lib/audit-rules";
 import { formatDateTime } from "@/lib/datetime";
+import { stagger } from "@/lib/motion";
 import { rolesFor } from "@/lib/permissions";
 import { optionalRange, pageParam, param } from "@/lib/report-range";
 import { requireRole } from "@/lib/session";
@@ -67,7 +68,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             <li
               key={r.id}
               className="animate-in-up flex flex-col gap-1 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6"
-              style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
+              style={stagger(i)}
             >
               <span className="text-sm leading-snug font-medium [overflow-wrap:anywhere]">{r.sentence}</span>
               <span className="text-xs text-muted-foreground">
