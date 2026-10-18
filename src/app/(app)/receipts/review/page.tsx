@@ -55,7 +55,7 @@ export default async function ReviewPage() {
                       <span className="tabular text-lg font-bold">{formatINR(r.totalPaise)}</span>
                     </div>
                     {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
-                    <ReasonAction receiptId={r.id} action="reject" primary={<VerifyButton receiptId={r.id} />} />
+                    <ReasonAction receiptId={r.id} action="reject" inline primary={<VerifyButton receiptId={r.id} />} />
                   </div>
                 }
               />
