@@ -51,12 +51,15 @@ export function ReasonAction({
   action,
   cashHolder = null,
   primary,
+  inline = false,
 }: {
   receiptId: string;
   action: "reject" | "reverse";
   cashHolder?: string | null;
   /** The primary button of a decision (Verify): shown beside the outline button, two equal halves. */
   primary?: ReactNode;
+  /** Inside a list card: the reason form sits flat in the card instead of in its own panel. */
+  inline?: boolean;
 }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
@@ -66,6 +69,7 @@ export function ReasonAction({
   const { error, setError, clearError } = useFormError([reason, cashPlace]);
   const [pending, start] = useTransition();
   const label = action === "reject" ? "Reject" : "Reverse";
+  const reasonLabel = action === "reject" ? "Reason for rejecting" : "Reason for reversing";
   const hint = firstMissing([
     [reason.trim() === "", "Enter a reason"],
     [needsPlace && cashPlace === null, "Pick where the cash is"],
@@ -88,13 +92,17 @@ export function ReasonAction({
     );
   }
   return (
-    <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+    <div
+      className={
+        inline ? "flex flex-col gap-2" : "flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6"
+      }
+    >
       <Input
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         maxLength={MAX_REASON}
-        placeholder="Reason"
-        aria-label="Reason"
+        placeholder={reasonLabel}
+        aria-label={reasonLabel}
       />
       {needsPlace && (
         <div className="grid gap-2" role="radiogroup" aria-label="Where is the cash now">
