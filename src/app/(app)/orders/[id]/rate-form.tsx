@@ -7,25 +7,28 @@ import { RateField } from "@/components/app/rate-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { firstMissing } from "@/lib/form-rules";
-import { checkRateDigits } from "@/lib/rate-rules";
+import { checkRateInput } from "@/lib/rate-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { bagsText } from "@/lib/words";
 import { changeRate, fillRate } from "../actions";
 
 /**
- * Rate per bag in whole rupees (typed with the shared `RateField`).
+ * Rate per bag in rupees and paise (typed with the shared `RateField`).
  * `mode="fill"`: the sales person (or admin) fills an empty rate while the order is placed.
  * `mode="change"`: logistics or admin change a rate that is set (any step before fully dispatched),
- * with a reason; it applies to the `bags` not dispatched yet.
+ * with a reason; it applies to the `bags` not dispatched yet. `billedPaise` = what the loads already
+ * sent were billed, so the change shows the not-sent amount and the whole order total.
  */
 export function RateForm({
   orderId,
   bags,
+  billedPaise,
   mode,
   hasRate,
 }: {
   orderId: string;
   bags: number;
+  billedPaise: number;
   mode: "fill" | "change";
   hasRate: boolean;
 }) {
@@ -35,7 +38,7 @@ export function RateForm({
   const [reason, setReason] = useState("");
   const { error, setError, clearError } = useFormError([digits, reason]);
   const [pending, start] = useTransition();
-  const check = checkRateDigits(digits);
+  const check = checkRateInput(digits);
   const hint = firstMissing([
     [!check.ok, "Enter the rate"],
     [mode === "change" && !reason.trim(), "Enter a reason"],
@@ -68,6 +71,7 @@ export function RateForm({
         value={digits}
         onChange={setDigits}
         bags={bags}
+        billedPaise={mode === "change" ? billedPaise : undefined}
         label={mode === "change" ? `New rate per bag (₹) · ${bagsText(bags)} not sent` : "Rate per bag (₹)"}
       />
       {mode === "change" && (

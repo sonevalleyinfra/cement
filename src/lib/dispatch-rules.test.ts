@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkDispatchFields, isDispatchable, planDispatch, placesWithEnough, truckAfterPlacePick, truckChips } from "./dispatch-rules";
+import { orderTotalPaise } from "./order-rules";
 
 describe("isDispatchable", () => {
   it("allows approved and partly dispatched only", () => {
@@ -52,6 +53,11 @@ describe("planDispatch", () => {
     const second = planDispatch({ ...base, status: "partly_dispatched", alreadyDispatchedBags: 40, bags: 60, ratePaise: 36000 });
     expect(first.ok && first.amountPaise).toBe(40 * 35000);
     expect(second.ok && second.amountPaise).toBe(60 * 36000);
+  });
+  it("a paise rate bills bags x rate exactly", () => {
+    const p = planDispatch({ ...base, bags: 37, ratePaise: 33550 });
+    expect(p.ok && p.amountPaise).toBe(37 * 33550);
+    expect(p.ok && p.amountPaise).toBe(orderTotalPaise(37, 33550));
   });
   it("never above remaining", () => {
     expect(planDispatch({ ...base, alreadyDispatchedBags: 80, bags: 21 }).ok).toBe(false);

@@ -1,5 +1,6 @@
 /**
- * Rules for the rate per bag, approving / rejecting, and linking a retailer login.
+ * Rules for the rate per bag (typed in rupees and paise per bag, kept as integer paise),
+ * approving / rejecting, and linking a retailer login.
  * Plain functions (no database, no request) so they are easy to test.
  * Source: docs/idea.md section 3 (Order flow).
  *
@@ -20,26 +21,75 @@
  * - Rejecting also waits for the rate (the spec says approve / reject "only when the rate is filled").
  */
 import { formatINR } from "./money";
-import { canUserTransition, cleanReason, isOrderStatus, isValidRatePaise, isValidReason } from "./order-rules";
+import {
+  canUserTransition,
+  cleanReason,
+  isOrderStatus,
+  isValidRatePaise,
+  isValidReason,
+  orderTotalPaise,
+} from "./order-rules";
 import { isStaff } from "./permissions";
 import { hasAnyRole, hasRole, isAdmin } from "./roles";
 
 /** Highest rate per bag we accept, in whole rupees. Change here if prices rise. */
 export const MAX_RATE_RUPEES_PER_BAG = 2000;
 
-export type RateDigitsCheck = { ok: true; paise: number } | { ok: false; error: string };
+export type RateInputCheck = { ok: true; paise: number } | { ok: false; error: string };
 
-/** Keypad gives whole rupees per bag as digits. Returns paise, or the reason it is not a valid rate. */
-export function checkRateDigits(digits: string): RateDigitsCheck {
-  const clean = String(digits ?? "").trim();
-  if (!/^\d{1,7}$/.test(clean)) return { ok: false, error: "Enter a rate per bag." };
-  const rupees = Number(clean);
-  if (rupees > MAX_RATE_RUPEES_PER_BAG) {
-    const max = formatINR(MAX_RATE_RUPEES_PER_BAG * 100, { hidePaise: true });
-    return { ok: false, error: `Rate looks too high (max ${max} per bag).` };
-  }
-  const paise = rupees * 100;
-  return isValidRatePaise(paise) ? { ok: true, paise } : { ok: false, error: "Enter a rate per bag." };
+/** Rupees, an optional dot, then paise digits ("335", "335.50", "335.", ".5"). Linear: no nested repeats. */
+const RATE_TEXT = /^(\d*)(?:\.(\d*))?$/;
+
+function rateTooHigh(): RateInputCheck {
+  const max = formatINR(MAX_RATE_RUPEES_PER_BAG * 100, { hidePaise: true });
+  return { ok: false, error: `Rate looks too high (max ${max} per bag).` };
+}
+
+/**
+ * A typed rate per bag in rupees and paise. Returns paise, or the reason it is not a valid rate.
+ * Strict: more than 2 digits after the dot is refused (never rounded). String and integer maths only.
+ */
+export function checkRateInput(text: string): RateInputCheck {
+  const ask: RateInputCheck = { ok: false, error: "Enter a rate per bag." };
+  const clean = String(text ?? "").trim();
+  if (clean.includes(",")) return { ok: false, error: "Use a dot for paise, like 335.50." };
+  const m = RATE_TEXT.exec(clean);
+  if (!m) return ask;
+  const whole = m[1].replace(/^0+(?=\d)/, "");
+  const fraction = m[2] ?? "";
+  if (whole === "" && fraction === "") return ask;
+  if (fraction.length > 2) return { ok: false, error: "Use at most 2 digits after the dot." };
+  if (whole.length > 4) return rateTooHigh();
+  const paise = Number(whole || "0") * 100 + Number(fraction.padEnd(2, "0"));
+  if (paise > MAX_RATE_RUPEES_PER_BAG * 100) return rateTooHigh();
+  return isValidRatePaise(paise) ? { ok: true, paise } : ask;
+}
+
+/**
+ * Tidies what is typed or pasted into the rate box: drops ₹, spaces, a leading "Rs" / "Rs." / "INR"
+ * and thousands commas, then anything that is not a digit, dot or comma. Keeps every digit and dot
+ * (checkRateInput refuses what is wrong) and never cuts the length. The server never calls this.
+ */
+export function cleanRateInput(raw: string): string {
+  const text = String(raw ?? "")
+    .replace(/[₹\s]/g, "")
+    .replace(/^(?:rs\.?|inr)/i, "");
+  // Commas go only when they group thousands ("1,234.50", "1,23,456"). Any other comma ("3,50")
+  // stays, so checkRateInput refuses it instead of reading it as ₹350.
+  const grouped = THOUSANDS.test(text) || LAKHS.test(text);
+  return (grouped ? text.replace(/,/g, "") : text).replace(/[^\d.,]/g, "");
+}
+
+const THOUSANDS = /^\d{1,3}(?:,\d{3})+(?:\.\d*)?$/;
+const LAKHS = /^\d{1,2}(?:,\d{2})*,\d{3}(?:\.\d*)?$/;
+
+/** A rate change on a partly sent order: the bags not sent at the new rate, and the whole order total. */
+export function rateChangePreview(input: { unsentBags: number; billedPaise: number; newRatePaise: number }): {
+  unsentPaise: number;
+  orderTotalPaise: number;
+} {
+  const unsentPaise = orderTotalPaise(input.unsentBags, input.newRatePaise);
+  return { unsentPaise, orderTotalPaise: input.billedPaise + unsentPaise };
 }
 
 /**
@@ -48,10 +98,10 @@ export function checkRateDigits(digits: string): RateDigitsCheck {
  */
 export function rateOnPlace(
   role: string | null | undefined,
-  rupeeDigits: string | null | undefined,
+  rateText: string | null | undefined,
 ): { ok: true; ratePaise: number | null } | { ok: false; error: string } {
   if (!isStaff(role)) return { ok: true, ratePaise: null };
-  const rate = checkRateDigits(String(rupeeDigits ?? ""));
+  const rate = checkRateInput(String(rateText ?? ""));
   return rate.ok ? { ok: true, ratePaise: rate.paise } : rate;
 }
 
@@ -82,10 +132,10 @@ export type RateChangeCheck = { ok: true; ratePaise: number; reason: string } | 
 /** A rate change: a valid, different rate and a reason. */
 export function checkRateChange(
   currentRatePaise: number | null,
-  rupeeDigits: string | null | undefined,
+  rateText: string | null | undefined,
   reason: string | null | undefined,
 ): RateChangeCheck {
-  const rate = checkRateDigits(String(rupeeDigits ?? ""));
+  const rate = checkRateInput(String(rateText ?? ""));
   if (!rate.ok) return rate;
   if (rate.paise === currentRatePaise) return { ok: false, error: "That is the rate already." };
   if (!isValidReason(reason)) return { ok: false, error: "Enter a reason for changing the rate." };

@@ -16,7 +16,7 @@ import {
   historyStepLabel,
   orderAmountSummary,
 } from "@/lib/order-access";
-import { canCancelOrder, isOrderStatus, remainingBags } from "@/lib/order-rules";
+import { canCancelOrder, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
 import { bagsText } from "@/lib/words";
@@ -94,6 +94,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const events = historyForViewer(user.role, allEvents);
   const sentBags = loads.reduce((n, l) => n + l.bags, 0);
   const notSent = remainingBags(o.bags, sentBags);
+  const billedPaise = loads.reduce((n, l) => n + orderTotalPaise(l.bags, l.ratePaise), 0);
   // Staff only. Never one rate that was not billed: see orderAmountSummary.
   const amount = showPrice ? orderAmountSummary({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads }) : null;
   const cancelled = cancelledNote(o.status, o.bags, sentBags);
@@ -150,7 +151,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           ))}
         </ul>
       )}
-      {rateMode && <RateForm orderId={o.id} bags={notSent} mode={rateMode} hasRate={o.ratePaise !== null} />}
+      {rateMode && (
+        <RateForm
+          orderId={o.id}
+          bags={notSent}
+          billedPaise={billedPaise}
+          mode={rateMode}
+          hasRate={o.ratePaise !== null}
+        />
+      )}
       {canCancel && <CancelForm orderId={o.id} notSent={notSent} sent={sentBags} />}
       <ol className="flex flex-col gap-3 border-l pl-4">
         {events.map((e) => (
