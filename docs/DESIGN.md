@@ -59,7 +59,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 `RangeForm` / `FilterSelect` (date range and filters as a plain GET form), `DataTable` (compact numbers table that scrolls
 sideways inside its own box, never the page; `stacked` turns each row into a small card for tables with many number
 columns), `FilterTabs` (filter pills that are links, the pick lives in the address: `/orders?show=rate`, so Home can link to it),
-`TextLink`, `chipClass`, `FormHint`, `ConfirmStep`, `RateField`. `ListCard` takes `href` (link) or `onClick` (opens a sheet).
+`TextLink`, `chipClass`, `FormHint`, `ConfirmStep`, `RateField`, `SectionCaption` (12px group caption above a list of cards or rows). `ListCard` takes `href` (link) or `onClick` (opens a sheet).
 Retailers and other lists with many fields in each row: the row is a `ListCard` with `onClick`; everything about one row is
 edited in one sheet with one Save button.
 Report tables on a phone: product names drop the brand while only one brand is on (`shortProductName`), and wide tables
