@@ -29,7 +29,7 @@ export function PageHeader({
           <Link
             href={back}
             aria-label="Back"
-            className="-ml-3 -mr-1 inline-flex size-12 shrink-0 items-center justify-center rounded-full text-foreground transition-[transform,background-color] duration-150 ease-out hover:bg-muted active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="-mx-3 inline-flex size-12 shrink-0 items-center justify-center rounded-full text-foreground transition-[transform,background-color] duration-150 ease-out hover:bg-muted active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronLeft aria-hidden className="size-6" />
           </Link>
@@ -37,7 +37,7 @@ export function PageHeader({
         <h1 className="min-w-0 flex-1 text-xl leading-tight font-bold [overflow-wrap:anywhere]">{title}</h1>
         {action && <div className="flex shrink-0 items-center gap-3">{action}</div>}
       </div>
-      {children && <div className={cn("text-sm text-muted-foreground", back && "pl-10")}>{children}</div>}
+      {children && <div className={cn("text-sm text-muted-foreground", back && "pl-8")}>{children}</div>}
     </header>
   );
 }
