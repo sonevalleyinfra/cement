@@ -17,7 +17,7 @@ export default async function StaffReportPage({ searchParams }: { searchParams: 
   return (
     <ReportFrame title="Staff activity" range={range}>
       {lines.length === 0 ? (
-        <EmptyState title="Nothing done" icon={Users} tone="violet" />
+        <EmptyState title="Nothing done" icon={Users} tone="slate" />
       ) : (
         <div className="flex flex-col gap-3">
           {lines.map((l, i) => (
@@ -25,7 +25,7 @@ export default async function StaffReportPage({ searchParams }: { searchParams: 
               key={l.personId}
               index={i}
               title={l.name}
-              icon={<IconTile icon={Users} tone="violet" />}
+              icon={<IconTile icon={Users} tone="slate" />}
               bottom={
                 <div className="grid w-full grid-cols-2 gap-x-4 gap-y-3 [overflow-wrap:anywhere] [&>*]:min-w-0">
                   <Stat label="Orders placed" value={num(l.ordersPlaced)} />

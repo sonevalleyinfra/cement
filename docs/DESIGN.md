@@ -20,7 +20,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Brand gradient is used only for: the logo mark (sign-in screens), the one `featured` `ListCard` at the top of Home, and primary buttons' glow.
 - Status colours appear only in `StatusChip` (soft tinted pill + dot).
 - Icons: sections and menu rows get an `IconTile` with a fixed `tone` (orders orange, dues rose, stock/dispatch blue,
-  cash green, approvals violet, receipts teal). Keep the same tone for the same thing everywhere.
+  cash green, approvals moss (olive), receipts teal, people (users, staff) slate). Keep the same tone for the same thing everywhere.
 - Font: Manrope. Three sizes of text matter: big number (`Stat`, 24px bold), body (16px), caption (12px muted).
 - Numbers: bold, large, `tabular`. Money in paise with `formatINR(p, { hidePaise: true })` in lists (drops ".00" on
   whole rupees only; real paise always show). Statements, ledgers, supplier accounts and reports use `formatINR(p)`.
@@ -48,9 +48,10 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Save buttons ignore taps after the first until the save answers (`useSubmit` in `src/lib/use-submit.ts`).
 
 ## Motion
-- 150-300ms, ease-out. Nothing loops, pulses or blinks, except the loading shimmer.
+- UI motion is 200ms, ease-out. Nothing loops, pulses or blinks, except the loading shimmer.
 - Allowed: each screen fades up once (`animate-page`, in `(app)/template.tsx`), list cards fade up (`animate-in-up`,
-  staggered by `index`), badges and tiles pop in once (`animate-pop`), sheet slides up (300ms), button press
+  staggered 30ms × 6 steps by `stagger(index)` from `src/lib/motion.ts`) only when they appear after the screen's first
+  paint (tab switch, sheet, filtered list); on first paint the screen's own fade covers them. Badges and tiles pop in once (`animate-pop`), sheet slides up (300ms), button press
   `scale-[0.98]`, cards lift on hover, active tab gets an orange pill and its icon grows slightly.
 - Loading uses `Skeleton` blocks with a soft light sweep (`animate-shimmer`), not spinners.
 - Reduced-motion users get no animation (handled globally).

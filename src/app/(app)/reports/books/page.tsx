@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { StatusChip } from "@/components/app/status-chip";
 import { runBooksCheck } from "@/lib/books-check";
 import { summarize, type BooksLine, type ShownRow } from "@/lib/books-check-rules";
+import { stagger } from "@/lib/motion";
 import { requireRole } from "@/lib/session";
 
 /** Lines with problems (or that could not run) first; ADR order within each group. */
@@ -32,7 +33,7 @@ export default async function BooksCheckPage() {
             key={l.id}
             aria-label={l.title}
             className="animate-in-up flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6"
-            style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+            style={stagger(i)}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

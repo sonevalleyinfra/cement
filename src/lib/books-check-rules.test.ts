@@ -86,7 +86,7 @@ describe("summarize", () => {
 describe("describeRow", () => {
   it("formats money from paise, also when Postgres sends strings", () => {
     expect(describeRow(row({ what: "Payment #7", unit: "paise", got: "-150000", want: "-150050" }))).toBe(
-      "Payment #7 · -₹1,500.00 · expected -₹1,500.50",
+      "Payment #7 · −₹1,500.00 · expected −₹1,500.50",
     );
   });
   it("leaves out missing numbers", () => {

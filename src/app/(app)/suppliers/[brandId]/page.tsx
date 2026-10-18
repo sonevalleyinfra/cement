@@ -61,8 +61,7 @@ export default async function SupplierAccountPage({ params }: { params: Promise<
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold">{supplierKindLabel(e.kind)}</span>
                     <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-green-700" : ""}`}>
-                      {e.amountPaise < 0 ? "- " : ""}
-                      {formatINR(Math.abs(e.amountPaise))}
+                      {formatINR(e.amountPaise)}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">

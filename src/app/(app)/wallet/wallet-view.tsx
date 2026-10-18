@@ -101,12 +101,12 @@ export function WalletView({
         title="My cash held"
         top={
           mine.pendingPaise > 0 ? (
-            <span className="text-xs text-muted-foreground">{formatINR(mine.pendingPaise)} waiting for accounts</span>
+            <span className="text-xs text-muted-foreground">{formatINR(mine.pendingPaise, { hidePaise: true })} waiting for accounts</span>
           ) : undefined
         }
         bottom={
           <>
-            <span className="tabular text-2xl font-bold">{formatINR(mine.balancePaise)}</span>
+            <span className="tabular text-2xl font-bold">{formatINR(mine.balancePaise, { hidePaise: true })}</span>
             <Button
               variant="outline"
               disabled={mine.availablePaise <= 0}
@@ -137,7 +137,7 @@ export function WalletView({
                     title={r.collector}
                     bottom={
                       <>
-                        <span className="tabular text-lg font-bold">{formatINR(r.amountPaise)}</span>
+                        <span className="tabular text-lg font-bold">{formatINR(r.amountPaise, { hidePaise: true })}</span>
                         {r.own ? (
                           <span className="text-xs text-muted-foreground">Another person confirms yours</span>
                         ) : (
@@ -173,9 +173,9 @@ export function WalletView({
                     title={h.name}
                     bottom={
                       <div className="flex flex-col gap-1">
-                        <span className="tabular text-lg font-bold">{formatINR(h.balancePaise)}</span>
+                        <span className="tabular text-lg font-bold">{formatINR(h.balancePaise, { hidePaise: true })}</span>
                         {h.pendingPaise > 0 && (
-                          <span className="text-xs text-muted-foreground">{formatINR(h.pendingPaise)} to confirm</span>
+                          <span className="text-xs text-muted-foreground">{formatINR(h.pendingPaise, { hidePaise: true })} to confirm</span>
                         )}
                       </div>
                     }

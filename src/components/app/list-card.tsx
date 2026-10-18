@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { stagger } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -58,7 +59,7 @@ export function ListCard({
       "transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring",
     className,
   );
-  const style = { animationDelay: `${Math.min(index, 8) * 45}ms` };
+  const style = stagger(index);
   if (onClick) {
     return (
       <button type="button" onClick={onClick} className={cn(classes, "w-full text-left")} style={style}>

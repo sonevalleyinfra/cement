@@ -15,18 +15,30 @@ describe("formatINR", () => {
     expect(formatINR(1234567890)).toBe("₹1,23,45,678.90");
     expect(formatINR(0)).toBe("₹0.00");
     expect(formatINR(50)).toBe("₹0.50");
-    expect(formatINR(-500)).toBe("-₹5.00");
+    expect(formatINR(-500)).toBe("−₹5.00");
+  });
+
+  it("writes negatives with the true minus sign and no space", () => {
+    expect(formatINR(-15_000_00)).toBe("−₹15,000.00");
+    expect(formatINR(-5000, { hidePaise: true })).toBe("−₹50");
+    expect(formatINR(-15_000_50, { hidePaise: true })).toBe("−₹15,000.50");
+  });
+
+  it("never shows a sign on zero, even -0", () => {
+    expect(formatINR(-0)).toBe("₹0.00");
+    expect(formatINR(0, { hidePaise: true })).toBe("₹0");
+    expect(formatINR(-0, { hidePaise: true })).toBe("₹0");
   });
 
   it("can hide .00 on whole rupees", () => {
     expect(formatINR(1_00_000_00, { hidePaise: true })).toBe("₹1,00,000");
-    expect(formatINR(-50_00, { hidePaise: true })).toBe("-₹50");
+    expect(formatINR(-50_00, { hidePaise: true })).toBe("−₹50");
   });
 
   it("never rounds real paise away, even with hidePaise", () => {
     expect(formatINR(36_99_950, { hidePaise: true })).toBe("₹36,999.50");
     expect(formatINR(1, { hidePaise: true })).toBe("₹0.01");
-    expect(formatINR(-99, { hidePaise: true })).toBe("-₹0.99");
+    expect(formatINR(-99, { hidePaise: true })).toBe("−₹0.99");
   });
 
   it("rejects non-integer amounts", () => {
@@ -38,7 +50,9 @@ describe("formatINRCompact", () => {
   it("uses lakh and crore words", () => {
     expect(formatINRCompact(1_50_000_00)).toBe("₹1.5 lakh");
     expect(formatINRCompact(2_50_00_000_00)).toBe("₹2.5 crore");
-    expect(formatINRCompact(-1_00_000_00)).toBe("-₹1 lakh");
+    expect(formatINRCompact(-1_00_000_00)).toBe("−₹1 lakh");
+    expect(formatINRCompact(-2_50_00_000_00)).toBe("−₹2.5 crore");
+    expect(formatINRCompact(-500_00)).toBe("−₹500.00");
   });
 
   it("falls back to the full format below one lakh", () => {

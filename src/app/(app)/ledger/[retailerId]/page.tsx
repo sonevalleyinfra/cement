@@ -69,8 +69,7 @@ export default async function RetailerLedgerPage({
                 <span className="text-sm font-semibold">{e.label}</span>
                 {e.amountPaise !== null && (
                   <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-green-700" : ""}`}>
-                    {e.amountPaise < 0 ? "- " : ""}
-                    {formatINR(Math.abs(e.amountPaise))}
+                    {formatINR(e.amountPaise)}
                   </span>
                 )}
               </div>

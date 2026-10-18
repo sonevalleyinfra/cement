@@ -67,9 +67,10 @@ export default async function SupplierStatementPage({ searchParams }: { searchPa
             <EmptyState title="No entries" />
           ) : (
             <DataTable
-              columns={[{ label: "Day" }, { label: "Entry", align: "left" }, { label: "Amount" }, { label: "Balance" }]}
+              stacked
+              columns={[{ label: "Entry" }, { label: "Day" }, { label: "Amount" }, { label: "Balance" }]}
               rows={[
-                ["", "Opening", "", money(s.openingPaise)],
+                ["Opening", "", "", money(s.openingPaise)],
                 ...s.entries.map((e) => {
                   const detail = [
                     e.kind === "payment" && e.mode ? SUPPLIER_MODE_LABELS[e.mode as SupplierPaymentMode] : "",
@@ -79,17 +80,17 @@ export default async function SupplierStatementPage({ searchParams }: { searchPa
                     .filter(Boolean)
                     .join(" · ");
                   return [
-                    <span key="d" className="text-xs font-normal whitespace-nowrap">{formatDate(e.entryDate)}</span>,
                     <span key="k" className="flex flex-col">
                       <span>{supplierKindLabel(e.kind)}</span>
-                      {detail && <span className="text-xs text-muted-foreground">{detail}</span>}
+                      {detail && <span className="text-xs font-normal text-muted-foreground">{detail}</span>}
                     </span>,
+                    formatDate(e.entryDate),
                     money(e.amountPaise),
                     money(e.balancePaise),
                   ];
                 }),
               ]}
-              total={["", "Closing", "", money(s.closingPaise)]}
+              total={["Closing", "", "", money(s.closingPaise)]}
             />
           )}
         </>

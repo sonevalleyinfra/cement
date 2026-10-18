@@ -20,7 +20,7 @@ export function FilterTabs({
   label: string;
 }) {
   return (
-    <nav aria-label={label} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+    <nav aria-label={label} className="scroll-x-fade -mx-4 flex gap-2 px-4 pb-1">
       {tabs.map((t) => (
         <Link
           key={t.value}
