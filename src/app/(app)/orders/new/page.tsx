@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
+import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getProducts } from "@/lib/catalogue";
@@ -26,10 +27,14 @@ export default async function NewOrderPage({
         .from(retailers)
         .where(eq(retailers.active, true))
         .orderBy(asc(retailers.name));
-  if (retailerOnly && retailerRows.length === 0) {
-    return <EmptyState title="Your login is not linked to a retailer" />;
-  }
-  if (retailerRows.length === 0) return <EmptyState title="Add a retailer first" />;
+  const empty = (title: string) => (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="New order" back="/orders" />
+      <EmptyState title={title} />
+    </div>
+  );
+  if (retailerOnly && retailerRows.length === 0) return empty("Your login is not linked to a retailer");
+  if (retailerRows.length === 0) return empty("Add a retailer first");
   // With more than one brand, the product list is grouped by brand (see productGroups).
   const productRows = (await getProducts({ activeOnly: true })).map((p) => ({
     id: p.id,
@@ -37,7 +42,7 @@ export default async function NewOrderPage({
     channel: p.channel,
     brand: p.brand,
   }));
-  if (productRows.length === 0) return <EmptyState title="No products yet. Ask admin." />;
+  if (productRows.length === 0) return empty("No products yet. Ask admin.");
 
   return (
     <NewOrderForm

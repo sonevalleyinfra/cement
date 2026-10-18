@@ -6,6 +6,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 ## Screen
 - Phone first. Design at 390px wide. One column, `max-w-md`, centred on bigger screens.
 - Bottom nav: 4 tabs at most. Frame is `AppShell`.
+- Every screen starts with `PageHeader`, except Home (the app header is its title). Sub-screens pass `back` (the parent screen's href); there is no other way-back link.
 - One primary button per screen, in `PinnedAction`. Tap targets are 48px or more (`Button` default is 48px, `lg` 56px).
 - Inputs are 48px high with 16px text (stops iOS zoom).
 - **Every tap target is 48px or more**: buttons, drop-downs, chips, text links (`TextLink`), phone links, checkboxes.
@@ -55,11 +56,11 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Reduced-motion users get no animation (handled globally).
 
 ## Components (`src/components/app/`)
-`AppShell`, `BottomNav`, `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`),
+`AppShell`, `BottomNav`, `PageHeader` (screen title, 48px row, optional `back` chevron and right `action`), `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`),
 `RangeForm` / `FilterSelect` (date range and filters as a plain GET form), `DataTable` (compact numbers table that scrolls
 sideways inside its own box, never the page; `stacked` turns each row into a small card for tables with many number
 columns), `FilterTabs` (filter pills that are links, the pick lives in the address: `/orders?show=rate`, so Home can link to it),
-`TextLink`, `chipClass`, `FormHint`, `ConfirmStep`, `RateField`. `ListCard` takes `href` (link) or `onClick` (opens a sheet).
+`TextLink`, `chipClass`, `FormHint`, `ConfirmStep`, `RateField`, `SectionCaption` (12px group caption above a list of cards or rows). `ListCard` takes `href` (link) or `onClick` (opens a sheet).
 Retailers and other lists with many fields in each row: the row is a `ListCard` with `onClick`; everything about one row is
 edited in one sheet with one Save button.
 Report tables on a phone: product names drop the brand while only one brand is on (`shortProductName`), and wide tables

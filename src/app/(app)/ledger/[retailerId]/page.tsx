@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
+import { PageHeader } from "@/components/app/page-header";
 import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
 import { retailers, user as users } from "@/db/schema";
@@ -44,11 +45,11 @@ export default async function RetailerLedgerPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">{retailer.name}</h1>
-        {staff && <TextLink href="/ledger">All retailers</TextLink>}
-        {isRetailerOnly(user.role) && <TextLink href="/receipts">Payments</TextLink>}
-      </div>
+      <PageHeader
+        title={retailer.name}
+        back={staff ? "/ledger" : undefined}
+        action={isRetailerOnly(user.role) && <TextLink href="/receipts">Payments</TextLink>}
+      />
       <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <div className="text-xs text-muted-foreground">{balanceLine(balance).label}</div>
         <div className="tabular text-3xl font-bold">{formatINR(balanceLine(balance).amountPaise)}</div>

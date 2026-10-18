@@ -8,8 +8,10 @@ import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
 import { IconTile } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { FilterSelect, RangeForm } from "@/components/app/range-form";
+import { SectionCaption } from "@/components/app/section-caption";
 import { ListSkeleton } from "@/components/app/skeleton";
 import { Stat } from "@/components/app/stat";
 import { StatusChip } from "@/components/app/status-chip";
@@ -31,12 +33,28 @@ export default function DesignPage() {
 
   return (
     <AppShell nav={nav} headerLeft={<AppTitle />}>
-      <div className="grid grid-cols-2 gap-4 py-2">
+      <h2 className="mb-3 text-sm font-medium text-muted-foreground">Page header</h2>
+      <div className="flex flex-col gap-4">
+        <PageHeader
+          title="Payments"
+          action={
+            <TextLink href="/design" strong>
+              New payment
+            </TextLink>
+          }
+        />
+        <PageHeader title="Sharma Traders" back="/design" action={<StatusChip status="approved" />}>
+          Trade OPC 43 · 120 bags
+        </PageHeader>
+      </div>
+
+      <div className="mt-8 grid grid-cols-2 gap-4 py-2">
         <Stat label="Today" value="240 bags" />
         <Stat label="Sales" value={formatINRCompact(18_450_000_00)} />
       </div>
 
       <div className="mt-4 flex flex-col gap-3">
+        <SectionCaption>Overview</SectionCaption>
         <ListCard
           featured
           index={0}

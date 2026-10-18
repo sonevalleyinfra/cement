@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { RateField } from "@/components/app/rate-field";
 import { SelectField } from "@/components/app/select-field";
@@ -75,7 +76,7 @@ export function NewOrderForm({
 
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-xl font-bold">New order</h1>
+      <PageHeader title="New order" back="/orders" />
 
       {fixedRetailerId ? (
         <div className="rounded-2xl bg-card p-4 text-base font-semibold shadow-card ring-1 ring-foreground/6">

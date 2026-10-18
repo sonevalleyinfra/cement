@@ -8,6 +8,7 @@ import {
   KeyRound,
   Package,
   Receipt,
+  ShieldCheck,
   Tags,
   Truck,
   Warehouse,
@@ -17,57 +18,74 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
+import { PageHeader } from "@/components/app/page-header";
+import { SectionCaption } from "@/components/app/section-caption";
 import { Button } from "@/components/ui/button";
-import { moreHides } from "@/lib/nav-rules";
-import { can, type Action } from "@/lib/permissions";
+import { moreGroups } from "@/lib/nav-rules";
 import { requireUser } from "@/lib/session";
 import { signOut } from "../dashboard/actions";
 
-type Row = { href: string; label: string; icon: LucideIcon; tone: Tone; permission?: Action };
+const looks: Record<string, { icon: LucideIcon; tone: Tone }> = {
+  "/receipts": { icon: Receipt, tone: "teal" },
+  "/wallet": { icon: Wallet, tone: "green" },
+  "/ledger": { icon: BookOpen, tone: "rose" },
+  "/suppliers": { icon: Factory, tone: "amber" },
+  "/approvals": { icon: BadgeCheck, tone: "violet" },
+  "/stock": { icon: Package, tone: "blue" },
+  "/dispatch": { icon: Truck, tone: "blue" },
+  "/godowns": { icon: Warehouse, tone: "blue" },
+  "/catalogue": { icon: Tags, tone: "blue" },
+  "/users": { icon: Users, tone: "violet" },
+  "/reports": { icon: ChartColumn, tone: "orange" },
+  "/activity": { icon: History, tone: "slate" },
+  "/reports/books": { icon: ShieldCheck, tone: "slate" },
+  "/account": { icon: KeyRound, tone: "orange" },
+};
 
-const rows: Row[] = [
-  { href: "/reports", label: "Reports", icon: ChartColumn, tone: "orange", permission: "viewReports" },
-  { href: "/activity", label: "Activity", icon: History, tone: "slate", permission: "viewActivity" },
-  { href: "/users", label: "Users", icon: Users, tone: "violet", permission: "manageUsers" },
-  { href: "/catalogue", label: "Catalogue", icon: Tags, tone: "blue", permission: "manageCatalogue" },
-  { href: "/approvals", label: "Approvals", icon: BadgeCheck, tone: "violet", permission: "viewApprovals" },
-  { href: "/stock", label: "Stock", icon: Package, tone: "blue", permission: "viewStock" },
-  { href: "/godowns", label: "Godowns", icon: Warehouse, tone: "blue", permission: "manageStock" },
-  { href: "/dispatch", label: "Dispatch", icon: Truck, tone: "blue", permission: "dispatch" },
-  { href: "/suppliers", label: "Suppliers", icon: Factory, tone: "amber", permission: "viewSuppliers" },
-  { href: "/ledger", label: "Ledger", icon: BookOpen, tone: "rose", permission: "viewLedger" },
-  { href: "/receipts", label: "Payments", icon: Receipt, tone: "teal", permission: "viewReceipts" },
-  { href: "/wallet", label: "Cash", icon: Wallet, tone: "green", permission: "useWallet" },
-  { href: "/account", label: "Change password", icon: KeyRound, tone: "orange" },
-];
+const delay = (i: number) => ({ animationDelay: `${Math.min(i, 6) * 30}ms` });
 
 export default async function MorePage() {
   const { user } = await requireUser();
-  const visible = rows.filter((r) => (!r.permission || can(user.role, r.permission)) && !moreHides(user.role, r.href));
+  let i = 0;
   return (
-    <ul className="flex flex-col gap-3">
-      {visible.map((r, i) => (
-        <li key={r.href} className="animate-in-up" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-          <Link
-            href={r.href}
-            className="group flex w-full items-center gap-3 rounded-2xl bg-card p-3 pr-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6 transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.99]"
-          >
-            <IconTile icon={r.icon} tone={r.tone} />
-            <span className="flex-1">{r.label}</span>
-            <ChevronRight
-              aria-hidden
-              className="size-5 text-muted-foreground/60 transition-transform duration-200 group-hover:translate-x-0.5"
-            />
-          </Link>
-        </li>
-      ))}
-      <li className="animate-in-up mt-2" style={{ animationDelay: `${Math.min(visible.length, 8) * 40}ms` }}>
-        <form action={signOut}>
-          <Button type="submit" variant="outline" className="w-full">
-            Sign out
-          </Button>
-        </form>
-      </li>
-    </ul>
+    <div className="flex flex-col gap-4">
+      <PageHeader title="More" />
+      <div className="flex flex-col gap-6">
+        {moreGroups(user.role).map((g) => (
+          <section key={g.title} className="flex flex-col gap-2">
+            <SectionCaption>{g.title}</SectionCaption>
+            <ul className="flex flex-col gap-3">
+              {g.rows.map((r) => {
+                const look = looks[r.href];
+                return (
+                  <li key={r.href} className="animate-in-up" style={delay(i++)}>
+                    <Link
+                      href={r.href}
+                      className="group flex w-full items-center gap-3 rounded-2xl bg-card p-3 pr-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6 transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <IconTile icon={look.icon} tone={look.tone} />
+                      <span className="flex-1">{r.label}</span>
+                      <ChevronRight
+                        aria-hidden
+                        className="size-5 text-muted-foreground/60 transition-transform duration-200 group-hover:translate-x-0.5"
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
+              {g.title === "Account" && (
+                <li className="animate-in-up" style={delay(i++)}>
+                  <form action={signOut}>
+                    <Button type="submit" variant="outline" className="w-full">
+                      Sign out
+                    </Button>
+                  </form>
+                </li>
+              )}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }

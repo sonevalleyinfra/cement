@@ -3,8 +3,9 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * A plain underlined link ("All retailers", "Verify", "Back to stock") with a 48px tap area.
- * The padding is cancelled by a negative margin, so it lines up like a small text link.
+ * A plain underlined link for an action ("Verify", "New payment") with a 48px tap area. Never a way back:
+ * that is the `PageHeader` back chevron. The padding is cancelled by a negative margin, so it lines up like
+ * a small text link.
  */
 export function TextLink({
   className,

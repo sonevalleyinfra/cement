@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { ConfirmStep } from "@/components/app/confirm-step";
 import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,7 +95,7 @@ export function WalletView({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Cash</h1>
+      <PageHeader title="Cash" />
       <ListCard
         index={0}
         title="My cash held"
@@ -187,7 +188,10 @@ export function WalletView({
       )}
 
       <Sheet open={handOpen} onOpenChange={setHandOpen} title="Hand over cash">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            <span className="tabular">{formatINR(mine.availablePaise)}</span> available
+          </p>
           {confirming && handoverPaise !== null ? (
             <ConfirmStep
               question={`Hand over ${formatINR(handoverPaise)} to the office?`}
@@ -215,13 +219,18 @@ export function WalletView({
       </Sheet>
 
       <Sheet open={answering !== null} onOpenChange={(o) => !o && setAnswering(null)} title={answering?.collector ?? ""}>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
+          {answering && (
+            <p className="text-sm text-muted-foreground">
+              <span className="tabular">{formatINR(answering.amountPaise)}</span> handed over
+            </p>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="received">Received (₹)</Label>
             <Input id="received" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reject-reason">Reason (to reject)</Label>
+            <Label htmlFor="reject-reason">Reason for rejecting</Label>
             <Input id="reject-reason" maxLength={MAX_REASON} value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
           {rejecting && answering && rejectHint === null ? (

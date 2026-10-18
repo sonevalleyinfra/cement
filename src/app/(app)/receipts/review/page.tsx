@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { receipts, retailers, user as users } from "@/db/schema";
 import { formatDate } from "@/lib/datetime";
@@ -31,7 +32,7 @@ export default async function ReviewPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Verify online</h1>
+      <PageHeader title="Verify online" back="/receipts" />
       {rows.length === 0 ? (
         <EmptyState title="Nothing to verify" />
       ) : (
@@ -55,7 +56,7 @@ export default async function ReviewPage() {
                       <span className="tabular text-lg font-bold">{formatINR(r.totalPaise)}</span>
                     </div>
                     {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
-                    <ReasonAction receiptId={r.id} action="reject" primary={<VerifyButton receiptId={r.id} />} />
+                    <ReasonAction receiptId={r.id} action="reject" inline primary={<VerifyButton receiptId={r.id} />} />
                   </div>
                 }
               />

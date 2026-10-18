@@ -6,6 +6,7 @@ import { type FormEvent, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
@@ -198,7 +199,7 @@ export function CatalogueView({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Catalogue</h1>
+      <PageHeader title="Catalogue" />
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4">
         {TABS.map((t) => (
           <button key={t.id} type="button" className={chipClass(tab === t.id)} onClick={() => setTab(t.id)}>

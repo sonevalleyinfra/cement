@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ export function GodownsView({ rows }: { rows: Row[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Godowns</h1>
+      <PageHeader title="Godowns" />
       {error && !open && <p className="text-sm text-destructive">{error}</p>}
       {rows.length === 0 ? (
         <EmptyState title="No godowns" />
