@@ -4,6 +4,7 @@ import { type FormEvent, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
@@ -107,7 +108,9 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
 
   return (
     <>
-      <h1 className="mb-3 text-xl font-bold">Users</h1>
+      <div className="mb-4">
+        <PageHeader title="Users" />
+      </div>
       <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
         {tabs.map((t) => (
           <button key={t} type="button" className={tabChip(tab === t)} onClick={() => setTab(t)}>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
 import { FilterTabs } from "@/components/app/filter-tabs";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { StatusChip } from "@/components/app/status-chip";
 import { buttonVariants } from "@/components/ui/button";
@@ -86,6 +87,9 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
+      <div className="mb-4">
+        <PageHeader title="Orders" />
+      </div>
       <div className="mb-3">
         <FilterTabs path="/orders" param="show" value={orderFilterValue(filter, user.role)} tabs={tabs} label="Show orders" />
       </div>

@@ -83,8 +83,8 @@ export function ChangePasswordForm() {
       </div>
       <FormMessage kind="error">{error}</FormMessage>
       <FormMessage kind="success">{success}</FormMessage>
-      <Button type="submit" disabled={pending} className="self-start">
-        {pending ? "Saving…" : "Change password"}
+      <Button type="submit" variant="outline" disabled={pending} className="w-full">
+        {pending ? "Saving…" : "Save"}
       </Button>
     </form>
   );

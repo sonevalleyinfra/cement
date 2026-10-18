@@ -1,6 +1,7 @@
 import { ArrowLeftRight, PackageOpen, PackagePlus, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { IconTile } from "@/components/app/icon-tile";
+import { PageHeader } from "@/components/app/page-header";
 import { getProducts } from "@/lib/catalogue";
 import { can, rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
@@ -29,7 +30,7 @@ export default async function StockPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Stock</h1>
+      <PageHeader title="Stock" />
       {tiles.length > 0 && (
         <div className="mb-2 grid grid-cols-2 gap-3">
           {tiles.map((t, i) => (

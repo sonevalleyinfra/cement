@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { IconTile } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
+import { PageHeader } from "@/components/app/page-header";
 import { Stat } from "@/components/app/stat";
 import { formatINR } from "@/lib/money";
 import { rolesFor } from "@/lib/permissions";
@@ -21,7 +22,7 @@ export default async function SuppliersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">Suppliers</h1>
+      <PageHeader title="Suppliers" />
       {suppliers.length === 0 ? (
         <EmptyState title="Add a brand in Catalogue" icon={Factory} tone="amber" />
       ) : (

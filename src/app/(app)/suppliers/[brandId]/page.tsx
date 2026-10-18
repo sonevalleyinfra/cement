@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
-import { TextLink } from "@/components/app/text-link";
+import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { user as users } from "@/db/schema";
 import { formatDate, toISTDateKey } from "@/lib/datetime";
@@ -39,10 +39,8 @@ export default async function SupplierAccountPage({ params }: { params: Promise<
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">{brand.name} account</h1>
-        {suppliers.length > 1 && <TextLink href="/suppliers">Suppliers</TextLink>}
-      </div>
+      {/* /suppliers redirects to the only supplier, so with one there is no list to go back to. */}
+      <PageHeader title={`${brand.name} account`} back={suppliers.length > 1 ? "/suppliers" : "/more"} />
       <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <div className="text-xs text-muted-foreground">{big.text}</div>
         <div className="tabular text-3xl font-bold">{formatINR(big.amountPaise)}</div>

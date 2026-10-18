@@ -13,12 +13,10 @@ export function UpdateNameForm({ currentName }: { currentName: string }) {
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <Label htmlFor="name">Display name</Label>
-      <div className="flex gap-2">
-        <Input id="name" name="name" defaultValue={currentName} required maxLength={100} />
-        <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save"}
-        </Button>
-      </div>
+      <Input id="name" name="name" defaultValue={currentName} required maxLength={100} />
+      <Button type="submit" variant="outline" disabled={pending} className="w-full">
+        {pending ? "Saving…" : "Save"}
+      </Button>
       <FormMessage kind="error">{state.error}</FormMessage>
       <FormMessage kind="success">{state.success}</FormMessage>
     </form>

@@ -59,8 +59,8 @@ pnpm dev
 clone on a new computer) it makes one; if another project already uses the database port, it moves this
 one to a free port; if Docker is off, it tells you how to start it.
 
-Sign in as the admin (`sonevalleyinfra@gmail.com` / `123456` by default, local only) and open `/admin`.
-Change the password on the dashboard (**Change password**).
+Sign in as the admin (`sonevalleyinfra@gmail.com` / `123456` by default, local only) and open `/users`.
+Change the password in More → **Change password**.
 
 <details>
 <summary>Running this template folder itself (without <code>new-app</code>)</summary>

@@ -1,8 +1,8 @@
 import { TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
+import { PageHeader } from "@/components/app/page-header";
 import { RangeForm } from "@/components/app/range-form";
 import { Stat } from "@/components/app/stat";
-import { TextLink } from "@/components/app/text-link";
 import { formatINR } from "@/lib/money";
 import { rangeQuery, type ReportRange } from "@/lib/report-range";
 
@@ -12,7 +12,7 @@ export const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 /** "+12" / "−5" / "0" for bag changes. */
 export const signedNum = (v: number) => (v > 0 ? `+${num(v)}` : v < 0 ? `−${num(-v)}` : "0");
 
-/** Every report page: title, a link back to the reports list (same dates), the date filter, then the report. */
+/** Every report page: title with a back chevron to the reports list (same dates), the date filter, then the report. */
 export function ReportFrame({
   title,
   range,
@@ -28,10 +28,7 @@ export function ReportFrame({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold">{title}</h1>
-        <TextLink href={`/reports?${rangeQuery(range)}`}>Reports</TextLink>
-      </div>
+      <PageHeader title={title} back={`/reports?${rangeQuery(range)}`} />
       <RangeForm from={range.from} to={range.to} keep={keep}>
         {filters}
       </RangeForm>
