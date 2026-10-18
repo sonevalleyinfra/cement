@@ -1,12 +1,16 @@
 "use client";
 
+import { Eye, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
-import { chipClass } from "@/components/app/chip";
+import { ChipCount, chipClass } from "@/components/app/chip";
+import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
+import { StatusChip } from "@/components/app/status-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,38 +49,45 @@ function Checks({ options, value, onChange }: { options: { id: string; label: st
 }
 
 export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [tempPassword, setTempPassword] = useState("");
-  const [listError, setListError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [confirming, setConfirming] = useState<null | "deactivate" | "delete">(null);
   const { error, setError, clearError } = useFormError([roles, tempPassword]);
   const [pending, start] = useTransition();
 
-  // Role tabs (a person with several roles shows under each), then Active / Deactivated.
-  const tabs: RoleTab[] = [...ROLES, ...(rows.some((r) => parseRoles(r.role).length === 0) ? ["none" as const] : [])];
+  // All, then role tabs (a person with several roles shows under each), then Active / Deactivated.
+  const tabs: RoleTab[] = [
+    "all",
+    ...ROLES,
+    ...(rows.some((r) => parseRoles(r.role).length === 0) ? ["none" as const] : []),
+  ];
   const count = (t: RoleTab) => usersInTab(rows, t, true).length + usersInTab(rows, t, false).length;
-  const [tab, setTab] = useState<RoleTab>(() => tabs.find((t) => t !== "admin" && count(t) > 0) ?? "admin");
+  const [tab, setTab] = useState<RoleTab>("all");
   const [showActive, setShowActive] = useState(true);
   const visible = usersInTab(rows, tab, showActive);
 
-  function rowAction(run: () => Promise<UserResult>) {
-    setListError("");
+  /** A Deactivate / Reactivate / Delete from the sheet: errors stay in the sheet, success closes it. */
+  function sheetAction(run: () => Promise<UserResult>) {
+    clearError();
     start(async () => {
       const res = await run();
-      if (!res.ok) setListError(res.error);
+      if (res.ok) {
+        setOpen(false);
+        router.refresh();
+      } else setError(res.error);
     });
-  }
-
-  function remove(r: Row) {
-    if (!window.confirm(`Delete ${r.name}? They disappear from this list. Their records stay.`)) return;
-    rowAction(() => deleteUser(r.id));
   }
 
   function openSheet(row: Row | null) {
     setEditing(row);
     setRoles(row ? parseRoles(row.role) : []);
     setTempPassword("");
+    setShowPassword(false);
+    setConfirming(null);
     clearError();
     setOpen(true);
   }
@@ -101,8 +112,10 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
             roles,
             password: tempPassword,
           });
-      if (res.ok) setOpen(false);
-      else setError(res.error);
+      if (res.ok) {
+        setOpen(false);
+        router.refresh();
+      } else setError(res.error);
     });
   }
 
@@ -111,21 +124,22 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
       <div className="mb-4">
         <PageHeader title="Users" />
       </div>
-      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
+      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((t) => (
           <button key={t} type="button" className={tabChip(tab === t)} onClick={() => setTab(t)}>
-            {t === "none" ? "No role" : roleLabel(t)} <span className="tabular opacity-70">{count(t)}</span>
+            {t === "all" ? "All" : t === "none" ? "No role" : roleLabel(t)}
+            <ChipCount n={count(t)} on={tab === t} />
           </button>
         ))}
       </div>
       <div className="mb-4 grid grid-cols-2 gap-2">
         {[true, false].map((a) => (
           <button key={String(a)} type="button" className={tabChip(showActive === a)} onClick={() => setShowActive(a)}>
-            {a ? "Active" : "Deactivated"} <span className="tabular opacity-70">{usersInTab(rows, tab, a).length}</span>
+            {a ? "Active" : "Deactivated"}
+            <ChipCount n={usersInTab(rows, tab, a).length} on={showActive === a} />
           </button>
         ))}
       </div>
-      {listError && <p className="mb-3 text-sm text-destructive">{listError}</p>}
       {visible.length === 0 ? (
         <EmptyState title="No users" />
       ) : (
@@ -135,33 +149,23 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
               <ListCard
                 index={i}
                 title={r.name}
+                onClick={() => openSheet(r)}
+                className={r.active ? undefined : "opacity-60"}
                 top={
-                  <span className="text-xs text-muted-foreground">
-                    {r.email}
-                    {r.phone && <span className="tabular"> · {r.phone}</span>}
-                  </span>
+                  <>
+                    <span className="min-w-0 truncate text-xs text-muted-foreground">
+                      {r.email}
+                      {r.phone && <span className="tabular"> · {r.phone}</span>}
+                    </span>
+                    {!r.active && <StatusChip status="cancelled" label="Deactivated" className="shrink-0" />}
+                  </>
                 }
                 bottom={
-                  <>
-                    <div className="flex flex-wrap gap-1">
-                      {parseRoles(r.role).map((x) => (
-                        <span key={x} className={chip}>{roleLabel(x)}</span>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" onClick={() => openSheet(r)}>Edit</Button>
-                      {r.id !== myId && (
-                        <Button variant="ghost" disabled={pending} onClick={() => rowAction(() => setUserActive(r.id, !r.active))}>
-                          {r.active ? "Deactivate" : "Reactivate"}
-                        </Button>
-                      )}
-                      {!r.active && r.id !== myId && (
-                        <Button variant="ghost" className="text-destructive" disabled={pending} onClick={() => remove(r)}>
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </>
+                  <div className="flex flex-wrap gap-1">
+                    {parseRoles(r.role).map((x) => (
+                      <span key={x} className={chip}>{roleLabel(x)}</span>
+                    ))}
+                  </div>
                 }
               />
             </li>
@@ -196,27 +200,91 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="password">{editing ? "New temporary password" : "Temporary password"}</Label>
-            {/* Plain text so the admin can read it out or copy it to the user. Blank = no change / email a link. */}
-            <Input
-              id="password"
-              name="password"
-              type="text"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              value={tempPassword}
-              onChange={(e) => setTempPassword(e.target.value)}
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                className="pr-12"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={tempPassword}
+                onChange={(e) => setTempPassword(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute inset-y-0 right-0"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((s) => !s)}
+              >
+                {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+              </Button>
+            </div>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Roles</Label>
             <Checks options={ROLES.map((x) => ({ id: x, label: roleLabel(x) }))} value={roles} onChange={setRoles} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={pending}>
-            {editing ? "Save" : tempPassword.trim() ? "Create" : "Create and email link"}
-          </Button>
+          {!confirming && (
+            <Button type="submit" disabled={pending}>
+              {editing ? "Save" : tempPassword.trim() ? "Create" : "Create and email link"}
+            </Button>
+          )}
         </form>
+        {editing && editing.id !== myId && (
+          <div className="mt-4 flex flex-col gap-2">
+            {confirming ? (
+              <ConfirmStep
+                question={`${confirming === "delete" ? "Delete" : "Deactivate"} ${editing.name}?`}
+                confirmLabel={confirming === "delete" ? "Delete" : "Deactivate"}
+                destructive
+                pending={pending}
+                onBack={() => setConfirming(null)}
+                onConfirm={() =>
+                  sheetAction(() => (confirming === "delete" ? deleteUser(editing.id) : setUserActive(editing.id, false)))
+                }
+              />
+            ) : editing.active ? (
+              <Button
+                variant="ghost"
+                className="text-destructive"
+                disabled={pending}
+                onClick={() => {
+                  clearError();
+                  setConfirming("deactivate");
+                }}
+              >
+                Deactivate
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => sheetAction(() => setUserActive(editing.id, true))}
+                >
+                  Reactivate
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="text-destructive"
+                  disabled={pending}
+                  onClick={() => {
+                    clearError();
+                    setConfirming("delete");
+                  }}
+                >
+                  Delete
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </Sheet>
     </>
   );

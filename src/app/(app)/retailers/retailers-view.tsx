@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
+import { StatusChip } from "@/components/app/status-chip";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -86,7 +87,7 @@ export function RetailersView({
                 title={r.name}
                 onClick={() => setDetailId(r.id)}
                 className={r.active ? undefined : "opacity-60"}
-                top={<span className="text-xs text-muted-foreground">{r.active ? "Active" : "Inactive"}</span>}
+                top={r.active ? undefined : <StatusChip status="cancelled" label="Off" />}
                 bottom={
                   <div className="flex w-full min-w-0 flex-col gap-0.5 text-xs text-muted-foreground">
                     <span>

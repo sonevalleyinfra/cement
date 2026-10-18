@@ -27,7 +27,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Cards: white, 16px radius, hairline ring plus soft `shadow-card`; tappable cards lift slightly on hover (`shadow-card-hover`).
 - Selected toggles and filter tabs (product, payment mode, order list) use the primary orange (`chipClass`, 48px tall).
 - A rate per bag is always typed in `RateField` (a 48px number field with the total under it): new order, filling a
-  retailer's order, changing a rate. The keypad stays for bags and payment amounts.
+  retailer's order, changing a rate, and a supplier's cost per bag (`allowPaise`). The keypad stays for bags and payment amounts.
 - Product pickers start with **Brand**, then Trade-type, Type, Grade. With only one switched-on brand the Brand drop-down is
   hidden (that brand is used) and lists are not grouped by brand; with more, lists group by brand ("Prism · Trade").
   Stock forms (purchase, opening, adjust) offer only existing products, narrowed step by step; picking a brand starts at
@@ -60,9 +60,10 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 `RangeForm` / `FilterSelect` (date range and filters as a plain GET form), `DataTable` (compact numbers table that scrolls
 sideways inside its own box, never the page; `stacked` turns each row into a small card for tables with many number
 columns), `FilterTabs` (filter pills that are links, the pick lives in the address: `/orders?show=rate`, so Home can link to it),
-`TextLink`, `chipClass`, `FormHint`, `ConfirmStep`, `RateField`, `SectionCaption` (12px group caption above a list of cards or rows). `ListCard` takes `href` (link) or `onClick` (opens a sheet).
+`TextLink`, `chipClass` / `ChipCount` (a count badge set apart inside a chip), `FormHint`, `ConfirmStep`, `RateField`, `SectionCaption` (12px group caption above a list of cards or rows). `ListCard` takes `href` (link) or `onClick` (opens a sheet).
 Retailers and other lists with many fields in each row: the row is a `ListCard` with `onClick`; everything about one row is
-edited in one sheet with one Save button.
+edited in one sheet with one Save button; turning off, deactivating or deleting sits in that sheet behind `ConfirmStep`.
+Rows show no "Active" caption; only switched-off rows get a `StatusChip` ("Off") and fade.
 Report tables on a phone: product names drop the brand while only one brand is on (`shortProductName`), and wide tables
 (profit, dues, stock flows) are `stacked`.
 Build new screens from these. Add a new shared component here (and to `/design`) before using it twice.

@@ -149,6 +149,10 @@ describe("usersInTab", () => {
   it("puts people without a known role under none", () => {
     expect(ids(usersInTab(rows, "none", true))).toEqual(["4", "5"]);
   });
+  it("puts everyone with that active state under all", () => {
+    expect(ids(usersInTab(rows, "all", true))).toEqual(["1", "3", "4", "5"]);
+    expect(ids(usersInTab(rows, "all", false))).toEqual(["2"]);
+  });
 });
 
 describe("shops owned block deactivating", () => {

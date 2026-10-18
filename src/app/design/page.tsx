@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { NavItem } from "@/components/app/bottom-nav";
 import { AppShell, AppTitle } from "@/components/app/app-shell";
 import { DataTable } from "@/components/app/data-table";
-import { chipClass } from "@/components/app/chip";
+import { ChipCount, chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
 import { IconTile } from "@/components/app/icon-tile";
@@ -160,6 +160,14 @@ export default function DesignPage() {
       <div className="flex flex-wrap items-center gap-2">
         <span className={chipClass(true)}>Open</span>
         <span className={chipClass(false)}>All</span>
+        <span className={chipClass(true)}>
+          Sales
+          <ChipCount n={3} on />
+        </span>
+        <span className={chipClass(false)}>
+          Admin
+          <ChipCount n={1} on={false} />
+        </span>
         <TextLink href="/design" strong>
           New payment
         </TextLink>
