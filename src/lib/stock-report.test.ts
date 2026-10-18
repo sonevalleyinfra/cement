@@ -44,11 +44,28 @@ describe("stockFlows", () => {
       purchasedBags: 200,
       dispatchedBags: 40,
       movedBags: 0,
+      movedInBags: 30,
+      movedOutBags: 30,
       fixedBags: -5,
       closingBags: 675,
       reconciles: true,
     });
     expect(totalFlow([f])).toMatchObject({ openingStockBags: 70, fixedBags: -5, reconciles: true });
+  });
+
+  it("a godown to truck move nets to 0 but shows bags moved in and out", () => {
+    const rows = [
+      move("opening", 100, "2026-09-01T00:00:00Z"),
+      move("transfer", -30, "2026-10-03T10:00:00Z"),
+      move("transfer", 30, "2026-10-03T10:00:00Z", { godownId: null, vehicleId: "v1" }),
+      move("transfer", -10, "2026-10-04T10:00:00Z", { godownId: null, vehicleId: "v1" }),
+      move("transfer", 10, "2026-10-04T10:00:00Z"),
+      move("transfer", -5, "2026-09-20T10:00:00Z"), // before the range: not counted
+      move("transfer", 5, "2026-09-20T10:00:00Z", { godownId: null, vehicleId: "v1" }),
+    ];
+    const [f] = stockFlows(rows, range, names);
+    expect(f).toMatchObject({ movedBags: 0, movedInBags: 40, movedOutBags: 40, reconciles: true });
+    expect(totalFlow([f])).toMatchObject({ movedInBags: 40, movedOutBags: 40 });
   });
 
   it("opening stock entered in the range is its own line, never counted as a correction", () => {
