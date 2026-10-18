@@ -5,6 +5,7 @@
  * A person with several staff roles gets the first match in that order.
  */
 import type { NavItem } from "@/components/app/bottom-nav";
+import { can, type Action } from "./permissions";
 import { hasRole, isAdmin } from "./roles";
 
 export function thirdTab(role: string | null | undefined): NavItem {
@@ -26,4 +27,50 @@ export function navFor(role: string | null | undefined): NavItem[] {
 /** More does not repeat the role's own third tab (a shop's Ledger, accounts' Payments, logistics' Stock). */
 export function moreHides(role: string | null | undefined, href: string): boolean {
   return href === thirdTab(role).href;
+}
+
+export type MoreRow = { href: string; label: string; permission?: Action; adminOnly?: boolean };
+export type MoreGroup = { title: string; rows: MoreRow[] };
+
+const MORE_GROUPS: MoreGroup[] = [
+  {
+    title: "Money",
+    rows: [
+      { href: "/receipts", label: "Payments", permission: "viewReceipts" },
+      { href: "/wallet", label: "Cash", permission: "useWallet" },
+      { href: "/ledger", label: "Ledger", permission: "viewLedger" },
+      { href: "/suppliers", label: "Suppliers", permission: "viewSuppliers" },
+      { href: "/approvals", label: "Approvals", permission: "viewApprovals" },
+    ],
+  },
+  {
+    title: "Goods",
+    rows: [
+      { href: "/stock", label: "Stock", permission: "viewStock" },
+      { href: "/dispatch", label: "Dispatch", permission: "dispatch" },
+      { href: "/godowns", label: "Godowns", permission: "manageStock" },
+      { href: "/catalogue", label: "Catalogue", permission: "manageCatalogue" },
+    ],
+  },
+  { title: "People", rows: [{ href: "/users", label: "Users", permission: "manageUsers" }] },
+  {
+    title: "Records",
+    rows: [
+      { href: "/reports", label: "Reports", permission: "viewReports" },
+      { href: "/activity", label: "Activity", permission: "viewActivity" },
+      { href: "/reports/books", label: "Books check", adminOnly: true },
+    ],
+  },
+  { title: "Account", rows: [{ href: "/account", label: "Change password" }] },
+];
+
+/** The More screen's groups with only the rows this role may see; empty groups are dropped. */
+export function moreGroups(role: string | null | undefined): MoreGroup[] {
+  return MORE_GROUPS.map((g) => ({
+    title: g.title,
+    rows: g.rows.filter(
+      (r) =>
+        (!r.permission || can(role, r.permission)) && (!r.adminOnly || isAdmin(role)) && !moreHides(role, r.href),
+    ),
+  })).filter((g) => g.rows.length > 0);
 }

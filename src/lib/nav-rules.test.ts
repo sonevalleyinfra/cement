@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moreHides, navFor, thirdTab } from "./nav-rules";
+import { moreGroups, moreHides, navFor, thirdTab } from "./nav-rules";
 
 describe("navFor", () => {
   it("gives each role its third tab", () => {
@@ -32,5 +32,36 @@ describe("moreHides", () => {
     expect(moreHides("accounts,logistics", "/stock")).toBe(false);
     expect(moreHides("sales", "/stock")).toBe(false);
     expect(moreHides("admin", "/stock")).toBe(false);
+  });
+});
+
+describe("moreGroups", () => {
+  const titles = (role: string) => moreGroups(role).map((g) => g.title);
+  const hrefs = (role: string) => moreGroups(role).flatMap((g) => g.rows.map((r) => r.href));
+
+  it("gives admin every group, with Books check under Records", () => {
+    expect(titles("admin")).toEqual(["Money", "Goods", "People", "Records", "Account"]);
+    const records = moreGroups("admin").find((g) => g.title === "Records");
+    expect(records?.rows.map((r) => r.href)).toEqual(["/reports", "/activity", "/reports/books"]);
+  });
+  it("shows Books check only to admin", () => {
+    expect(hrefs("accounts")).not.toContain("/reports/books");
+    expect(hrefs("sales")).not.toContain("/reports/books");
+  });
+  it("drops empty groups and the role's third tab", () => {
+    expect(titles("retailer")).toEqual(["Account"]);
+    expect(hrefs("retailer")).not.toContain("/ledger");
+
+    expect(titles("accounts")).toEqual(["Money", "Goods", "Account"]);
+    expect(hrefs("accounts")).not.toContain("/receipts");
+
+    expect(titles("logistics")).toEqual(["Money", "Goods", "Account"]);
+    expect(hrefs("logistics")).not.toContain("/stock");
+    expect(hrefs("logistics")).toContain("/dispatch");
+  });
+  it("never returns a group without rows", () => {
+    for (const role of ["admin", "sales", "accounts", "logistics", "retailer", "accounts,logistics"]) {
+      expect(moreGroups(role).every((g) => g.rows.length > 0)).toBe(true);
+    }
   });
 });

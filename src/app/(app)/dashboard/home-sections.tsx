@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
+import { SectionCaption } from "@/components/app/section-caption";
 import { Stat } from "@/components/app/stat";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -156,7 +157,7 @@ export async function AdminHome() {
   const s = await getAdminHome();
   const today = toISTDateKey(new Date());
   return (
-    <Cards>
+    <div className="flex flex-col gap-6">
       <Card
         index={0}
         href={`/reports/sales?from=${today}&to=${today}`}
@@ -169,31 +170,41 @@ export async function AdminHome() {
           { label: "Orders", value: num(s.todayOrders) },
         ]}
       />
-      <Card index={1} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Outstanding", value: money(s.duesPaise) }]} />
-      <Card index={2} href="/stock" title="Stock" icon={Package} tone="blue" stats={[{ label: "Bags", value: num(s.stockBags) }]} />
-      <Card index={3} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "Held by staff", value: money(s.cashInHandPaise) }]} />
-      <Card index={4} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
-      <Card index={5} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
-      <Card index={6} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
-      <Card
-        index={7}
-        href="/suppliers"
-        title="Suppliers" icon={Factory} tone="amber"
-        stats={supplierHomeLines(s.suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) }))}
-      />
-      {s.shopsWithoutSalesRep > 0 && (
-        <Card
-          index={8}
-          href={`/retailers?filter=${NO_REP_FILTER}`}
-          title="Shops"
-          icon={Store}
-          tone="rose"
-          stats={[{ label: "Without sales person", value: num(s.shopsWithoutSalesRep) }]}
-        />
-      )}
-      <Card index={9} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
-      <Card index={10} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
-    </Cards>
+      <div className="flex flex-col gap-2">
+        <SectionCaption>To do</SectionCaption>
+        <Cards>
+          <Card index={1} href="/approvals" title="Approvals" icon={BadgeCheck} tone="violet" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
+          <Card index={2} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
+          <Card index={3} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
+          {s.shopsWithoutSalesRep > 0 && (
+            <Card
+              index={4}
+              href={`/retailers?filter=${NO_REP_FILTER}`}
+              title="Shops"
+              icon={Store}
+              tone="rose"
+              stats={[{ label: "Without sales person", value: num(s.shopsWithoutSalesRep) }]}
+            />
+          )}
+        </Cards>
+      </div>
+      <div className="flex flex-col gap-2">
+        <SectionCaption>Overview</SectionCaption>
+        <Cards>
+          <Card index={5} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Outstanding", value: money(s.duesPaise) }]} />
+          <Card index={6} href="/stock" title="Stock" icon={Package} tone="blue" stats={[{ label: "Bags", value: num(s.stockBags) }]} />
+          <Card index={7} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "Held by staff", value: money(s.cashInHandPaise) }]} />
+          <Card
+            index={8}
+            href="/suppliers"
+            title="Suppliers" icon={Factory} tone="amber"
+            stats={supplierHomeLines(s.suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) }))}
+          />
+          <Card index={9} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
+          <Card index={10} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
+        </Cards>
+      </div>
+    </div>
   );
 }
 

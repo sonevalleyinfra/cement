@@ -10,6 +10,7 @@ import { IconTile } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { FilterSelect, RangeForm } from "@/components/app/range-form";
+import { SectionCaption } from "@/components/app/section-caption";
 import { ListSkeleton } from "@/components/app/skeleton";
 import { Stat } from "@/components/app/stat";
 import { StatusChip } from "@/components/app/status-chip";
@@ -37,6 +38,7 @@ export default function DesignPage() {
       </div>
 
       <div className="mt-4 flex flex-col gap-3">
+        <SectionCaption>Overview</SectionCaption>
         <ListCard
           featured
           index={0}
