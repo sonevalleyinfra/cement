@@ -50,8 +50,8 @@ export function RateField({
       {value !== "" && !check.ok && <p className="text-sm text-destructive">{check.error}</p>}
       {showTotal && split && (
         <div className="tabular text-sm text-muted-foreground">
-          <p>Unsent bags {formatINR(split.unsentPaise, { hidePaise: true })}</p>
-          <p>Order total {formatINR(split.orderTotalPaise, { hidePaise: true })}</p>
+          <p>Unsent bags {formatINR(split.unsentPaise)}</p>
+          <p>Order total {formatINR(split.orderTotalPaise)}</p>
         </div>
       )}
       {showTotal && !split && (
