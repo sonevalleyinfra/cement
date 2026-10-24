@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { firstMissing } from "@/lib/form-rules";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
+import { retailerMeta } from "@/lib/retailer-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import {
@@ -37,7 +38,7 @@ import {
 import { daysBetween, isDateKey } from "@/lib/report-range";
 import { loadDues, saveReceipt } from "../actions";
 
-type RetailerRow = { id: string; name: string; place: string };
+type RetailerRow = { id: string; name: string; place: string; active: boolean };
 type AccountRow = { id: string; label: string };
 
 export function ReceiptForm({
@@ -175,7 +176,9 @@ export function ReceiptForm({
           className="flex min-h-14 items-center justify-between gap-2 rounded-2xl bg-card px-4 py-3 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
         >
           {retailer ? (
-            retailer.place ? `${retailer.name} · ${retailer.place}` : retailer.name
+            <span className="min-w-0 break-words">
+              {retailerMeta(retailer) ? `${retailer.name} · ${retailerMeta(retailer)}` : retailer.name}
+            </span>
           ) : (
             <span className="text-muted-foreground">Pick retailer</span>
           )}
@@ -193,7 +196,7 @@ export function ReceiptForm({
                 className="min-h-12 w-full rounded-xl bg-card p-3 text-left text-base font-medium shadow-card ring-1 ring-foreground/6"
               >
                 {r.name}
-                {r.place && <span className="text-muted-foreground"> · {r.place}</span>}
+                {retailerMeta(r) && <span className="text-muted-foreground"> · {retailerMeta(r)}</span>}
               </button>
             </li>
           ))}
