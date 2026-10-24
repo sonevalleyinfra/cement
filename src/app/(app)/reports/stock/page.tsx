@@ -1,3 +1,5 @@
+import { TriangleAlert } from "lucide-react";
+import type { ReactNode } from "react";
 import { DataTable } from "@/components/app/data-table";
 import { EmptyState } from "@/components/app/empty-state";
 import { rolesFor } from "@/lib/permissions";
@@ -14,6 +16,17 @@ const bagsOrDash = (v: number) => (v === 0 ? "–" : num(v));
 
 /** Transfers between places: "+30 / −30" (in / out), "–" when nothing moved. Net is 0 per product, so the net alone hides moves. */
 const movedPair = (inBags: number, outBags: number) => (inBags === 0 && outBags === 0 ? "–" : `+${num(inBags)} / −${num(outBags)}`);
+
+/** A row name; when its numbers do not add up, risk text with a warning icon. */
+function RowLabel({ ok, children }: { ok: boolean; children: ReactNode }) {
+  if (ok) return <span>{children}</span>;
+  return (
+    <span className="inline-flex items-center gap-1 text-risk-foreground">
+      {children}
+      <TriangleAlert aria-label="Does not add up" className="size-4 shrink-0" />
+    </span>
+  );
+}
 
 export default async function StockReportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(...rolesFor("viewReports"));
@@ -59,11 +72,10 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
           stacked
           columns={[{ label: "Place" }, { label: "Opening" }, { label: "In" }, { label: "Out" }, { label: "Closing" }]}
           rows={places.map((p) => [
-            <span key="n" className={p.reconciles ? "" : "text-rose-700"}>
+            <RowLabel key="n" ok={p.reconciles}>
               {p.label}
               {p.kind === "vehicle" ? " (truck)" : ""}
-              {p.reconciles ? "" : " ⚠"}
-            </span>,
+            </RowLabel>,
             num(p.openingBags),
             bagsOrDash(p.inBags),
             bagsOrDash(p.outBags),
@@ -90,10 +102,9 @@ export default async function StockReportPage({ searchParams }: { searchParams: 
             { label: "End" },
           ]}
           rows={flows.map((f) => [
-            <span key="n" className={f.reconciles ? "" : "text-rose-700"}>
+            <RowLabel key="n" ok={f.reconciles}>
               {f.label}
-              {f.reconciles ? "" : " ⚠"}
-            </span>,
+            </RowLabel>,
             num(f.openingBags),
             moved(f.openingStockBags),
             moved(f.purchasedBags),
