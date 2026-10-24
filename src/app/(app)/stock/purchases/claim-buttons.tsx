@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useSubmit } from "@/lib/use-submit";
 import { setPurchaseClaim } from "../actions";
 
-/** Moves a purchase's claim forward: "Claimed" (from open) and "Credited". */
+/** Moves a purchase's claim forward: "Mark claimed" (from open) and "Mark credited". */
 export function ClaimButtons({ purchaseId, status }: { purchaseId: string; status: "open" | "claimed" }) {
   const router = useRouter();
   const { pending, run } = useSubmit();
@@ -26,7 +26,7 @@ export function ClaimButtons({ purchaseId, status }: { purchaseId: string; statu
       <div className="flex gap-2">
         {next.map((to) => (
           <Button key={to} type="button" size="sm" variant="outline" disabled={pending} onClick={() => move(to)}>
-            {to === "claimed" ? "Claimed" : "Credited"}
+            {to === "claimed" ? "Mark claimed" : "Mark credited"}
           </Button>
         ))}
       </div>
