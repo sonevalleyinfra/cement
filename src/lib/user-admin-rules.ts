@@ -1,6 +1,7 @@
 /** Rules for the users page. Plain functions: no database, no request. */
 import { formatINR } from "@/lib/money";
 import { checkTempPassword } from "@/lib/password-rules";
+import { can, type Action } from "@/lib/permissions";
 import { isValidIndianMobile, normalizePhone } from "@/lib/retailer-rules";
 import { isRole, parseRoles, type Role } from "@/lib/roles";
 
@@ -134,7 +135,16 @@ export function dropsAllStaffRoles(newRoles: readonly string[]): boolean {
 }
 
 /**
- * A sales person who still has shops cannot be deactivated: their orders would wait on nobody.
+ * The shops a sales person must give to someone else before they can be deactivated: every
+ * switched-on shop (new orders would wait on nobody) and every switched-off shop that still owes
+ * (its dues would be left with nobody to collect them). `balancePaise` > 0 = the shop owes.
+ */
+export function shopsToHandOver(shops: readonly { active: boolean; balancePaise: number }[]): number {
+  return shops.filter((s) => s.active || s.balancePaise > 0).length;
+}
+
+/**
+ * A sales person who still has shops cannot be deactivated (count from shopsToHandOver).
  * Returns an error naming the count, or null.
  */
 export function checkShopsOwned(shopCount: number): string | null {
@@ -151,5 +161,22 @@ export function checkShopsOwned(shopCount: number): string | null {
  */
 export function checkCashHeld(heldPaise: number): string | null {
   if (heldPaise > 0) return `Ask them to hand over ${formatINR(heldPaise, { hidePaise: true })} first.`;
+  return null;
+}
+
+/** The staff row as it is read (and locked) inside a money transaction. */
+export type LockedStaff = { role: string | null; banned: boolean | null; deletedAt: Date | null };
+
+/**
+ * May this person still record a payment or ask to hand over cash? Checked on their own row, locked
+ * in the same transaction as the money rows, so a deactivation, a delete or a role change cannot slip
+ * in between: a switched-off person never ends up holding new cash. Returns an error or null.
+ */
+export function checkCashRecorder(
+  person: LockedStaff | null | undefined,
+  permission: Extract<Action, "recordReceipt" | "useWallet">,
+): string | null {
+  if (!person || person.banned || person.deletedAt) return "Your account is switched off.";
+  if (!can(person.role, permission)) return "You cannot do this now.";
   return null;
 }

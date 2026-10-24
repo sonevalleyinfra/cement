@@ -10,12 +10,15 @@ import type { CreditForm } from "@/lib/credit-rules";
 import { toISTDateKey } from "@/lib/datetime";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { isUuid } from "@/lib/ids";
+import { getBalance } from "@/lib/ledger";
+import { duesFrom } from "@/lib/ledger-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { ORDER_STATUSES } from "@/lib/order-rules";
 import { normalizePhone, planShopEdit, type ShopEditForm, validateRetailer } from "@/lib/retailer-rules";
 import { checkSalesRepPick, movesWithSalesRep } from "@/lib/sales-rep-rules";
 import { geoCapturedAt, type ShopMasterForm } from "@/lib/shop-master-rules";
 import { requireRole } from "@/lib/session";
+import { planShopSwitch } from "@/lib/shop-off-rules";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
@@ -49,7 +52,8 @@ function creditInput(c: unknown): CreditForm | undefined {
 /**
  * Admin saves the shop sheet: name, phone, place, its sales person, its login, the master fields
  * and the credit terms, all or nothing (rules in planShopEdit). One transaction, with the shop row locked so two saves cannot interleave.
- * A new sales person also takes over the shop's unfinished orders (sales-rep-rules.ts).
+ * A new sales person also takes over the shop's unfinished orders (sales-rep-rules.ts) and its dues
+ * (the activity row keeps how much was owed then).
  * Each part that changed writes its own activity row, inside the same transaction. Changed credit
  * terms also add one row to the credit history (credit_limit_changes).
  */
@@ -82,13 +86,15 @@ export async function saveShop(id: string, form: ShopEditForm): Promise<Retailer
         .from(retailers)
         .where(and(eq(retailers.phone, phone), ne(retailers.id, id)))
         .limit(1);
+      // The new sales person's row is locked (after the shop: lock order), so they cannot be
+      // deactivated while this save gives them the shop.
       const [salesRep] =
         input.salesRepId && input.salesRepId !== before.salesRepId
           ? await tx
               .select({ id: user.id, role: user.role, banned: user.banned, deletedAt: user.deletedAt })
               .from(user)
               .where(eq(user.id, input.salesRepId))
-              .limit(1)
+              .for("share")
           : [];
       const [login] = input.userId
         ? await tx.select({ id: user.id, role: user.role }).from(user).where(eq(user.id, input.userId)).limit(1)
@@ -163,7 +169,12 @@ export async function saveShop(id: string, form: ShopEditForm): Promise<Retailer
           entity: "retailer",
           entityId: id,
           action: "assign_sales_rep",
-          details: { salesRepId: { before: before.salesRepId, after: plan.salesRepId }, ordersMoved: moved.length },
+          details: {
+            salesRepId: { before: before.salesRepId, after: plan.salesRepId },
+            ordersMoved: moved.length,
+            // The dues the new sales person now collects.
+            duesPaise: duesFrom(await getBalance(id, tx)),
+          },
         });
       }
       if (plan.userId !== undefined) {
@@ -249,25 +260,47 @@ export async function addRetailer(form: {
   return { ok: true };
 }
 
-/** Switches a retailer on or off. Admin only. */
-export async function setRetailerActive(id: string, active: boolean): Promise<RetailerResult> {
+/**
+ * Switches a retailer on or off. Admin only. Turning off a shop that still owes needs a reason
+ * (planShopSwitch): the shop keeps its dues and stays in the overdue list, the ledger and the
+ * payment form. The shop row is locked, so a payment saved meanwhile is counted in the dues read.
+ */
+export async function setRetailerActive(
+  id: string,
+  active: boolean,
+  reason?: { code?: unknown; note?: unknown },
+): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
   if (!isUuid(id)) return { ok: false, error: "Retailer not found." };
-  await db.transaction(async (tx) => {
-    const done = await tx
-      .update(retailers)
-      .set({ active, updatedAt: new Date() })
-      .where(eq(retailers.id, id))
-      .returning({ id: retailers.id });
-    if (done.length > 0) {
-      await writeAudit(tx, {
-        actorId: session.user.id,
-        entity: "retailer",
-        entityId: id,
-        action: active ? "activate" : "deactivate",
-      });
-    }
+  const makeActive = active === true;
+  const res = await db.transaction(async (tx): Promise<RetailerResult> => {
+    const [shop] = await tx.select({ id: retailers.id }).from(retailers).where(eq(retailers.id, id)).for("no key update");
+    if (!shop) return { ok: false, error: "Retailer not found." };
+    const duesPaise = duesFrom(await getBalance(id, tx));
+    const r = reason && typeof reason === "object" ? reason : {};
+    const plan = planShopSwitch({ makeActive, duesPaise, code: r.code, note: r.note });
+    if (!plan.ok) return plan;
+    await tx.update(retailers).set({ active: makeActive, updatedAt: new Date() }).where(eq(retailers.id, id));
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "retailer",
+      entityId: id,
+      action: makeActive ? "activate" : "deactivate",
+      ...(makeActive
+        ? {}
+        : {
+            details: {
+              duesPaise,
+              ...(plan.reason ? { reasonCode: plan.reason.code } : {}),
+              ...(plan.reason?.note ? { note: plan.reason.note } : {}),
+            },
+          }),
+    });
+    return { ok: true };
   });
+  if (!res.ok) return res;
   revalidatePath("/retailers");
+  revalidatePath("/ledger");
+  revalidatePath("/dashboard");
   return { ok: true };
 }

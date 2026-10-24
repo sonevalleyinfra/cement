@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   checkCashHeld,
+  checkCashRecorder,
   checkShopsOwned,
+  shopsToHandOver,
   dropsAllStaffRoles,
   checkDelete,
   checkEditedPhone,
@@ -201,5 +203,53 @@ describe("checkEditedPhone (editing a user)", () => {
       ok: false,
       error: "Enter a 10-digit mobile",
     });
+  });
+});
+
+describe("checkCashRecorder (the recorder's own row, locked in the money transaction)", () => {
+  const person = (over: Partial<{ role: string | null; banned: boolean | null; deletedAt: Date | null }> = {}) => ({
+    role: "sales",
+    banned: false,
+    deletedAt: null,
+    ...over,
+  });
+  it("lets an active staff member record a payment and ask to hand over", () => {
+    for (const role of ["sales", "accounts", "logistics", "admin", "sales,retailer"]) {
+      expect(checkCashRecorder(person({ role }), "recordReceipt")).toBeNull();
+      expect(checkCashRecorder(person({ role }), "useWallet")).toBeNull();
+    }
+    expect(checkCashRecorder(person({ banned: null }), "recordReceipt")).toBeNull();
+  });
+  it("refuses someone switched off, deleted or not found", () => {
+    for (const p of [null, undefined, person({ banned: true }), person({ deletedAt: new Date() })]) {
+      expect(checkCashRecorder(p, "recordReceipt")).toBe("Your account is switched off.");
+      expect(checkCashRecorder(p, "useWallet")).toBe("Your account is switched off.");
+    }
+  });
+  it("refuses someone whose staff roles were taken away meanwhile", () => {
+    for (const role of ["retailer", "", null]) {
+      expect(checkCashRecorder(person({ role }), "recordReceipt")).toBe("You cannot do this now.");
+      expect(checkCashRecorder(person({ role }), "useWallet")).toBe("You cannot do this now.");
+    }
+  });
+});
+
+describe("shopsToHandOver (deactivating a sales person)", () => {
+  it("counts switched-on shops and switched-off shops that still owe", () => {
+    expect(
+      shopsToHandOver([
+        { active: true, balancePaise: 0 },
+        { active: true, balancePaise: -500 },
+        { active: false, balancePaise: 1 },
+        { active: false, balancePaise: 0 },
+        { active: false, balancePaise: -100 },
+      ]),
+    ).toBe(3);
+    expect(shopsToHandOver([])).toBe(0);
+  });
+  it("a switched-off shop that owes blocks the deactivation", () => {
+    expect(checkShopsOwned(shopsToHandOver([{ active: false, balancePaise: 12_400_000 }]))).toBe(
+      "They look after 1 shop. Give it another sales person first.",
+    );
   });
 });

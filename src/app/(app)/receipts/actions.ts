@@ -25,6 +25,7 @@ import {
 } from "@/lib/receipt-rules";
 import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
+import { lockCashRecorder } from "@/lib/staff-cash";
 import { walletBalance } from "@/lib/wallet-rules";
 
 export type DuesResult = { ok: true; duesPaise: number } | { ok: false; error: string };
@@ -103,6 +104,9 @@ export async function saveReceipt(input: {
     const res = await saveOnce({ id: request.id, kind: "payment", actorId: session.user.id }, async (tx) => {
       const retailer = await lockRetailer(tx, input.retailerId);
       if (!retailer) return { ok: false, error: "Retailer not found." };
+      // Then the recorder (lock order): someone switched off meanwhile cannot take new cash (staff-cash.ts).
+      const recorder = await lockCashRecorder(tx, session.user.id, "recordReceipt");
+      if (!recorder.ok) return recorder;
       if (plan.utr) {
         const same = await tx
           .select({ mode: receipts.mode, status: receipts.status, utr: receipts.utr })

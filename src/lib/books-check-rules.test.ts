@@ -129,7 +129,7 @@ describe("activity-log cutoff (I12)", () => {
 });
 
 describe("no write queries", () => {
-  const files = ["src/lib/books-check.ts", "src/app/(app)/reports/books/page.tsx"];
+  const files = ["src/lib/books-check.ts", "src/lib/books-check-queries.ts", "src/app/(app)/reports/books/page.tsx"];
   it.each(files)("%s only reads", (file) => {
     const source = readFileSync(path.resolve(import.meta.dirname, "../..", file), "utf8");
     expect(source).not.toMatch(/\b(insert|update|delete|truncate|alter|drop|set\s+local)\b/i);
@@ -138,11 +138,22 @@ describe("no write queries", () => {
 
 describe("I7 covers payment reversals of both kinds", () => {
   it("sums every ledger row of a payment by receipt_id, with no filter on the kind", () => {
-    const source = readFileSync(path.resolve(import.meta.dirname, "books-check.ts"), "utf8");
+    const source = readFileSync(path.resolve(import.meta.dirname, "books-check-queries.ts"), "utf8");
     const i7 = source.slice(source.indexOf("I7: sql`"), source.indexOf("I8: sql`"));
     expect(i7).toMatch(/sum\(l\.amount_paise\).*from ledger_entries l where l\.receipt_id = r\.id\)/);
     // receipt_reversal (+) and the older + receipt_credit rows both count: no kind filter here.
     expect(i7).not.toMatch(/l\.kind/);
+    expect(CHECKS).toHaveLength(11);
+  });
+});
+
+describe("I9 flags cash left with a switched-off person", () => {
+  it("has a branch for banned or deleted staff who still hold cash, inside the same 11 lines", () => {
+    const source = readFileSync(path.resolve(import.meta.dirname, "books-check-queries.ts"), "utf8");
+    const i9 = source.slice(source.indexOf("I9: sql`"), source.indexOf("I11: sql`"));
+    expect(i9).toMatch(/cash with switched-off person/);
+    expect(i9).toMatch(/u\.banned is true or u\.deleted_at is not null\) and b\.held > 0/);
+    expect(CHECKS.find((c) => c.id === "I9")?.meaning).toMatch(/switched-off person/);
     expect(CHECKS).toHaveLength(11);
   });
 });

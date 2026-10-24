@@ -1,11 +1,11 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { and, count, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { retailers, user, walletMovements } from "@/db/schema";
+import { user } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { env } from "@/env";
 import { auth } from "@/lib/auth";
@@ -15,13 +15,11 @@ import { checkTempPassword } from "@/lib/password-rules";
 import { rolesFor } from "@/lib/permissions";
 import { joinRoles, parseRoles, type Role } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
-import { walletBalance } from "@/lib/wallet-rules";
+import { deactivateStaff, deleteStaff, heldCashOf, lockStaff, reactivateStaff } from "@/lib/staff-cash";
 import {
   checkCashHeld,
-  checkDelete,
   checkEditedPhone,
   checkRoles,
-  checkShopsOwned,
   checkSelfDeactivate,
   checkSelfRoleChange,
   cleanEmail,
@@ -31,15 +29,6 @@ import {
 } from "@/lib/user-admin-rules";
 
 export type UserResult = { ok: true } | { ok: false; error: string };
-
-/** The cash this person holds now (handovers still waiting count as held). */
-async function cashHeldBy(userId: string): Promise<number> {
-  const rows = await db
-    .select({ id: walletMovements.id, kind: walletMovements.kind, amountPaise: walletMovements.amountPaise, refId: walletMovements.refId })
-    .from(walletMovements)
-    .where(eq(walletMovements.collectorId, userId));
-  return walletBalance(rows).balancePaise;
-}
 
 /**
  * Creates a user and marks the email as verified (the admin vouches for it).
@@ -120,9 +109,11 @@ export async function updateUserAccess(
   const phoneCheck = checkEditedPhone(typeof form.phone === "string" ? form.phone : "", target.phone);
   if (!phoneCheck.ok) return phoneCheck;
   const phone = phoneCheck.phone;
-  // Someone left with no staff role could not hand over the cash they hold.
-  if (dropsAllStaffRoles(form.roles)) {
-    const held = checkCashHeld(await cashHeldBy(userId));
+  // Someone left with no staff role could not hand over the cash they hold. This early check fails
+  // fast (before the password changes); the save below checks again with their row locked.
+  const dropsStaff = dropsAllStaffRoles(form.roles);
+  if (dropsStaff) {
+    const held = checkCashHeld(await heldCashOf(db, userId));
     if (held) return { ok: false, error: held };
   }
   // Deleted users keep their email, so it stays taken.
@@ -147,7 +138,14 @@ export async function updateUserAccess(
 
   const roles = form.roles as Role[];
   // Email, phone, role and the audit row change together, or not at all.
-  await db.transaction(async (tx) => {
+  const saved = await db.transaction(async (tx): Promise<UserResult> => {
+    // Locked first, so a payment saved meanwhile (it locks the same row) is counted or waits.
+    const locked = await lockStaff(tx, userId);
+    if (!locked || locked.deletedAt) return { ok: false, error: "User not found." };
+    if (dropsStaff) {
+      const held = checkCashHeld(await heldCashOf(tx, userId));
+      if (held) return { ok: false, error: held };
+    }
     const [before] = await tx
       .select({ email: user.email, role: user.role, phone: user.phone })
       .from(user)
@@ -172,38 +170,25 @@ export async function updateUserAccess(
         passwordReset: password !== null,
       },
     });
+    return { ok: true };
   });
+  if (!saved.ok) return saved;
   revalidatePath("/users");
   return { ok: true };
 }
 
-/** Deactivates (Better Auth ban, which also ends their sessions) or reactivates a user. */
+/**
+ * Deactivates (bans, which also ends their sessions) or reactivates a user, in one transaction with
+ * their row locked (lib/staff-cash.ts): a payment saved at the same moment is either counted in the
+ * "hand over first" check or refused because they are switched off.
+ */
 export async function setUserActive(userId: string, active: boolean): Promise<UserResult> {
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
   const self = checkSelfDeactivate(me.id === userId, active);
   if (self) return { ok: false, error: self };
-  const [target] = await db
-    .select({ id: user.id })
-    .from(user)
-    .where(and(eq(user.id, userId), isNull(user.deletedAt)))
-    .limit(1);
-  if (!target) return { ok: false, error: "User not found." };
-  if (!active) {
-    const held = checkCashHeld(await cashHeldBy(userId));
-    if (held) return { ok: false, error: held };
-    // Their switched-on shops would be left with nobody for new orders.
-    const [owned] = await db
-      .select({ n: count() })
-      .from(retailers)
-      .where(and(eq(retailers.salesRepId, userId), eq(retailers.active, true)));
-    const shops = checkShopsOwned(owned?.n ?? 0);
-    if (shops) return { ok: false, error: shops };
-  }
-  const h = await headers();
-  if (active) await auth.api.unbanUser({ headers: h, body: { userId } });
-  else await auth.api.banUser({ headers: h, body: { userId, banReason: "Deactivated by admin" } });
-  // Better Auth saves the ban on its own, so the audit row is a second step right after it.
-  await writeAudit(db, { actorId: me.id, entity: "user", entityId: userId, action: active ? "activate" : "deactivate" });
+  const input = { actorId: me.id, userId };
+  const res = await db.transaction((tx) => (active ? reactivateStaff(tx, input) : deactivateStaff(tx, input)));
+  if (!res.ok) return res;
   revalidatePath("/users");
   return { ok: true };
 }
@@ -211,29 +196,12 @@ export async function setUserActive(userId: string, active: boolean): Promise<Us
 /**
  * "Deletes" a deactivated user: marks them deleted so they leave the users page.
  * Nothing is erased, so their orders, receipts and history keep showing who did what.
- * They stay banned, so they still cannot sign in.
+ * They stay banned, so they still cannot sign in. Checked and saved with their row locked.
  */
 export async function deleteUser(userId: string): Promise<UserResult> {
   const { user: me } = await requireRole(...rolesFor("manageUsers"));
-  const [target] = await db
-    .select({ id: user.id, name: user.name, email: user.email, banned: user.banned })
-    .from(user)
-    .where(and(eq(user.id, userId), isNull(user.deletedAt)))
-    .limit(1);
-  if (!target) return { ok: false, error: "User not found." };
-  const problem = checkDelete(me.id === userId, !target.banned) ?? checkCashHeld(await cashHeldBy(userId));
-  if (problem) return { ok: false, error: problem };
-
-  await db.transaction(async (tx) => {
-    await tx.update(user).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(user.id, userId));
-    await writeAudit(tx, {
-      actorId: me.id,
-      entity: "user",
-      entityId: userId,
-      action: "delete",
-      details: { name: target.name, email: target.email },
-    });
-  });
+  const res = await db.transaction((tx) => deleteStaff(tx, { actorId: me.id, userId, isSelf: me.id === userId }));
+  if (!res.ok) return res;
   revalidatePath("/users");
   return { ok: true };
 }

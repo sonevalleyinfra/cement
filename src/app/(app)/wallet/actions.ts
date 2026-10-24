@@ -11,6 +11,7 @@ import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
 import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
+import { lockCashRecorder } from "@/lib/staff-cash";
 import { planHandoverAnswer, validateHandoverRequest, walletBalance, type HandoverAnswer } from "@/lib/wallet-rules";
 
 export type WalletResult = { ok: true } | { ok: false; error: string };
@@ -30,8 +31,10 @@ export async function requestHandover(input: { amountPaise: number; requestId: s
   const form = checkRequestId(input?.requestId);
   if (!form.ok) return form;
   const res = await saveOnce({ id: form.id, kind: "handover_request", actorId: session.user.id }, async (tx) => {
-    // Lock the staff member's row so two requests (or a reversal) cannot use the same cash.
-    await tx.select({ id: user.id }).from(user).where(eq(user.id, session.user.id)).for("no key update");
+    // Lock the staff member's row so two requests (or a reversal) cannot use the same cash, and
+    // refuse someone switched off meanwhile (staff-cash.ts).
+    const me = await lockCashRecorder(tx, session.user.id, "useWallet");
+    if (!me.ok) return me;
     const rows = await tx.select().from(walletMovements).where(eq(walletMovements.collectorId, session.user.id));
     const balance = walletBalance(rows);
     const check = validateHandoverRequest(amount, balance.availablePaise, balance.pendingPaise);
