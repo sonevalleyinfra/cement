@@ -83,6 +83,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       ["Received on", formatDate(istStartOf(r.receivedOn))],
       ["Method", r.onlineMethod ? (ONLINE_METHOD_LABELS[r.onlineMethod] ?? r.onlineMethod) : ""],
       ["Into", r.accountName ? bankAccountLabel({ name: r.accountName, last4: r.accountLast4 }) : ""],
+      ["UTR", r.mode === "online" ? (r.utr ?? "") : ""],
       ["Payer", r.payerName],
       ["Note", staffDetails ? r.note : ""],
       ["Backdated", staffDetails ? reasonText(r.backdateReasonCode, r.backdateNote, "backdate") : ""],
@@ -97,20 +98,18 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       </PageHeader>
       <div className="tabular text-3xl font-bold">{formatINR(r.totalPaise)}</div>
 
-      <dl className="flex flex-col gap-1 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
+      {/* Same facts block as the order page: 14px muted label, 16px semibold value, 32px rows. */}
+      <dl className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         {details.map(([label, value]) => (
-          <div key={label} className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd className="text-right font-medium">{value}</dd>
+          <div key={label} className="flex min-h-8 items-baseline justify-between gap-4">
+            <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
+            <dd className="tabular text-right text-base font-semibold break-words">{value}</dd>
           </div>
         ))}
       </dl>
 
-      {r.mode === "online" && (
+      {r.mode === "online" && ((checker && r.checkedAt) || (staffDetails && r.status === "rejected")) && (
         <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
-          <div className="text-muted-foreground">
-            UTR <span className="tabular font-semibold text-foreground">{r.utr}</span>
-          </div>
           {checker && r.checkedAt && (
             <div className="text-muted-foreground">
               {r.status === "rejected" ? "Rejected" : "Verified"} · {checker} · {formatDateTime(r.checkedAt)}

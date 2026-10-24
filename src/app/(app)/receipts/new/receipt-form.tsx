@@ -245,9 +245,13 @@ export function ReceiptForm({
             <div className="flex flex-col gap-2">
               <Label id="account-label">Into</Label>
               {accounts.length === 0 ? (
-                <div className="flex flex-col items-center">
-                  <FormHint>No bank account</FormHint>
-                  {admin && <TextLink href="/bank-accounts">Add</TextLink>}
+                <div className="flex min-h-12 items-center justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">No bank account</span>
+                  {admin && (
+                    <TextLink href="/bank-accounts" strong>
+                      Add
+                    </TextLink>
+                  )}
                 </div>
               ) : (
                 <div role="radiogroup" aria-labelledby="account-label" className="flex flex-wrap gap-2">
@@ -292,15 +296,18 @@ export function ReceiptForm({
           />
         </div>
         {older && (
-          <ReasonPicker
-            action="backdate"
-            label="Why the older date?"
-            code={backdateCode}
-            onCodeChange={setBackdateCode}
-            note={backdateNote}
-            onNoteChange={setBackdateNote}
-            showHint={false}
-          />
+          <div className="animate-in-up flex flex-col gap-2">
+            <Label>Why the older date?</Label>
+            <ReasonPicker
+              action="backdate"
+              label="Why the older date?"
+              code={backdateCode}
+              onCodeChange={setBackdateCode}
+              note={backdateNote}
+              onNoteChange={setBackdateNote}
+              showHint={false}
+            />
+          </div>
         )}
       </section>
 

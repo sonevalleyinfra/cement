@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { bankAccounts, receipts, retailers, user as users } from "@/db/schema";
 import { bankAccountLabel } from "@/lib/bank-account-rules";
-import { formatDate } from "@/lib/datetime";
+import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { formatINR } from "@/lib/money";
 import { rolesFor } from "@/lib/permissions";
@@ -98,10 +98,17 @@ export default async function ReviewPage({
                           .join(" · ")}
                       </span>
                     )}
-                    <span className="text-xs text-muted-foreground">
-                      Received {formatDate(istStartOf(r.receivedOn))}
-                      {r.payerName ? ` · ${r.payerName}` : ""}
-                    </span>
+                    {/* The top line already has the entry day: show Received only when it differs. */}
+                    {(r.receivedOn !== toISTDateKey(r.createdAt) || r.payerName) && (
+                      <span className="text-xs text-muted-foreground">
+                        {[
+                          r.receivedOn !== toISTDateKey(r.createdAt) ? `Received ${formatDate(istStartOf(r.receivedOn))}` : "",
+                          r.payerName ?? "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
                     {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
                     <ReasonAction receiptId={r.id} action="reject" inline primary={<VerifyButton receiptId={r.id} />} />
                   </div>
