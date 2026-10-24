@@ -23,9 +23,13 @@
  * except "Rate changed", which goes to staff only and says old → new rate and the reason
  * (never to the shop's login, even if it were on the list).
  * Money messages go to staff only, so they may show the amount.
+ * Credit override (v2 B1): an order approved over the credit check tells every admin except the one
+ * who approved it (staff only, so it shows the amount over the limit and the reason).
  */
+import type { CreditFlag } from "@/lib/credit-check-rules";
 import { formatINR } from "@/lib/money";
 import { rateMoveText } from "@/lib/rate-rules";
+import { reasonLabel } from "@/lib/reason-codes";
 import { bagsText, isAre } from "@/lib/words";
 
 export const NOTIFICATION_EVENTS = [
@@ -68,7 +72,7 @@ export const MONEY_EVENTS = [
 ] as const;
 export type MoneyEvent = (typeof MONEY_EVENTS)[number];
 
-export type NotificationType = NotificationEvent | MoneyEvent;
+export type NotificationType = NotificationEvent | MoneyEvent | "credit_override";
 
 /** One notification ready to save. `link` empty = open the order (or the list). */
 export type NotificationDraft = {
@@ -270,4 +274,45 @@ export function notificationTarget(link: string | null | undefined, orderId: str
   if (isSafeInternalPath(link)) return link;
   if (orderId) return `/orders/${orderId}`;
   return "/notifications";
+}
+
+/** What an approval over the credit check was about (credit-check-rules assessCredit). */
+export type CreditOverrideInput = {
+  retailerName: string;
+  /** Why the check was red, over-limit first (assessCredit flags). */
+  flags: readonly CreditFlag[];
+  /** How far over the limit the shop went (0 when approved for overdue / hold only). */
+  overLimitByPaise: number;
+  reasonCode: string;
+  adminIds: readonly string[];
+  actorId: string | null;
+};
+
+const OVERRIDE_TITLES: Record<CreditFlag, string> = {
+  over_limit: "Approved over limit",
+  overdue: "Approved with overdue dues",
+  hold: "Approved on hold",
+  blocked: "Approved while blocked",
+};
+
+/**
+ * One row per admin except the one who approved: "Approved over limit" / "Raju Stores · ₹38,000 over limit · Will pay soon"
+ * (the title follows the first flag: "Approved with overdue dues" when not over the limit). It opens the order (orderId).
+ */
+export function buildCreditOverrideNotifications(input: CreditOverrideInput): NotificationDraft[] {
+  const over = input.overLimitByPaise > 0;
+  const body = [
+    input.retailerName.trim(),
+    over ? `${formatINR(input.overLimitByPaise, { hidePaise: true })} over limit` : "",
+    reasonLabel(input.reasonCode, "override"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return uniqueRecipients(input.adminIds, input.actorId).map((userId) => ({
+    userId,
+    type: "credit_override",
+    title: OVERRIDE_TITLES[input.flags[0] ?? "over_limit"],
+    body,
+    link: null,
+  }));
 }

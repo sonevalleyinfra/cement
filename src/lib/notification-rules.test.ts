@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCreditOverrideNotifications,
   buildMoneyNotifications,
   buildNotifications,
   defaultMoneyLink,
@@ -281,5 +282,41 @@ describe("notification links", () => {
     expect(notificationTarget(null, "o1")).toBe("/orders/o1");
     expect(notificationTarget("https://evil.com", null)).toBe("/notifications");
     expect(notificationTarget(null, null)).toBe("/notifications");
+  });
+});
+
+describe("buildCreditOverrideNotifications (v2 B1)", () => {
+  const base = {
+    retailerName: "Raju Stores",
+    flags: ["over_limit", "overdue"] as const,
+    overLimitByPaise: 38_000_00,
+    reasonCode: "payment_promised",
+    adminIds: ["adm1", "adm2"],
+    actorId: "acc1",
+  };
+  it("tells every admin, with the amount over and the reason", () => {
+    const rows = buildCreditOverrideNotifications(base);
+    expect(rows.map((r) => r.userId)).toEqual(["adm1", "adm2"]);
+    expect(rows[0]).toEqual({
+      userId: "adm1",
+      type: "credit_override",
+      title: "Approved over limit",
+      body: "Raju Stores · ₹38,000 over limit · Will pay soon",
+      link: null,
+    });
+  });
+  it("never the admin who approved it", () => {
+    expect(buildCreditOverrideNotifications({ ...base, actorId: "adm2" }).map((r) => r.userId)).toEqual(["adm1"]);
+  });
+  it("no admins: nobody", () => {
+    expect(buildCreditOverrideNotifications({ ...base, adminIds: [] })).toEqual([]);
+    expect(buildCreditOverrideNotifications({ ...base, adminIds: ["adm1"], actorId: "adm1" })).toEqual([]);
+  });
+  it("not over the limit: the title follows the reason it was red", () => {
+    const overdue = buildCreditOverrideNotifications({ ...base, flags: ["overdue"], overLimitByPaise: 0, reasonCode: "old_customer" });
+    expect(overdue[0].title).toBe("Approved with overdue dues");
+    expect(overdue[0].body).toBe("Raju Stores · Old customer");
+    expect(buildCreditOverrideNotifications({ ...base, flags: ["hold"], overLimitByPaise: 0 })[0].title).toBe("Approved on hold");
+    expect(buildCreditOverrideNotifications({ ...base, flags: ["blocked"], overLimitByPaise: 0 })[0].title).toBe("Approved while blocked");
   });
 });
