@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type ComponentProps, type FormEvent, type ReactNode, useState, useTransition } from "react";
 import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
+import { HintLine } from "@/components/app/hint-line";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { ReasonPicker } from "@/components/app/reason-picker";
 import { SectionCaption } from "@/components/app/section-caption";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
@@ -19,6 +22,7 @@ import { creditLimitText, effectiveCreditDays, parseCreditLimit, validateCreditD
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
 import { formatINR } from "@/lib/money";
+import { reasonHint } from "@/lib/reason-codes";
 import { matchesRetailerSearch } from "@/lib/retailer-rules";
 import {
   CREDIT_STATUSES,
@@ -48,6 +52,8 @@ type Row = {
   address: string | null;
   areaId: string | null;
   areaName: string;
+  /** Admin only: what the shop owes now (paise, 0 when nothing); null for everyone else. */
+  duesPaise: number | null;
   pincode: string | null;
   lat: number | null;
   lng: number | null;
@@ -376,6 +382,9 @@ function ShopDetail({
   const [repId, setRepId] = useState(row.salesRepId ?? "");
   const [loginId, setLoginId] = useState(row.userId ?? "");
   const [turningOff, setTurningOff] = useState(false);
+  const [offCode, setOffCode] = useState<string | null>(null);
+  const [offNote, setOffNote] = useState("");
+  const router = useRouter();
   const { error, setError, clearError } = useFormError([
     name,
     phone,
@@ -396,6 +405,8 @@ function ShopDetail({
     repId,
     loginId,
     turningOff,
+    offCode,
+    offNote,
   ]);
   const [pending, start] = useTransition();
 
@@ -455,16 +466,26 @@ function ShopDetail({
     });
   }
 
+  // A shop that owes needs a reason to be turned off (the server checks it too).
+  const owes = (row.duesPaise ?? 0) > 0;
+  const duesText = owes ? formatINR(row.duesPaise ?? 0, { hidePaise: true }) : "";
+  const offHint = owes ? reasonHint("shop_off", offCode, offNote) : null;
+
   function switchTo(active: boolean) {
     clearError();
     start(async () => {
-      const res = await setRetailerActive(row.id, active);
+      const res = await setRetailerActive(row.id, active, active || !offCode ? undefined : { code: offCode, note: offNote });
       if (res.ok) onDone();
-      else setError(res.error);
+      else {
+        setError(res.error);
+        // Dues came in since the page loaded: reload so the reason picker shows.
+        if (!owes && res.error === "Pick a reason") router.refresh();
+      }
     });
   }
 
   // A sales person, login or area that is no longer in the list is still shown while it is the current pick.
+  const newRepName = repId && repId !== (row.salesRepId ?? "") ? salesReps?.find((p) => p.id === repId)?.label : undefined;
   const repOptions = [
     ...(row.salesRepId && !salesReps?.some((p) => p.id === row.salesRepId)
       ? [{ value: row.salesRepId, label: row.salesRepName || "Former sales person" }]
@@ -528,6 +549,7 @@ function ShopDetail({
               options={repOptions}
             />
           )}
+          {owes && newRepName && <HintLine>{`${duesText} dues move to ${newRepName}`}</HintLine>}
           {logins && <SelectField label="Login" value={loginId} onChange={setLoginId} options={loginOptions} />}
         </section>
         <section className="flex flex-col gap-4">
@@ -619,9 +641,25 @@ function ShopDetail({
           confirmLabel="Turn off"
           destructive
           pending={pending}
+          confirmDisabled={offHint !== null}
           onBack={() => setTurningOff(false)}
           onConfirm={() => switchTo(false)}
-        />
+        >
+          {owes && (
+            <>
+              <p className="tabular text-sm text-muted-foreground">{duesText} due</p>
+              <ReasonPicker
+                action="shop_off"
+                label={`Turn off ${row.name}?`}
+                code={offCode}
+                onCodeChange={setOffCode}
+                note={offNote}
+                onNoteChange={setOffNote}
+                disabled={pending}
+              />
+            </>
+          )}
+        </ConfirmStep>
       ) : row.active ? (
         <Button variant="ghost" className="text-destructive" disabled={pending} onClick={() => setTurningOff(true)}>
           Turn off

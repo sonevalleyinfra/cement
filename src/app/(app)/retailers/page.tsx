@@ -4,6 +4,8 @@ import { areas, creditLimitChanges, retailers, user as users } from "@/db/schema
 import { creditChangeParts } from "@/lib/credit-rules";
 import { formatDateTime } from "@/lib/datetime";
 import { NO_REP_FILTER, needsSalesRep } from "@/lib/home-rules";
+import { getAllBalances } from "@/lib/ledger";
+import { duesFrom } from "@/lib/ledger-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { pickableRetailerLogins } from "@/lib/retailer-rules";
 import { pickableSalesReps } from "@/lib/sales-rep-rules";
@@ -40,7 +42,7 @@ export default async function RetailersPage({
     })
     .from(creditLimitChanges)
     .as("ranked");
-  const [rows, people, areaRows, history] = await Promise.all([
+  const [rows, people, areaRows, history, balances] = await Promise.all([
     db
       .select({
         id: retailers.id,
@@ -85,7 +87,10 @@ export default async function RetailersPage({
     canEdit
       ? db.select().from(ranked).where(lte(ranked.rn, 5)).orderBy(desc(ranked.createdAt), desc(ranked.id))
       : Promise.resolve([]),
+    // Dues, for admin's "Turn off" and sales person change (never sent to roles that cannot see the ledger).
+    canEdit && canSeeCredit ? getAllBalances() : Promise.resolve([]),
   ]);
+  const dues = new Map(balances.map((b) => [b.retailerId, duesFrom(b.balancePaise)]));
   const areaNames = new Map(areaRows.map((a) => [a.id, a.name]));
   const names = new Map(people.map((u) => [u.id, u.name]));
   const activeRepIds = new Set(people.filter((u) => !u.banned && !u.deletedAt).map((u) => u.id));
@@ -96,6 +101,7 @@ export default async function RetailersPage({
       salesRepName: r.salesRepId ? (names.get(r.salesRepId) ?? "") : "",
       loginName: r.userId ? (names.get(r.userId) ?? "") : "",
       areaName: r.areaId ? (areaNames.get(r.areaId) ?? "") : "",
+      duesPaise: canEdit && canSeeCredit ? (dues.get(r.id) ?? 0) : null,
       // Credit terms are not sent at all to roles that may not see them.
       credit: canSeeCredit
         ? { limitPaise: creditLimitPaise, creditDays, status: isCreditStatus(creditStatus) ? creditStatus : "ok" }

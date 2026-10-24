@@ -1,7 +1,7 @@
 /**
  * Reason codes: the "why" picked from a short list (plus an optional note) when an order is rejected
  * or cancelled, a rate is changed, an approval goes over the credit limit, a payment is rejected or
- * reversed, or stock is corrected. Plain functions (no database) so they are easy to test.
+ * reversed, stock is corrected, or a shop that still owes is turned off. Plain functions (no database) so they are easy to test.
  * Source: cement v2 plan A4 and design spec section 6 (ReasonPicker).
  *
  * - Each list is ordered by how common the reason is; "other" is always last. Labels are 3 words at most.
@@ -70,6 +70,15 @@ export const STOCK_REASONS = list([
   { code: "other", label: "Other" },
 ]);
 
+/** Turning off a shop that still owes (design spec section 1). */
+export const SHOP_OFF_REASONS = list([
+  { code: "closed_down", label: "Closed down" },
+  { code: "moved", label: "Moved" },
+  { code: "bad_debt", label: "Bad debt" },
+  { code: "duplicate", label: "Duplicate" },
+  { code: "other", label: "Other" },
+]);
+
 export const REASON_LISTS = {
   reject: REJECT_REASONS,
   cancel: CANCEL_REASONS,
@@ -77,6 +86,7 @@ export const REASON_LISTS = {
   override: OVERRIDE_REASONS,
   payment: PAYMENT_REASONS,
   stock: STOCK_REASONS,
+  shop_off: SHOP_OFF_REASONS,
 } as const;
 
 export type ReasonAction = keyof typeof REASON_LISTS;
