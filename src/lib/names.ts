@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { brands, cementTypes, godowns, grades, products, retailers, user, vehicles } from "@/db/schema";
+import { areas, brands, cementTypes, godowns, grades, products, retailers, user, vehicles } from "@/db/schema";
 
 /** Today's names of people, shops, products and places, by id. Small tables, read whole. Server-only. */
 
@@ -18,13 +18,14 @@ export async function nameMaps() {
   return { people: toMap(people), retailers: toMap(shops), products: toMap(items), godowns: toMap(gs), vehicles: toMap(vs) };
 }
 
-/** Every name in one map (ids never clash: uuids and auth ids), plus brands, cement types and grades, for the activity log. */
+/** Every name in one map (ids never clash: uuids and auth ids), plus brands, cement types, grades and areas, for the activity log. */
 export async function allNames(): Promise<Names> {
-  const [n, brandRows, types, gradeRows] = await Promise.all([
+  const [n, brandRows, types, gradeRows, areaRows] = await Promise.all([
     nameMaps(),
     db.select({ id: brands.id, name: brands.name }).from(brands),
     db.select({ id: cementTypes.id, name: cementTypes.code }).from(cementTypes),
     db.select({ id: grades.id, name: grades.name }).from(grades),
+    db.select({ id: areas.id, name: areas.name }).from(areas),
   ]);
   return new Map([
     ...n.people,
@@ -35,5 +36,6 @@ export async function allNames(): Promise<Names> {
     ...toMap(brandRows),
     ...toMap(types),
     ...toMap(gradeRows),
+    ...toMap(areaRows),
   ]);
 }

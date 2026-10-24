@@ -5,6 +5,7 @@
  * credit) and a second brand, UltraTech (one product, one purchase and one payment, no opening),
  * and payments: cash by sales and logistics, one handover confirmed and one waiting, online
  * payments waiting / verified / rejected, and one reversed cash payment.
+ * Four areas, and every shop's master data and credit terms (with a first credit-history row).
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
  * Safe to run twice: it skips whatever already exists (orders are added only once).
  * Some orders, dispatches and one payment are back-dated (up to 120 days) so the reports show history and aging.
@@ -13,8 +14,10 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  areas,
   auditLog,
   brands,
+  creditLimitChanges,
   cementTypes,
   dispatches,
   grades,
@@ -43,6 +46,8 @@ import { creditEntry, openingEntry as supplierOpening, paymentEntry, purchaseEnt
 import { planReversal } from "@/lib/receipt-reversal";
 import { planReceipt, planVerify } from "@/lib/receipt-rules";
 import { statusAfterDispatch, type OrderStatus } from "@/lib/order-rules";
+import { creditChange } from "@/lib/credit-rules";
+import type { CreditStatus, ShopCategory } from "@/lib/shop-lists";
 import { DEMO_PASSWORD, DEMO_USERS, demoSeedBlocker } from "./lib/demo-seed-rules";
 
 /** A demo user (with a phone, like users added on the Users page). */
@@ -229,6 +234,100 @@ async function seedSuppliers(adminId: string, prismId: string, productRows: { id
   await seedUltraTech(adminId);
 }
 
+const AREAS = ["Patna City", "Gaya Road", "Arrah Bazar", "North Bihar"];
+
+/** The demo areas, found again if they already exist (new ones get their activity row). */
+async function seedAreas(adminId: string): Promise<Map<string, string>> {
+  await db.transaction(async (tx) => {
+    const added = await tx
+      .insert(areas)
+      .values(AREAS.map((name, i) => ({ name, sortOrder: i })))
+      .onConflictDoNothing()
+      .returning({ id: areas.id, name: areas.name });
+    for (const a of added) {
+      await log(tx, { actorId: adminId, entity: "area", entityId: a.id, action: "create", details: { name: a.name } }, new Date());
+    }
+  });
+  const rows = await db.select({ id: areas.id, name: areas.name }).from(areas).where(inArray(areas.name, AREAS));
+  return new Map(rows.map((a) => [a.name, a.id]));
+}
+
+type DemoMaster = {
+  ownerName: string;
+  altPhone: string | null;
+  address: string;
+  area: string;
+  pincode: string;
+  lat: number;
+  lng: number;
+  category: ShopCategory;
+  openedOn: string;
+  gstin: string | null;
+  creditLimitPaise: number | null;
+  creditDays: number | null;
+  creditStatus: CreditStatus;
+};
+
+/** Master data and credit terms of the 6 demo shops (same order as `shops`). GSTINs have a valid checksum. */
+const MASTER: DemoMaster[] = [
+  { ownerName: "Rajesh Sharma", altPhone: "9431000001", address: "Ashok Rajpath, near Gandhi Maidan", area: "Patna City", pincode: "800004", lat: 25.6176, lng: 85.1453, category: "retailer", openedOn: "2012-04-15", gstin: "10AABCS1429B1Z9", creditLimitPaise: 20_000_000, creditDays: 30, creditStatus: "ok" },
+  { ownerName: "Anil Gupta", altPhone: null, address: "Station Road", area: "Gaya Road", pincode: "823001", lat: 24.7955, lng: 85.0002, category: "sub_dealer", openedOn: "2008-01-10", gstin: "10AAKFG4821M1ZH", creditLimitPaise: 50_000_000, creditDays: 45, creditStatus: "ok" },
+  { ownerName: "Vikram Singh", altPhone: "9431000003", address: "Main Bazar", area: "Arrah Bazar", pincode: "802301", lat: 25.5541, lng: 84.6603, category: "contractor", openedOn: "2016-07-01", gstin: null, creditLimitPaise: 20_000_000, creditDays: null, creditStatus: "hold" },
+  { ownerName: "Sunil Kumar", altPhone: null, address: "Motijheel", area: "North Bihar", pincode: "842001", lat: 26.1209, lng: 85.3647, category: "retailer", openedOn: "2019-11-20", gstin: null, creditLimitPaise: 30_000_000, creditDays: 30, creditStatus: "ok" },
+  { ownerName: "Manoj Yadav", altPhone: "9431000005", address: "Tilka Manjhi Chowk", area: "North Bihar", pincode: "812001", lat: 25.2425, lng: 86.9842, category: "builder", openedOn: "2021-03-05", gstin: null, creditLimitPaise: null, creditDays: null, creditStatus: "ok" },
+  { ownerName: "Ravi Mishra", altPhone: null, address: "Tower Chowk", area: "North Bihar", pincode: "846004", lat: 26.1542, lng: 85.8918, category: "institution", openedOn: "2010-09-12", gstin: null, creditLimitPaise: null, creditDays: null, creditStatus: "ok" },
+];
+
+/** The retailers columns for one demo shop's master data and credit terms. */
+function masterValues(m: DemoMaster, areaIds: Map<string, string>) {
+  const { area, ...rest } = m;
+  return { ...rest, areaId: areaIds.get(area) ?? null, geoCapturedAt: new Date() };
+}
+
+/**
+ * Fills the master data of demo shops that have none yet (owner name empty), and gives each shop with
+ * credit terms one history row (no terms → terms, by admin) with its activity row, once.
+ */
+async function seedShopMaster(adminId: string, shopRows: { id: string; ownerName: string | null }[], areaIds: Map<string, string>) {
+  await db.transaction(async (tx) => {
+    for (const [i, shop] of shopRows.entries()) {
+      const m = MASTER[i];
+      if (shop.ownerName === null) {
+        await tx.update(retailers).set(masterValues(m, areaIds)).where(eq(retailers.id, shop.id));
+      }
+      const change = creditChange(
+        { limitPaise: null, creditDays: null, status: "ok" },
+        { limitPaise: m.creditLimitPaise, creditDays: m.creditDays, status: m.creditStatus },
+        "Demo terms",
+      );
+      if (!change) continue;
+      const [had] = await tx
+        .select({ id: creditLimitChanges.id })
+        .from(creditLimitChanges)
+        .where(eq(creditLimitChanges.retailerId, shop.id))
+        .limit(1);
+      if (had) continue;
+      const now = new Date();
+      await tx.insert(creditLimitChanges).values({ retailerId: shop.id, changedBy: adminId, ...change, createdAt: now });
+      await log(
+        tx,
+        {
+          actorId: adminId,
+          entity: "retailer",
+          entityId: shop.id,
+          action: "credit_change",
+          details: {
+            before: { limitPaise: change.oldLimitPaise, creditDays: change.oldCreditDays, status: change.oldStatus },
+            after: { limitPaise: change.newLimitPaise, creditDays: change.newCreditDays, status: change.newStatus },
+            note: change.note,
+          },
+        },
+        now,
+      );
+    }
+  });
+}
+
 async function main() {
   const blocker = demoSeedBlocker({
     nodeEnv: env.NODE_ENV,
@@ -256,6 +355,8 @@ async function main() {
   for (const u of DEMO_USERS) ids[u.role] = await ensureUser(u.email, u.name, u.role, u.phone);
   console.log("[seed-demo] Users ready.");
 
+  const areaIds = await seedAreas(admin.id);
+
   // Shops, trucks and the godown are found again if they already exist.
   const shops = [
     ["Sharma Traders", "Patna"],
@@ -275,11 +376,14 @@ async function main() {
         phone: phones[i],
         userId: i === 0 ? ids.retailer : null,
         salesRepId: ids.sales,
+        ...masterValues(MASTER[i], areaIds),
       })),
     )
     .onConflictDoNothing();
   const found = await db.select().from(retailers).where(inArray(retailers.phone, phones));
   const shopRows = phones.map((phone) => found.find((r) => r.phone === phone)!);
+  await seedShopMaster(admin.id, shopRows, areaIds);
+  console.log("[seed-demo] Areas, shop details and credit terms ready.");
 
   // Everything below runs once: skipped if the first demo shop already has an order.
   const [already] = await db.select({ id: orders.id }).from(orders).where(eq(orders.retailerId, shopRows[0].id)).limit(1);

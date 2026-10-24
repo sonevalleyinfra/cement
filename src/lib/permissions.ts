@@ -63,6 +63,8 @@ export const ACTION_ROLES = {
   /** Add, edit and turn off shops (a shop's sales person is picked when it is added). Admin only. */
   editRetailers: ["admin"],
   linkRetailerLogin: ["admin"],
+  /** Set a shop's credit limit, credit days and credit status (stored only for now, enforced in v2 B1). */
+  editCredit: ["admin"],
   /** Pick (or change) the sales person who looks after a retailer. */
   assignSalesRep: ["admin"],
   manageUsers: ["admin"],

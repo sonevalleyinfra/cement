@@ -1,21 +1,15 @@
 /** Rules for the retailers master. Plain functions: no database, no request. */
 
+import { isValidIndianMobile, normalizePhone } from "./phone-rules";
 import { canLinkRetailerUser } from "./rate-rules";
 import { hasRole } from "./roles";
+import { creditChange, validateCredit, type CreditChange, type CreditForm, type CreditTerms } from "./credit-rules";
 import { checkSalesRepPick, type SalesRepCandidate } from "./sales-rep-rules";
+import { isCreditStatus } from "./shop-lists";
+import { checkAreaPick, validateShopMaster, type AreaCandidate, type ShopMaster, type ShopMasterForm } from "./shop-master-rules";
 
-/** Keeps digits only, and drops a leading 91 or 0 country/trunk prefix. */
-export function normalizePhone(input: string): string {
-  let digits = input.replace(/\D/g, "");
-  if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
-  return digits;
-}
-
-/** A 10-digit Indian mobile number starts with 6, 7, 8 or 9. */
-export function isValidIndianMobile(phone: string): boolean {
-  return /^[6-9]\d{9}$/.test(phone);
-}
+// The phone rules moved to phone-rules.ts (the shop master rules use them too).
+export { isValidIndianMobile, normalizePhone };
 
 export type RetailerInput = { name: string; phone: string; place: string };
 
@@ -63,13 +57,16 @@ export function pickableRetailerLogins<T extends RetailerLogin>(
 }
 
 /**
- * The Retailers search box: every word typed must appear in the shop's name, place or phone
- * (capitals and spaces do not matter). An empty search matches every shop.
+ * The Retailers search box: every word typed must appear in the shop's name, place, phone, area or
+ * owner name (capitals and spaces do not matter). An empty search matches every shop.
  */
-export function matchesRetailerSearch(shop: { name: string; place: string; phone: string }, query: string): boolean {
+export function matchesRetailerSearch(
+  shop: { name: string; place: string; phone: string; areaName?: string | null; ownerName?: string | null },
+  query: string,
+): boolean {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return true;
-  const haystack = `${shop.name} ${shop.place} ${shop.phone}`.toLowerCase();
+  const haystack = `${shop.name} ${shop.place} ${shop.phone} ${shop.areaName ?? ""} ${shop.ownerName ?? ""}`.toLowerCase();
   return terms.every((t) => haystack.includes(t));
 }
 
@@ -80,6 +77,10 @@ export type ShopEditForm = {
   place: string;
   salesRepId?: string;
   userId?: string | null;
+  /** Owner, contact, location, category, opening date, GSTIN. */
+  master?: ShopMasterForm;
+  /** Credit limit, days and status (admin, `editCredit`). */
+  credit?: CreditForm;
 };
 
 /** The facts the server looked up for the edit (inside the transaction, after locking the shop). */
@@ -92,6 +93,10 @@ export type ShopEditFacts = {
   login?: { id: string; role: string | null };
   /** Shops that use the picked login right now. */
   loginLinks: readonly { retailerId: string; userId: string | null }[];
+  /** The area picked, if a different one was picked. */
+  area?: AreaCandidate;
+  /** Today in India (YYYY-MM-DD), for the opening date. */
+  today: string;
 };
 
 export type ShopEditPlan =
@@ -103,6 +108,10 @@ export type ShopEditPlan =
       salesRepId: string | null;
       /** The new login (null = unlink), or undefined when it stays the same. */
       userId: string | null | undefined;
+      /** The cleaned master part, or undefined when the form did not send it. */
+      master: ShopMaster | undefined;
+      /** The new credit terms and their history row (null = no change), or undefined when not sent. */
+      credit: { terms: CreditTerms; change: CreditChange | null } | undefined;
     }
   | { ok: false; error: string };
 
@@ -112,9 +121,20 @@ export type ShopEditPlan =
  * - Name and phone are required (validateRetailer); the phone must not belong to another shop.
  * - A changed sales person must be an active sales person (an unchanged one is kept even if they left).
  * - A changed login must be a retailer login not linked to another shop; empty unlinks it.
+ * - The master part follows validateShopMaster; a changed area must be switched on (an unchanged one is kept).
+ * - The credit part follows validateCredit; a history row is planned only when limit, days or status changed.
+ * A part left out (undefined) is not touched, so an older form cannot wipe it.
  */
 export function planShopEdit(
-  shop: { id: string; salesRepId: string | null; userId: string | null },
+  shop: {
+    id: string;
+    salesRepId: string | null;
+    userId: string | null;
+    areaId?: string | null;
+    creditLimitPaise?: number | null;
+    creditDays?: number | null;
+    creditStatus?: string;
+  },
   form: ShopEditForm,
   facts: ShopEditFacts,
 ): ShopEditPlan {
@@ -140,7 +160,29 @@ export function planShopEdit(
       if (!link.ok) return link;
     }
   }
-  return { ok: true, details: check.value, salesRepId, userId };
+
+  let master: ShopMaster | undefined = undefined;
+  if (form.master !== undefined) {
+    const m = validateShopMaster(form.master, { phone: check.value.phone, today: facts.today });
+    if (!m.ok) return m;
+    const area = checkAreaPick(m.value.areaId, shop.areaId ?? null, facts.area);
+    if (!area.ok) return area;
+    master = m.value;
+  }
+
+  let credit: { terms: CreditTerms; change: CreditChange | null } | undefined = undefined;
+  if (form.credit !== undefined) {
+    const c = validateCredit(form.credit);
+    if (!c.ok) return c;
+    const { note, ...terms } = c.value;
+    const before: CreditTerms = {
+      limitPaise: shop.creditLimitPaise ?? null,
+      creditDays: shop.creditDays ?? null,
+      status: isCreditStatus(shop.creditStatus) ? shop.creditStatus : "ok",
+    };
+    credit = { terms, change: creditChange(before, terms, note) };
+  }
+  return { ok: true, details: check.value, salesRepId, userId, master, credit };
 }
 
 /**

@@ -86,12 +86,19 @@ describe("matchesRetailerSearch", () => {
   it("finds nothing for an unknown word", () => {
     expect(matchesRetailerSearch(shop, "zzz")).toBe(false);
   });
+  it("also matches the area name and the owner name", () => {
+    const full = { ...shop, areaName: "North Bihar", ownerName: "Ramesh Sharma" };
+    expect(matchesRetailerSearch(full, "north")).toBe(true);
+    expect(matchesRetailerSearch(full, "ramesh bihar")).toBe(true);
+    expect(matchesRetailerSearch(shop, "north")).toBe(false);
+    expect(matchesRetailerSearch({ ...shop, areaName: null, ownerName: null }, "null")).toBe(false);
+  });
 });
 
 describe("planShopEdit", () => {
   const shop = { id: "r1", salesRepId: "s1", userId: null };
   const form = { name: " Shree  Traders ", phone: "+91 98765 43210", place: "Hubli" };
-  const facts = { phoneTaken: false, loginLinks: [] };
+  const facts = { phoneTaken: false, loginLinks: [], today: "2026-10-24" };
   const rep = { id: "s2", role: "sales", banned: false, deletedAt: null };
   const login = { id: "u9", role: "retailer" };
 
@@ -151,6 +158,110 @@ describe("planShopEdit", () => {
     expect(unlink.ok && unlink.userId).toBeNull();
     const same = planShopEdit(linked, { ...form, userId: "u9" }, facts);
     expect(same.ok && same.userId).toBeUndefined();
+  });
+});
+
+describe("planShopEdit: master and credit parts", () => {
+  const shop = {
+    id: "r1",
+    salesRepId: "s1",
+    userId: null,
+    areaId: "a1",
+    creditLimitPaise: null,
+    creditDays: null,
+    creditStatus: "ok",
+  };
+  const form = { name: "Shree Traders", phone: "9876543210", place: "Patna" };
+  const facts = { phoneTaken: false, loginLinks: [], today: "2026-10-24" };
+  const master = {
+    ownerName: " Ram  Prasad ",
+    altPhone: "9123456789",
+    address: "Ashok Rajpath",
+    areaId: "a1",
+    pincode: "800004",
+    lat: 25.6123456789,
+    lng: 85.1,
+    category: "retailer",
+    openedOn: "2015-04-01",
+    gstin: "10aabcs1429b1z9",
+  };
+  const credit = { limit: "2,00,000", days: "45", status: "hold", note: "new shop" };
+
+  it("parts left out are not touched", () => {
+    const plan = planShopEdit(shop, form, facts);
+    expect(plan.ok && plan.master).toBeUndefined();
+    expect(plan.ok && plan.credit).toBeUndefined();
+  });
+  it("cleans the master part", () => {
+    const plan = planShopEdit(shop, { ...form, master }, facts);
+    expect(plan.ok && plan.master).toEqual({
+      ownerName: "Ram Prasad",
+      altPhone: "9123456789",
+      address: "Ashok Rajpath",
+      areaId: "a1",
+      pincode: "800004",
+      lat: 25.612346,
+      lng: 85.1,
+      category: "retailer",
+      openedOn: "2015-04-01",
+      gstin: "10AABCS1429B1Z9",
+    });
+  });
+  it("alt phone is checked against the phone being saved", () => {
+    expect(planShopEdit(shop, { ...form, phone: "9123456789", master }, facts)).toEqual({
+      ok: false,
+      error: "Alt phone is the same as phone",
+    });
+  });
+  it("the opening date is checked against today", () => {
+    expect(planShopEdit(shop, { ...form, master: { ...master, openedOn: "2026-10-25" } }, facts)).toEqual({
+      ok: false,
+      error: "Opening date can't be in the future",
+    });
+  });
+  it("an unchanged area is kept even when off; a changed one must be on", () => {
+    expect(planShopEdit(shop, { ...form, master }, facts).ok).toBe(true);
+    const moved = { ...form, master: { ...master, areaId: "a2" } };
+    expect(planShopEdit(shop, moved, { ...facts, area: { id: "a2", active: false } })).toEqual({
+      ok: false,
+      error: "Pick an active area",
+    });
+    expect(planShopEdit(shop, moved, facts).ok).toBe(false);
+    const ok = planShopEdit(shop, moved, { ...facts, area: { id: "a2", active: true } });
+    expect(ok.ok && ok.master?.areaId).toBe("a2");
+    const cleared = planShopEdit(shop, { ...form, master: { ...master, areaId: "" } }, facts);
+    expect(cleared.ok && cleared.master?.areaId).toBeNull();
+  });
+  it("plans the credit terms and one history row", () => {
+    const plan = planShopEdit(shop, { ...form, credit }, facts);
+    expect(plan.ok && plan.credit).toEqual({
+      terms: { limitPaise: 20_000_000, creditDays: 45, status: "hold" },
+      change: {
+        oldLimitPaise: null,
+        newLimitPaise: 20_000_000,
+        oldCreditDays: null,
+        newCreditDays: 45,
+        oldStatus: "ok",
+        newStatus: "hold",
+        note: "new shop",
+      },
+    });
+  });
+  it("same credit terms: no history row", () => {
+    const set = { ...shop, creditLimitPaise: 20_000_000, creditDays: 45, creditStatus: "hold" };
+    const plan = planShopEdit(set, { ...form, credit }, facts);
+    expect(plan.ok && plan.credit?.change).toBeNull();
+  });
+  it("one bad part refuses the whole save (all or nothing)", () => {
+    expect(planShopEdit(shop, { ...form, master: { ...master, pincode: "12" }, credit }, facts)).toEqual({
+      ok: false,
+      error: "Enter a 6-digit pincode",
+    });
+    expect(planShopEdit(shop, { ...form, master, credit: { ...credit, days: "400" } }, facts)).toEqual({
+      ok: false,
+      error: "Credit days must be 0 to 365",
+    });
+    expect(planShopEdit(shop, { ...form, name: "", master, credit }, facts)).toEqual({ ok: false, error: "Enter a name" });
   });
 });
 

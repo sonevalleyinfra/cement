@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bagsText, daysText, emptyListTitle, formatCount, isAre, roleLabel, roleLabels } from "./words";
+import { bagsText, daysText, emptyListTitle, formatCount, isAre, roleLabel, roleLabels, shopsText } from "./words";
 
 describe("bagsText / isAre", () => {
   it("uses the singular for exactly one bag", () => {
@@ -12,6 +12,14 @@ describe("bagsText / isAre", () => {
   it("groups big bag counts the Indian way", () => {
     expect(bagsText(8350)).toBe("8,350 bags");
     expect(bagsText(125000)).toBe("1,25,000 bags");
+  });
+});
+
+describe("shopsText", () => {
+  it("uses the singular for exactly one shop", () => {
+    expect(shopsText(0)).toBe("0 shops");
+    expect(shopsText(1)).toBe("1 shop");
+    expect(shopsText(1200)).toBe("1,200 shops");
   });
 });
 
