@@ -55,9 +55,8 @@ describe("recipientIds (spec section 8)", () => {
     // A shop with its own sales person: no admins.
     expect(recipientIds("placed", { ...covering, shopHasSalesRep: true }, "sales2")).toEqual(["acc1", "acc2"]);
   });
-  it("rate filled: accounts and the sales person (not the person who filled it)", () => {
-    expect(recipientIds("rate_filled", people, "rep")).toEqual(["acc1", "acc2"]);
-    expect(recipientIds("rate_filled", people, "adm")).toEqual(["acc1", "acc2", "rep"]);
+  it("a filled rate is no longer a notification event", () => {
+    expect(NOTIFICATION_EVENTS as readonly string[]).not.toContain("rate_filled");
   });
   it("approved: placer, sales person and every logistics person", () => {
     expect(recipientIds("approved", people, "acc1")).toEqual(["placer", "rep", "log1", "log2"]);
@@ -86,9 +85,7 @@ describe("recipientIds (spec section 8)", () => {
   });
   it("a retailer is never told about the rate", () => {
     const shopPlaced = { ...people, placedBy: "shop" };
-    for (const event of ["rate_filled", "rate_edited"] as const) {
-      expect(recipientIds(event, shopPlaced, null)).not.toContain("shop");
-    }
+    expect(recipientIds("rate_edited", shopPlaced, null)).not.toContain("shop");
   });
 });
 
@@ -150,10 +147,10 @@ describe("buildNotifications", () => {
     const list = buildNotifications({ ...base, event: "dispatched", bags: 1 });
     expect(list[0].body).toBe("Raju Stores, 1 bag is on the way.");
   });
-  it("a filled rate says the order waits, without a verb that clashes with 'bags'", () => {
-    const list = buildNotifications({ ...base, event: "rate_filled", bags: 50 });
-    expect(list[0].title).toBe("Ready to approve");
-    expect(list[0].body).toBe("Raju Stores, 50 bags waiting for approval.");
+  it("an old saved row of type rate_filled still opens its order", () => {
+    // Rows saved before rate_filled was dropped keep their stored title/body; the list shows those as-is.
+    const old = { type: "rate_filled", title: "Ready to approve", link: null, orderId: "o1" };
+    expect(notificationTarget(old.link, old.orderId)).toBe("/orders/o1");
   });
 });
 

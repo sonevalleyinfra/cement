@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildOrdersHref,
+  escapeLike,
+  isOrderIdTerm,
+  MAX_ORDER_PAGES,
+  ORDER_PAGE_SIZE,
+  orderSearchTerms,
+  parseOrderSearch,
+  parsePages,
   orderFilterSpec,
   orderFilterTabs,
   defaultOrderFilter,
@@ -95,5 +103,78 @@ describe("orderFilterValue", () => {
     expect(orderFilterValue("rate", "sales")).toBe("");
     expect(orderFilterValue("all", "sales")).toBe("all");
     expect(orderFilterValue("rate", "admin")).toBe("rate");
+  });
+});
+
+describe("parseOrderSearch", () => {
+  it("trims and collapses spaces", () => {
+    expect(parseOrderSearch("  Sharma   Traders \t")).toBe("Sharma Traders");
+  });
+
+  it("is empty when missing or not text", () => {
+    expect(parseOrderSearch(undefined)).toBe("");
+    expect(parseOrderSearch("   ")).toBe("");
+    expect(parseOrderSearch(42)).toBe("");
+  });
+
+  it("takes the first of repeated params", () => {
+    expect(parseOrderSearch(["ram", "shyam"])).toBe("ram");
+  });
+
+  it("keeps at most 60 characters", () => {
+    expect(parseOrderSearch("a".repeat(80))).toHaveLength(60);
+    expect(parseOrderSearch(`${"a".repeat(59)} b`)).toBe("a".repeat(59));
+  });
+});
+
+describe("orderSearchTerms and isOrderIdTerm", () => {
+  it("splits into lower-case words", () => {
+    expect(orderSearchTerms("Sharma Pune")).toEqual(["sharma", "pune"]);
+    expect(orderSearchTerms("")).toEqual([]);
+  });
+
+  it("knows an order number start", () => {
+    expect(isOrderIdTerm("3fa2")).toBe(true);
+    expect(isOrderIdTerm("3FA2B1C9")).toBe(true);
+    expect(isOrderIdTerm("3fa2b1c9d")).toBe(false);
+    expect(isOrderIdTerm("sharma")).toBe(false);
+  });
+});
+
+describe("escapeLike", () => {
+  it("escapes %, _ and backslash", () => {
+    expect(escapeLike("50%_off\\x")).toBe("50\\%\\_off\\\\x");
+    expect(escapeLike("plain")).toBe("plain");
+  });
+});
+
+describe("parsePages", () => {
+  it("defaults to 1", () => {
+    expect(ORDER_PAGE_SIZE).toBe(50);
+    expect(parsePages(undefined)).toBe(1);
+    expect(parsePages("abc")).toBe(1);
+    expect(parsePages("0")).toBe(1);
+    expect(parsePages("-2")).toBe(1);
+    expect(parsePages("2.5")).toBe(1);
+  });
+
+  it("accepts 1..40", () => {
+    expect(parsePages("3")).toBe(3);
+    expect(parsePages(["2", "9"])).toBe(2);
+    expect(parsePages(String(MAX_ORDER_PAGES))).toBe(40);
+    expect(parsePages("41")).toBe(1);
+  });
+});
+
+describe("buildOrdersHref", () => {
+  it("leaves out empty parts", () => {
+    expect(buildOrdersHref("", "")).toBe("/orders");
+    expect(buildOrdersHref("", "", 1)).toBe("/orders");
+  });
+
+  it("keeps the search across tabs and pages", () => {
+    expect(buildOrdersHref("open", "sharma")).toBe("/orders?show=open&q=sharma");
+    expect(buildOrdersHref("", "ram traders", 2)).toBe("/orders?q=ram+traders&n=2");
+    expect(buildOrdersHref("all", "", 3)).toBe("/orders?show=all&n=3");
   });
 });

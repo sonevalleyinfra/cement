@@ -38,3 +38,14 @@ export function toISTDateKey(date: Date | string | number): string {
     day: "2-digit",
   }).format(new Date(date));
 }
+
+const dayMonthFormatter = new Intl.DateTimeFormat(LOCALE, {
+  day: "numeric",
+  month: "short",
+  timeZone: TIME_ZONE,
+});
+
+/** → "16 Jan" (short hints where the year is clear). */
+export function formatDayMonth(date: Date | string | number): string {
+  return dayMonthFormatter.format(new Date(date));
+}

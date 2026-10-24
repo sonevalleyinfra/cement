@@ -4,9 +4,11 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { FormHint } from "@/components/app/form-hint";
 import { RateField } from "@/components/app/rate-field";
+import { RateHints, StockHintLine } from "@/components/app/rate-hints";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { firstMissing } from "@/lib/form-rules";
+import type { RateHint } from "@/lib/rate-hint-rules";
 import { checkRateInput } from "@/lib/rate-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { bagsText } from "@/lib/words";
@@ -18,6 +20,7 @@ import { changeRate, fillRate } from "../actions";
  * `mode="change"`: logistics or admin change a rate that is set (any step before fully dispatched),
  * with a reason; it applies to the `bags` not dispatched yet. `billedPaise` = what the loads already
  * sent were billed, so the change shows the not-sent amount and the whole order total.
+ * `rateHint` / `stockBags` (staff only) show the shop's last rate, this week's range and the stock under the field.
  */
 export function RateForm({
   orderId,
@@ -25,12 +28,16 @@ export function RateForm({
   billedPaise,
   mode,
   hasRate,
+  rateHint = null,
+  stockBags = null,
 }: {
   orderId: string;
   bags: number;
   billedPaise: number;
   mode: "fill" | "change";
   hasRate: boolean;
+  rateHint?: RateHint | null;
+  stockBags?: number | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(mode === "fill" && !hasRate);
@@ -73,7 +80,10 @@ export function RateForm({
         bags={bags}
         billedPaise={mode === "change" ? billedPaise : undefined}
         label={mode === "change" ? `New rate per bag (₹) · ${bagsText(bags)} not sent` : "Rate per bag (₹)"}
-      />
+      >
+        <RateHints hint={rateHint} rateText={digits} />
+        {stockBags !== null && <StockHintLine stockBags={stockBags} bags={bags} />}
+      </RateField>
       {mode === "change" && (
         <Input
           value={reason}

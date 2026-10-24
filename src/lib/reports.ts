@@ -97,7 +97,10 @@ export async function getDuesAging(range: ReportRange) {
 
 /** Retailers for the statement picker, by name. */
 export async function retailerOptions() {
-  return db.select({ id: retailers.id, name: retailers.name }).from(retailers).orderBy(asc(retailers.name));
+  return db
+    .select({ id: retailers.id, name: retailers.name, place: retailers.place, phone: retailers.phone })
+    .from(retailers)
+    .orderBy(asc(retailers.name));
 }
 
 /** One retailer's statement for the range. */

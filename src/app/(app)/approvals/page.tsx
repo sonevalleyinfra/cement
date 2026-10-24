@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { orders, products, retailers } from "@/db/schema";
 import { getAllBalances } from "@/lib/ledger";
 import { duesFrom } from "@/lib/ledger-rules";
+import { getRateHints } from "@/lib/order-hints";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { ApprovalCard } from "./approval-card";
@@ -16,6 +17,7 @@ export default async function ApprovalsPage() {
       .select({
         id: orders.id,
         retailerId: orders.retailerId,
+        productId: orders.productId,
         bags: orders.bags,
         ratePaise: orders.ratePaise,
         retailer: retailers.name,
@@ -31,6 +33,10 @@ export default async function ApprovalsPage() {
     getAllBalances(),
   ]);
 
+  // The shop's last rate and this week's range, so a rate far from usual stands out (staff only).
+  const hints = await Promise.all(
+    rows.map((r) => getRateHints({ retailerId: r.retailerId, productId: r.productId, excludeOrderId: r.id })),
+  );
   const balanceOf = new Map(balances.map((b) => [b.retailerId, b.balancePaise]));
   return (
     <div className="flex flex-col gap-4">
@@ -51,6 +57,7 @@ export default async function ApprovalsPage() {
                   ratePaise: r.ratePaise ?? 0,
                 }}
                 duesPaise={duesFrom(balanceOf.get(r.retailerId) ?? 0)}
+                hint={hints[i]}
               />
             </li>
           ))}

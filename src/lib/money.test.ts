@@ -14,6 +14,8 @@ describe("formatINR", () => {
     expect(formatINR(12345678)).toBe("₹1,23,456.78");
     expect(formatINR(1234567890)).toBe("₹1,23,45,678.90");
     expect(formatINR(0)).toBe("₹0.00");
+    // Ledger lists show paise by default: ₹1,240.00.
+    expect(formatINR(124000)).toBe("₹1,240.00");
     expect(formatINR(50)).toBe("₹0.50");
     expect(formatINR(-500)).toBe("−₹5.00");
   });

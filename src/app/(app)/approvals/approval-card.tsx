@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { FormHint } from "@/components/app/form-hint";
+import { HintLine } from "@/components/app/hint-line";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { firstMissing } from "@/lib/form-rules";
 import { formatINR } from "@/lib/money";
 import { stagger } from "@/lib/motion";
 import { orderTotalPaise } from "@/lib/order-rules";
+import { deviationText, lastRateText, rateDeviation, type RateHint } from "@/lib/rate-hint-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { decideOrder } from "../orders/actions";
 
@@ -17,18 +19,22 @@ export function ApprovalCard({
   order,
   duesPaise,
   index,
+  hint = null,
 }: {
   order: { id: string; retailer: string; product: string; bags: number; ratePaise: number };
   /** What the retailer owes right now (0 when nothing or an advance). */
   duesPaise: number;
   index: number;
+  /** The shop's last rate and this week's range for the product (warns only, never blocks). */
+  hint?: RateHint | null;
 }) {
   const router = useRouter();
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const { error, setError, clearError } = useFormError(reason);
   const [pending, start] = useTransition();
-  const hint = firstMissing([[reason.trim() === "", "Enter a reason"]]);
+  const dev = rateDeviation(order.ratePaise, hint?.last?.ratePaise ?? null);
+  const missing = firstMissing([[reason.trim() === "", "Enter a reason"]]);
 
   function decide(decision: "approved" | "rejected") {
     clearError();
@@ -57,6 +63,10 @@ export function ApprovalCard({
           {formatINR(orderTotalPaise(order.bags, order.ratePaise), { hidePaise: true })}
         </div>
       </div>
+      <div className="-mt-2 flex flex-col">
+        <HintLine>{lastRateText(hint)}</HintLine>
+        {dev && <HintLine tone="caution">{deviationText(dev)}</HintLine>}
+      </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">Dues</span>
         <span className="tabular font-semibold">{formatINR(duesPaise, { hidePaise: true })}</span>
@@ -70,7 +80,7 @@ export function ApprovalCard({
             aria-label="Reason for rejecting"
           />
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <FormHint>{hint}</FormHint>
+          <FormHint>{missing}</FormHint>
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
@@ -82,7 +92,7 @@ export function ApprovalCard({
             >
               Back
             </Button>
-            <Button variant="destructive" onClick={() => decide("rejected")} disabled={pending || hint !== null}>
+            <Button variant="destructive" onClick={() => decide("rejected")} disabled={pending || missing !== null}>
               Confirm reject
             </Button>
           </div>

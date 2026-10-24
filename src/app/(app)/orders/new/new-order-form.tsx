@@ -2,12 +2,13 @@
 
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { RateField } from "@/components/app/rate-field";
+import { RateHints, StockHintLine } from "@/components/app/rate-hints";
 import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { firstMissing } from "@/lib/form-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
+import { getOrderHints, type OrderHints } from "../hints-actions";
 
 type Retailer = { id: string; name: string; place: string };
 type Product = { id: string; name: string; channel: string; brand: string };
@@ -47,6 +49,26 @@ export function NewOrderForm({
   // The error goes away as soon as the retailer, product, bags or rate is changed.
   const { error, setError, clearError } = useFormError([retailerId, productId, bags, rate]);
   const { pending, run } = useSubmit();
+  // Staff only: the shop's last rate, this week's range and the stock, for the picked shop and product.
+  const [hints, setHints] = useState<{ key: string; data: OrderHints | null } | null>(null);
+  const hintKey = `${retailerId ?? ""}:${productId ?? ""}`;
+
+  useEffect(() => {
+    if (!askRate || !productId) return;
+    let stale = false;
+    getOrderHints({ retailerId, productId })
+      .then((data) => {
+        if (!stale) setHints({ key: `${retailerId ?? ""}:${productId}`, data });
+      })
+      .catch(() => {
+        if (!stale) setHints({ key: `${retailerId ?? ""}:${productId}`, data: null });
+      });
+    return () => {
+      stale = true;
+    };
+  }, [askRate, retailerId, productId]);
+  // Hints for another shop or product are never shown while the new ones load.
+  const current = hints?.key === hintKey ? hints.data : null;
 
   const retailer = retailers.find((r) => r.id === retailerId);
   const q = search.trim().toLowerCase();
@@ -96,7 +118,10 @@ export function NewOrderForm({
         </div>
       )}
 
-      <SelectField label="Product" value={productId ?? ""} onChange={setProductId} groups={productGroups(products)} />
+      <div className="flex flex-col gap-1">
+        <SelectField label="Product" value={productId ?? ""} onChange={setProductId} groups={productGroups(products)} />
+        {askRate && <StockHintLine stockBags={current?.stockBags ?? null} bags={Number(bags || 0)} />}
+      </div>
 
       <div className="tabular text-center text-5xl font-bold">
         {bags || "0"}
@@ -104,7 +129,11 @@ export function NewOrderForm({
       </div>
       <Keypad value={bags} onChange={setBags} maxLength={6} />
 
-      {askRate && <RateField value={rate} onChange={setRate} bags={Number(bags || 0)} />}
+      {askRate && (
+        <RateField value={rate} onChange={setRate} bags={Number(bags || 0)}>
+          <RateHints hint={current?.rate ?? null} rateText={rate} />
+        </RateField>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       <PinnedAction>

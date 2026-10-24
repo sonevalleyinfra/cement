@@ -54,7 +54,7 @@ export default async function LedgerPage() {
                   <>
                     <span className="text-xs text-muted-foreground">{line.label}</span>
                     <span className={`tabular text-lg font-bold ${line.label === "Advance" ? "text-green-700" : ""}`}>
-                      {formatINR(line.amountPaise, { hidePaise: true })}
+                      {formatINR(line.amountPaise)}
                     </span>
                   </>
                 }
