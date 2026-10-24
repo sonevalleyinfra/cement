@@ -12,6 +12,11 @@
  *   never arrived): status "rejected", nothing is posted.
  * - A UTR may be used by one online payment only (rejected and reversed ones do not count, so the
  *   money can be recorded again with the same UTR).
+ * - Online also records the method (UPI / NEFT / RTGS / IMPS), the firm's bank account it came into
+ *   (admin list, bank-account-rules.ts) and an optional payer name. Old online rows have none of them.
+ * - Every payment has a "received on" day (India). Staff may pick today or up to 2 days back; admin
+ *   any past day, but older than 2 days needs a backdate reason (reason-codes.ts, backdate list).
+ *   The ledger, aging, statement and "last payment" use that day (see `paymentMoment`).
  * - "received" and "verified" payments can later be reversed (see receipt-reversal.ts).
  * - Paying more than the dues is fine: the balance goes below zero (an advance).
  *
@@ -19,9 +24,13 @@
  * - "Verified" is one tap; accounts compare the UTR shown on the card with the statement.
  * - UTRs are stored without spaces and in capitals, so "abc 123" and "ABC123" are the same.
  */
+import { toISTDateKey } from "./datetime";
+import { isUuid } from "./ids";
 import type { LedgerEntry } from "./ledger-rules";
-import { checkReason as checkReasonCode, type PaymentReasonCode } from "./reason-codes";
-import { hasAnyRole } from "./roles";
+import { checkReason as checkReasonCode, isReasonCode, type BackdateReasonCode, type PaymentReasonCode } from "./reason-codes";
+import { addDays, daysBetween, istStartOf } from "./report-range";
+import { hasAnyRole, isAdmin } from "./roles";
+import { checkEntryDate } from "./supplier-rules";
 
 export const PAYMENT_MODES = ["cash", "online"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
@@ -31,6 +40,18 @@ export const RECEIPT_STATUSES = ["received", "unverified", "verified", "rejected
 export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];
 
 export const MODE_LABELS: Record<string, string> = { cash: "Cash", online: "Online" };
+
+/** How an online payment was sent. */
+export const ONLINE_METHODS = ["upi", "neft", "rtgs", "imps"] as const;
+export type OnlineMethod = (typeof ONLINE_METHODS)[number];
+
+export const ONLINE_METHOD_LABELS: Record<string, string> = { upi: "UPI", neft: "NEFT", rtgs: "RTGS", imps: "IMPS" };
+
+export function isOnlineMethod(value: unknown): value is OnlineMethod {
+  return typeof value === "string" && (ONLINE_METHODS as readonly string[]).includes(value);
+}
+
+export const MAX_PAYER_NAME = 80;
 
 export type Result = { ok: true } | { ok: false; error: string };
 
@@ -115,6 +136,69 @@ export function isUtrTaken(
 
 export const UTR_TAKEN = "This UTR is already recorded.";
 
+/* ---------- Online details ---------- */
+
+export const PICK_METHOD = "Pick UPI, NEFT, RTGS or IMPS.";
+export const PICK_ACCOUNT = "Pick the account it came into.";
+
+/** Online needs a method and the account it came into; the payer name is optional. Returns an error or null. */
+export function checkOnlineDetails(d: { onlineMethod?: unknown; bankAccountId?: unknown; payerName?: unknown }): string | null {
+  if (!isOnlineMethod(d.onlineMethod)) return PICK_METHOD;
+  if (!isUuid(d.bankAccountId)) return PICK_ACCOUNT;
+  if (cleanPayerName(d.payerName).length > MAX_PAYER_NAME) return `Keep the payer name under ${MAX_PAYER_NAME} characters.`;
+  return null;
+}
+
+/** A payer name: trimmed, inner spaces collapsed. */
+export function cleanPayerName(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+/* ---------- Received on (the day the money came) ---------- */
+
+/** Staff may pick today or up to this many days back. */
+export const STAFF_BACKDATE_DAYS = 2;
+export const RECEIVED_ON_RANGE = "Pick today or up to 2 days back.";
+export const PICK_BACKDATE_REASON = "Pick a reason for the older date.";
+
+export type Backdate = { code: BackdateReasonCode; note: string };
+
+/** The earliest day that needs no reason: staff cannot go further back, admin needs a backdate reason. */
+export function earliestReceivedOn(today: string): string {
+  return addDays(today, -STAFF_BACKDATE_DAYS);
+}
+
+/**
+ * The day the money was received, "YYYY-MM-DD" (India), checked against `today`.
+ * Never in the future. Staff: today or up to 2 days back. Admin: any past day, but older than
+ * 2 days needs a backdate reason (and a note for "other"); a reason sent for a newer day is ignored.
+ */
+export function checkReceivedOn(
+  role: string | null | undefined,
+  input: unknown,
+  today: string,
+  reason?: { code?: unknown; note?: unknown } | null,
+): { ok: true; receivedOn: string; backdate: Backdate | null } | { ok: false; error: string } {
+  const date = checkEntryDate(input, today);
+  if (!date.ok) return date;
+  const days = daysBetween(date.date, today);
+  if (days <= STAFF_BACKDATE_DAYS) return { ok: true, receivedOn: date.date, backdate: null };
+  if (!isAdmin(role)) return { ok: false, error: RECEIVED_ON_RANGE };
+  const why = checkReasonCode("backdate", reason?.code, reason?.note);
+  if (!why.ok) return { ok: false, error: isReasonCode("backdate", reason?.code) ? why.error : PICK_BACKDATE_REASON };
+  return { ok: true, receivedOn: date.date, backdate: { code: why.code, note: why.note } };
+}
+
+/**
+ * The moment the ledger, aging and statement use for a payment credit. A payment received on an
+ * earlier day than it was saved counts at the last millisecond of that day (India), so it sorts on
+ * its received day; otherwise it counts when it was saved. Mirrors `ledgerMomentSql` in lib/ledger.ts.
+ */
+export function paymentMoment(receivedOn: string, createdAt: Date): Date {
+  if (receivedOn < toISTDateKey(createdAt)) return new Date(istStartOf(addDays(receivedOn, 1)).getTime() - 1);
+  return createdAt;
+}
+
 /* ---------- Recording ---------- */
 
 export type ReceiptRequest = {
@@ -123,6 +207,16 @@ export type ReceiptRequest = {
   totalPaise: number;
   utr?: string | null;
   note?: string | null;
+  /** Who records it (decides how far back the date may go). */
+  role: string | null | undefined;
+  /** Today in India, "YYYY-MM-DD". */
+  today: string;
+  receivedOn: unknown;
+  onlineMethod?: unknown;
+  bankAccountId?: unknown;
+  payerName?: unknown;
+  backdateReasonCode?: unknown;
+  backdateNote?: unknown;
 };
 
 export type ReceiptPlan =
@@ -132,6 +226,13 @@ export type ReceiptPlan =
       /** UTR to store (online), else null. */
       utr: string | null;
       note: string;
+      /** Online only (null / "" for cash). */
+      onlineMethod: OnlineMethod | null;
+      bankAccountId: string | null;
+      payerName: string;
+      receivedOn: string;
+      /** Set when an admin picked a day more than 2 days back. */
+      backdate: Backdate | null;
       /** Ledger credit to post now (cash), or null (online waits for "Verified"). */
       ledger: LedgerEntry | null;
       /** Cash now held by the person who recorded it (0 for online). */
@@ -145,16 +246,38 @@ export function planReceipt(req: ReceiptRequest): ReceiptPlan {
   if (modeError) return { ok: false, error: modeError };
   const amountError = checkReceiptAmount(req.totalPaise);
   if (amountError) return { ok: false, error: amountError };
+  if (req.mode === "online") {
+    const onlineError = checkOnlineDetails(req);
+    if (onlineError) return { ok: false, error: onlineError };
+  }
   const note = typeof req.note === "string" ? req.note.trim() : "";
   if (note.length > MAX_REASON) return { ok: false, error: `Keep the note under ${MAX_REASON} characters.` };
+  const date = checkReceivedOn(req.role, req.receivedOn, req.today, { code: req.backdateReasonCode, note: req.backdateNote });
+  if (!date.ok) return date;
+  const when = { receivedOn: date.receivedOn, backdate: date.backdate };
   if (req.mode === "online") {
-    return { ok: true, status: "unverified", utr: normaliseUtr(req.utr), note, ledger: null, walletPaise: 0 };
+    return {
+      ok: true,
+      status: "unverified",
+      utr: normaliseUtr(req.utr),
+      note,
+      onlineMethod: req.onlineMethod as OnlineMethod,
+      bankAccountId: req.bankAccountId as string,
+      payerName: cleanPayerName(req.payerName),
+      ...when,
+      ledger: null,
+      walletPaise: 0,
+    };
   }
   return {
     ok: true,
     status: "received",
     utr: null,
     note,
+    onlineMethod: null,
+    bankAccountId: null,
+    payerName: "",
+    ...when,
     ledger: { retailerId: req.retailerId, kind: "receipt_credit", amountPaise: -req.totalPaise },
     walletPaise: req.totalPaise,
   };

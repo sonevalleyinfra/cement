@@ -37,7 +37,7 @@ import {
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR } from "@/lib/money";
-import { ageText, ageTone, coverTone, type Tone as NoteTone } from "@/lib/overdue-rules";
+import { ageText, ageTone, coverTone, lastPaymentDay, type Tone as NoteTone } from "@/lib/overdue-rules";
 import { supplierHomeLines } from "@/lib/supplier-rules";
 import { cn } from "@/lib/utils";
 import { daysText, formatCount } from "@/lib/words";
@@ -328,7 +328,7 @@ export async function RetailerHome({ userId }: { userId: string }) {
           s.lastPayment
             ? [
                 { label: "Last", value: money(s.lastPayment.totalPaise) },
-                { label: "On", value: formatDate(s.lastPayment.createdAt) },
+                { label: "On", value: formatDate(lastPaymentDay(s.lastPayment)) },
               ]
             : [{ label: "Last", value: "None" }]
         }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { toISTDateKey } from "./datetime";
 import { agingBuckets, duesFromLedger, type LedgerRow } from "./due-items";
 import {
   ageText,
@@ -8,6 +9,7 @@ import {
   coverTone,
   daysOfCover,
   filterOverdue,
+  lastPaymentDay,
   minDaysParam,
   monthStartIST,
   overdueEmptyTitle,
@@ -127,16 +129,21 @@ describe("buildOverdueRows", () => {
     at("c", pay(80_00, 10)), // advance: no row
     at("a", pay(40_00, 30)),
   ];
-  const last = new Map([["a", { totalPaise: 40_00, createdAt: day(30) }]]);
+  const last = new Map([["a", { totalPaise: 40_00, receivedOn: key(30) }]]);
   const rows = buildOverdueRows(ledger, shops, last, key(40));
 
   it("lists only shops that owe, with overdue, days and last payment", () => {
     expect(rows.map((r) => r.retailerId).sort()).toEqual(["a", "b", "d"]);
     const a = rows.find((r) => r.retailerId === "a")!;
     expect(a).toMatchObject({ duePaise: 60_00, overduePaise: 60_00, daysPastTerms: 10, salesRepName: "Ravi" });
-    expect(a.lastPayment).toEqual({ totalPaise: 40_00, createdAt: day(30) });
+    expect(a.lastPayment).toEqual({ totalPaise: 40_00, receivedOn: key(30) });
+    expect(toISTDateKey(lastPaymentDay(a.lastPayment!))).toBe(key(30));
     const b = rows.find((r) => r.retailerId === "b")!;
     expect(b).toMatchObject({ duePaise: 200_00, overduePaise: 0, daysPastTerms: 0, lastPayment: null });
+  });
+
+  it("the last payment day is 00:00 IST of the day it was received", () => {
+    expect(lastPaymentDay({ receivedOn: "2026-10-24" }).toISOString()).toBe("2026-10-23T18:30:00.000Z");
   });
 
   it("keeps a switched-off shop with dues", () => {

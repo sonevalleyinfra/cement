@@ -9,6 +9,8 @@ import {
   emptyBuckets,
   type LedgerRow,
 } from "./due-items";
+import { paymentMoment } from "./receipt-rules";
+import { istStartOf } from "./report-range";
 
 const day = (n: number) => new Date(Date.UTC(2026, 0, 1 + n, 6));
 const row = (kind: string, amountPaise: number, orderId: string | null, d: number): LedgerRow => ({
@@ -276,5 +278,28 @@ describe("duesAging (all retailers)", () => {
     const balances = new Map<string, number>();
     for (const r of rows) balances.set(r.retailerId, (balances.get(r.retailerId) ?? 0) + r.amountPaise);
     expect(d.total.duePaise).toBe([...balances.values()].reduce((n, b) => n + Math.max(0, b), 0));
+  });
+});
+
+describe("a backdated payment (received before it was typed in)", () => {
+  // Saved on 12 Jan at 11:30 IST, received on 9 Jan: the ledger counts it at the end of 9 Jan (ledgerMomentSql).
+  const savedAt = new Date("2026-01-12T06:00:00Z");
+  const credit = { kind: "receipt_credit", amountPaise: -100_00, orderId: null, createdAt: paymentMoment("2026-01-09", savedAt) };
+  const rows: LedgerRow[] = [
+    { kind: "order_debit", amountPaise: 100_00, orderId: "o1", createdAt: new Date("2026-01-01T06:00:00Z") },
+    { kind: "order_debit", amountPaise: 50_00, orderId: "o2", createdAt: new Date("2026-01-10T06:00:00Z") },
+    credit,
+  ];
+  const byMoment = (list: LedgerRow[]) => [...list].sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+  const asOf = (key: string) => byMoment(rows).filter((r) => new Date(r.createdAt) < istStartOf(key));
+
+  it("sorts on its received day, before a dispatch made after that day", () => {
+    expect(byMoment(rows).map((r) => r.orderId ?? "pay")).toEqual(["o1", "pay", "o2"]);
+  });
+  it("counts in the dues as of a day between the day received and the day typed in", () => {
+    // As of the end of 10 Jan the payment had come: only o2 is still due.
+    expect(duesFromLedger(asOf("2026-01-11"))).toMatchObject({ duePaise: 50_00, items: [{ orderId: "o2", duePaise: 50_00 }] });
+    // As of the end of 8 Jan it had not: o1 is due.
+    expect(duesFromLedger(asOf("2026-01-09"))).toMatchObject({ duePaise: 100_00, items: [{ orderId: "o1" }] });
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Reason codes: the "why" picked from a short list (plus an optional note) when an order is rejected
  * or cancelled, a rate is changed, an approval goes over the credit limit, a payment is rejected or
- * reversed, or stock is corrected. Plain functions (no database) so they are easy to test.
+ * reversed, stock is corrected, or an admin records a payment received more than 2 days ago. Plain functions (no database) so they are easy to test.
  * Source: cement v2 plan A4 and design spec section 6 (ReasonPicker).
  *
  * - Each list is ordered by how common the reason is; "other" is always last. Labels are 3 words at most.
@@ -70,6 +70,15 @@ export const STOCK_REASONS = list([
   { code: "other", label: "Other" },
 ]);
 
+/** An admin recording a payment received more than 2 days ago (receipt-rules checkReceivedOn). Staff only. */
+export const BACKDATE_REASONS = list([
+  { code: "late_entry", label: "Late entry" },
+  { code: "bank_delay", label: "Bank delay" },
+  { code: "entry_mistake", label: "Wrong entry" },
+  { code: "owner_said", label: "Owner said" },
+  { code: "other", label: "Other" },
+]);
+
 export const REASON_LISTS = {
   reject: REJECT_REASONS,
   cancel: CANCEL_REASONS,
@@ -77,6 +86,7 @@ export const REASON_LISTS = {
   override: OVERRIDE_REASONS,
   payment: PAYMENT_REASONS,
   stock: STOCK_REASONS,
+  backdate: BACKDATE_REASONS,
 } as const;
 
 export type ReasonAction = keyof typeof REASON_LISTS;
@@ -97,6 +107,9 @@ export type PaymentReasonCode = ReasonCode<"payment">;
 
 export const STOCK_REASON_CODES = codes("stock");
 export type StockReasonCode = ReasonCode<"stock">;
+
+export const BACKDATE_REASON_CODES = codes("backdate");
+export type BackdateReasonCode = ReasonCode<"backdate">;
 
 /** True when `code` is in that action's list. */
 export function isReasonCode<A extends ReasonAction>(action: A, code: unknown): code is ReasonCode<A> {

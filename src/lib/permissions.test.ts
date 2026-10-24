@@ -27,6 +27,7 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   viewLedger:        [Y, Y, Y, N, Y, N],
   setOpeningBalance: [Y, N, N, N, N, N],
   adjustLedger:      [Y, N, N, N, N, N],
+  manageBankAccounts: [Y, N, N, N, N, N],
   viewSuppliers:     [Y, N, N, N, N, N],
   manageSuppliers:   [Y, N, N, N, N, N],
   viewStock:         [Y, Y, Y, Y, N, N],

@@ -9,6 +9,7 @@ export * from "./notifications";
 export * from "./stock";
 export * from "./dispatches";
 export * from "./ledger";
+export * from "./bank-accounts";
 export * from "./receipts";
 export * from "./audit";
 export * from "./suppliers";

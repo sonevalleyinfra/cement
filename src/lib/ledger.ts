@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { dispatches, ledgerEntries, orders, products } from "@/db/schema";
+import { dispatches, ledgerEntries, orders, products, receipts } from "@/db/schema";
 import type { LedgerEntry } from "@/lib/ledger-rules";
 
 /** A database or a transaction. */
@@ -26,6 +26,22 @@ export async function postEntry(
   return row.id;
 }
 
+/**
+ * The moment a ledger row counts at (ledger, aging, statement). A payment credit (`receipt_credit`,
+ * minus) whose payment was received on an earlier India day than the row was posted counts at the last
+ * millisecond of that received day; every other row (dispatches, adjustments, reversals, and the old
+ * + receipt_credit reversal rows) counts at `created_at`. Exactly mirrors `paymentMoment` in
+ * lib/receipt-rules.ts. Needs `leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))`.
+ */
+export const ledgerMomentSql = sql<Date>`case when ${ledgerEntries.kind} = 'receipt_credit' and ${ledgerEntries.amountPaise} < 0 and ${receipts.receivedOn} < (${ledgerEntries.createdAt} at time zone 'Asia/Kolkata')::date then ((${receipts.receivedOn} + 1)::timestamp at time zone 'Asia/Kolkata') - interval '1 millisecond' else ${ledgerEntries.createdAt} end`.mapWith(
+  ledgerEntries.createdAt,
+);
+
+/** True when the row counts on an earlier day than it was posted (show its date only, no time). */
+export const ledgerBackdatedSql = sql<boolean>`coalesce(${ledgerEntries.kind} = 'receipt_credit' and ${ledgerEntries.amountPaise} < 0 and ${receipts.receivedOn} < (${ledgerEntries.createdAt} at time zone 'Asia/Kolkata')::date, false)`.mapWith(
+  Boolean,
+);
+
 /** Net balance per retailer (for the list cards; positive = retailer owes). Server-only. */
 export async function getAllBalances(conn: Pick<typeof db, "select"> = db) {
   return conn
@@ -49,7 +65,8 @@ export async function getBalance(retailerId: string, conn: Pick<typeof db, "sele
 /**
  * All entries for one retailer, oldest first. A dispatch row also gets its product and bags (its
  * dispatch was saved in the same transaction: same order, same moment), so a retailer can be shown
- * "what came" without the amount.
+ * "what came" without the amount. `createdAt` is the ledger moment (`ledgerMomentSql`: a payment
+ * counts on the day it was received); `backdated` marks such a payment row.
  */
 export async function getEntries(retailerId: string) {
   return db
@@ -59,11 +76,13 @@ export async function getEntries(retailerId: string) {
       amountPaise: ledgerEntries.amountPaise,
       note: ledgerEntries.note,
       actorId: ledgerEntries.actorId,
-      createdAt: ledgerEntries.createdAt,
+      createdAt: ledgerMomentSql,
+      backdated: ledgerBackdatedSql,
       product: products.name,
       bags: dispatches.bags,
     })
     .from(ledgerEntries)
+    .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
     .leftJoin(orders, eq(orders.id, ledgerEntries.orderId))
     .leftJoin(products, eq(products.id, orders.productId))
     .leftJoin(
@@ -71,5 +90,5 @@ export async function getEntries(retailerId: string) {
       and(eq(dispatches.orderId, ledgerEntries.orderId), eq(dispatches.createdAt, ledgerEntries.createdAt)),
     )
     .where(eq(ledgerEntries.retailerId, retailerId))
-    .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id));
+    .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id));
 }

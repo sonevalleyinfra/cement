@@ -23,6 +23,7 @@ import {
   truckLoads,
 } from "@/lib/home-rules";
 import { ORDER_STATUSES } from "@/lib/order-rules";
+import { toISTDateKey } from "@/lib/datetime";
 import { getOverdueRows } from "@/lib/overdue";
 import { collectToday, daysOfCover, monthStartIST } from "@/lib/overdue-rules";
 import { getBalances } from "@/lib/stock";
@@ -62,12 +63,12 @@ async function oldestOrder(where: SQL | undefined) {
   return row?.at ?? null;
 }
 
-/** Standing payments (not rejected or reversed) this person received since `since`. */
-async function receivedSince(userId: string, since: Date) {
+/** Standing payments (not rejected or reversed) this person recorded, received on `fromKey` (India day) or later. */
+async function receivedSince(userId: string, fromKey: string) {
   const [row] = await db
     .select({ p: sql<number>`coalesce(sum(${receipts.totalPaise}), 0)`.mapWith(Number) })
     .from(receipts)
-    .where(and(eq(receipts.receivedBy, userId), notInArray(receipts.status, [...LAST_PAYMENT_SKIPS]), gte(receipts.createdAt, since)));
+    .where(and(eq(receipts.receivedBy, userId), notInArray(receipts.status, [...LAST_PAYMENT_SKIPS]), gte(receipts.receivedOn, fromKey)));
   return n(row?.p);
 }
 
@@ -86,8 +87,8 @@ export async function getSalesHome(userId: string, now = new Date()) {
     countOrders(and(eq(orders.salesRepId, userId), eq(orders.status, "placed"), isNull(orders.ratePaise))),
     countOrders(and(eq(orders.salesRepId, userId), gte(orders.createdAt, istDayStart(now)))),
     dueRows(userId),
-    receivedSince(userId, istDayStart(now)),
-    receivedSince(userId, month),
+    receivedSince(userId, toISTDateKey(now)),
+    receivedSince(userId, toISTDateKey(month)),
     dispatchedBagsSince(month, userId),
     // null = the list failed to load; Home shows "Couldn't load" there and the rest still renders.
     getOverdueRows(now)
@@ -256,12 +257,12 @@ export async function getRetailerHome(userId: string) {
     .select({ p: sql<number>`coalesce(sum(${ledgerEntries.amountPaise}), 0)`.mapWith(Number) })
     .from(ledgerEntries)
     .where(eq(ledgerEntries.retailerId, shop.id));
-  // Own payments only: the newest one that still stands (not rejected or reversed).
+  // Own payments only: the newest one that still stands (not rejected or reversed), by the day it was received.
   const [last] = await db
-    .select({ totalPaise: receipts.totalPaise, createdAt: receipts.createdAt })
+    .select({ totalPaise: receipts.totalPaise, receivedOn: receipts.receivedOn })
     .from(receipts)
     .where(and(eq(receipts.retailerId, shop.id), notInArray(receipts.status, [...LAST_PAYMENT_SKIPS])))
-    .orderBy(desc(receipts.createdAt))
+    .orderBy(desc(receipts.receivedOn), desc(receipts.createdAt))
     .limit(1);
   return { openOrders: n(open?.c), balancePaise: n(bal?.p), lastPayment: last ?? null };
 }

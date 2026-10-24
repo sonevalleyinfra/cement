@@ -48,7 +48,13 @@ export type OverdueShop = {
   salesRepName: string | null;
 };
 
-export type LastPayment = { totalPaise: number; createdAt: Date };
+/** A shop's newest standing payment: its amount and the day it was received ("YYYY-MM-DD", India). */
+export type LastPayment = { totalPaise: number; receivedOn: string };
+
+/** The day a last payment was received, as a moment to format (00:00 IST of that day). */
+export function lastPaymentDay(p: Pick<LastPayment, "receivedOn">): Date {
+  return istStartOf(p.receivedOn);
+}
 
 export type OverdueRow = {
   retailerId: string;

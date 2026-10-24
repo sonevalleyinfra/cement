@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
 import { retailers, user as users } from "@/db/schema";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDate, formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
 import { newestFirstWithBalance } from "@/lib/ledger-rules";
@@ -76,7 +76,7 @@ export default async function RetailerLedgerPage({
               {e.what && <div className="text-sm">{e.what}</div>}
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>
-                  {formatDateTime(e.createdAt)}
+                  {e.backdated ? formatDate(e.createdAt) : formatDateTime(e.createdAt)}
                   {e.note ? ` · ${e.note}` : ""}
                   {e.actorId ? ` · ${actors.get(e.actorId) ?? ""}` : ""}
                 </span>

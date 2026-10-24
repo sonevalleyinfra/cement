@@ -42,7 +42,7 @@ describe("ledgerRowsForViewer", () => {
     { ...base, id: "p", kind: "receipt_credit", amountPaise: -500_000, balancePaise: 1_020_000, note: "Payment #3" },
     { ...base, id: "r", kind: "receipt_credit", amountPaise: 500_000, balancePaise: 1_520_000 },
     { ...base, id: "a", kind: "adjustment", amountPaise: -20_000, balancePaise: 1_500_000, note: "Rate difference" },
-    { ...base, id: "p2", kind: "receipt_credit", amountPaise: -300_000, balancePaise: 1_200_000 },
+    { ...base, id: "p2", kind: "receipt_credit", amountPaise: -300_000, balancePaise: 1_200_000, backdated: true },
     { ...base, id: "v", kind: "receipt_reversal", amountPaise: 300_000, balancePaise: 1_500_000, note: "Payment #4 reversed: Bounced" },
   ];
 
@@ -62,6 +62,7 @@ describe("ledgerRowsForViewer", () => {
         id: "d",
         label: "Dispatch",
         createdAt: at,
+        backdated: false,
         amountPaise: null,
         balancePaise: null,
         what: "Prism Trade OPC 53 · 40 bags",
@@ -74,5 +75,10 @@ describe("ledgerRowsForViewer", () => {
       expect(v.find((r) => r.id === "v")).toMatchObject({ label: "Payment reversed", amountPaise: 300_000, note: null });
       expect(JSON.stringify(v)).not.toMatch(/1420000|1520000|Rate difference|BR01/);
     }
+  });
+
+  it("marks a payment received before it was typed in (shown with its date only)", () => {
+    const v = ledgerRowsForViewer("retailer", rows);
+    expect(v.filter((r) => r.backdated).map((r) => r.id)).toEqual(["p2"]);
   });
 });
