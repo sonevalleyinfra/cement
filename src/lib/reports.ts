@@ -17,11 +17,14 @@ import {
 } from "@/db/schema";
 import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
 import { duesAging } from "@/lib/due-items";
+import { lossReport } from "@/lib/loss-report";
 import { nameMaps, toMap } from "@/lib/names";
 import type { ReportRange } from "@/lib/report-range";
 import {
+  averageCostPerBag,
   landedCostRows,
   profitReport,
+  purchaseCostTotals,
   salesReport,
   schemeCreditsPaise,
   type PurchaseCostRow,
@@ -29,7 +32,7 @@ import {
 } from "@/lib/sales-report";
 import { cashByPerson, onlineWaiting, paymentsByMode, staffActivity } from "@/lib/staff-report";
 import { buildStatement, byDay, byMoment } from "@/lib/statement-rules";
-import { stockFlows, stockNow, totalFlow } from "@/lib/stock-report";
+import { placeFlows, stockFlows, stockNow, totalFlow, totalPlaceFlow } from "@/lib/stock-report";
 import { balancesByBrand } from "@/lib/supplier-rules";
 import { getSuppliers } from "@/lib/suppliers";
 
@@ -160,7 +163,7 @@ export async function getSupplierClosings(range: ReportRange) {
   return suppliers.map((s) => ({ id: s.id, name: s.name, balancePaise: closing.get(s.id) ?? 0 }));
 }
 
-/** Stock now by product and place, and the range's opening → closing per product. */
+/** Stock now by product and place, and the range's opening → closing per product and per place. */
 export async function getStockReport(range: ReportRange) {
   const [rows, names] = await Promise.all([
     db
@@ -178,11 +181,44 @@ export async function getStockReport(range: ReportRange) {
   const label = await productLabeler();
   const products = new Map([...names.products].map(([id, name]) => [id, label(name)]));
   const flows = stockFlows(rows, range, products);
+  const places = placeFlows(rows, range, names);
   return {
     now: stockNow(rows, { products, godowns: names.godowns, vehicles: names.vehicles }),
     flows,
     total: totalFlow(flows),
+    places,
+    placesTotal: totalPlaceFlow(places),
   };
+}
+
+/** Stock corrections with minus bags in the range, valued at the average purchase cost, by reason and place. */
+export async function getLossReport(range: ReportRange) {
+  const [rows, purchases, names] = await Promise.all([
+    db
+      .select({
+        productId: stockMovements.productId,
+        godownId: stockMovements.godownId,
+        vehicleId: stockMovements.vehicleId,
+        type: stockMovements.type,
+        bags: stockMovements.bags,
+        reasonCode: stockMovements.reasonCode,
+        createdAt: stockMovements.createdAt,
+      })
+      .from(stockMovements)
+      .where(
+        and(
+          eq(stockMovements.type, "adjustment"),
+          gte(stockMovements.createdAt, range.start),
+          lt(stockMovements.createdAt, range.end),
+        ),
+      ),
+    // Lost bags are valued at the average LANDED cost (invoice cost + freight + unloading per good bag).
+    purchaseCostRows(range.end),
+    nameMaps(),
+  ]);
+  const totals = purchaseCostTotals(purchases);
+  const costs = new Map([...totals].map(([id, t]) => [id, averageCostPerBag(t)]));
+  return lossReport(rows, range, costs, names);
 }
 
 async function walletRows() {

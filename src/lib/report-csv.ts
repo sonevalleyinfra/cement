@@ -8,8 +8,10 @@ import { rupees } from "./csv";
 import { toISTDateKey } from "./datetime";
 import { AGING_LABELS, type AgingBuckets, type DuesAging } from "./due-items";
 import { ledgerEntryLabel } from "./ledger-view-rules";
+import type { LossLine, LossReport, LossTotals } from "./loss-report";
 import type { SalesReport, SalesLine } from "./sales-report";
 import type { Statement } from "./statement-rules";
+import type { PlaceFlow, StockFlow } from "./stock-report";
 import type { PaymentsByMode } from "./staff-report";
 import { SUPPLIER_MODE_LABELS, supplierKindLabel, type SupplierPaymentMode } from "./supplier-rules";
 
@@ -127,6 +129,50 @@ export function cashRows(r: CashReport, from: string, to: string): Row[] {
     ["Reversed", m.reversed.count, rupees(m.reversed.paise)],
     ["Rejected", m.rejected.count, rupees(m.rejected.paise)],
   ];
+}
+
+type StockReport = {
+  places: PlaceFlow[];
+  placesTotal: Omit<PlaceFlow, "key" | "kind" | "label">;
+  flows: StockFlow[];
+  total: Omit<StockFlow, "productId" | "label">;
+};
+
+export function stockRows(r: StockReport, from: string, to: string): Row[] {
+  const p = r.placesTotal;
+  const t = r.total;
+  return [
+    ["Stock", `${from} to ${to}`],
+    ...section("By place"),
+    ["Place", "Kind", "Opening", "In", "Out", "Closing"],
+    ...r.places.map((l): Row => [l.label, l.kind === "godown" ? "Godown" : "Truck", l.openingBags, l.inBags, l.outBags, l.closingBags]),
+    ["Total", "", p.openingBags, p.inBags, p.outBags, p.closingBags],
+    ...section("By product"),
+    ["Product", "Start", "Opening stock", "Bought", "Sent", "Moved in", "Moved out", "Fixed", "End"],
+    ...r.flows.map((f): Row => [
+      f.label,
+      f.openingBags,
+      f.openingStockBags,
+      f.purchasedBags,
+      f.dispatchedBags,
+      f.movedInBags,
+      f.movedOutBags,
+      f.fixedBags,
+      f.closingBags,
+    ]),
+    ["Total", t.openingBags, t.openingStockBags, t.purchasedBags, t.dispatchedBags, t.movedInBags, t.movedOutBags, t.fixedBags, t.closingBags],
+  ];
+}
+
+export function lossRows(r: LossReport, from: string, to: string): Row[] {
+  const lines = (title: string, label: string, list: LossLine[]): Row[] => [
+    ...section(title),
+    [label, "Bags", "Value (₹)", "Cost unknown (bags)"],
+    ...list.map((l): Row => line(l.label, l)),
+    line("Total", r.total),
+  ];
+  const line = (label: string, l: LossTotals): Row => [label, l.bags, rupees(l.valuePaise), l.unvaluedBags];
+  return [["Damage and loss", `${from} to ${to}`], ...lines("By reason", "Reason", r.byReason), ...lines("By place", "Place", r.byPlace)];
 }
 
 /** "sales_2026-04-01_2026-04-30.csv": ASCII only, safe in a header. */

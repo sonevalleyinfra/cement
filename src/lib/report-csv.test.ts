@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { toCsv } from "./csv";
 import { emptyBuckets, type DuesAging } from "./due-items";
-import { cashRows, csvFilename, duesRows, salesRows, statementRows, supplierRows } from "./report-csv";
+import { lossReport } from "./loss-report";
+import { cashRows, csvFilename, duesRows, lossRows, salesRows, statementRows, stockRows, supplierRows } from "./report-csv";
+import { reportRange } from "./report-range";
 import type { SalesReport } from "./sales-report";
 import { buildStatement } from "./statement-rules";
+import { placeFlows, stockFlows, totalFlow, totalPlaceFlow } from "./stock-report";
 
 describe("csvFilename", () => {
   it("is ASCII with the dates", () => {
@@ -92,5 +95,59 @@ describe("cashRows", () => {
     );
     expect(rows).toContainEqual(["Cash", 2, "10.00"]);
     expect(rows).toContainEqual(["Ravi", "5.00", "0.00"]);
+  });
+});
+
+describe("stockRows", () => {
+  const range = reportRange({ from: "2026-10-01", to: "2026-10-05" });
+  const base = { productId: "p1", godownId: "g1", vehicleId: null, createdAt: "2026-10-02T10:00:00Z" };
+  const rows = [
+    { ...base, type: "opening", bags: 100, createdAt: "2026-09-01T00:00:00Z" },
+    { ...base, type: "transfer", bags: -30 },
+    { ...base, type: "transfer", bags: 30, godownId: null, vehicleId: "v1" },
+    { ...base, type: "dispatch", bags: -10, godownId: null, vehicleId: "v1" },
+  ];
+  const places = placeFlows(rows, range, { godowns: new Map([["g1", "Main"]]), vehicles: new Map([["v1", "BR01AB1234"]]) });
+  const flows = stockFlows(rows, range, new Map([["p1", "OPC 43"]]));
+  it("has a by place section with the kind and a by product section, bags as numbers", () => {
+    const out = stockRows({ places, placesTotal: totalPlaceFlow(places), flows, total: totalFlow(flows) }, range.from, range.to);
+    expect(out[0]).toEqual(["Stock", "2026-10-01 to 2026-10-05"]);
+    expect(out).toContainEqual(["By place"]);
+    expect(out).toContainEqual(["Place", "Kind", "Opening", "In", "Out", "Closing"]);
+    expect(out).toContainEqual(["Main", "Godown", 100, 0, 30, 70]);
+    expect(out).toContainEqual(["BR01AB1234", "Truck", 0, 30, 10, 20]);
+    expect(out).toContainEqual(["Total", "", 100, 30, 40, 90]);
+    expect(out).toContainEqual(["By product"]);
+    expect(out).toContainEqual(["Product", "Start", "Opening stock", "Bought", "Sent", "Moved in", "Moved out", "Fixed", "End"]);
+    expect(out).toContainEqual(["OPC 43", 100, 0, 0, 10, 30, 30, 0, 90]);
+  });
+});
+
+describe("lossRows", () => {
+  const range = reportRange({ from: "2026-10-01", to: "2026-10-05" });
+  const base = { productId: "p1", godownId: "g1", vehicleId: null, type: "adjustment", createdAt: "2026-10-02T10:00:00Z" };
+  const r = lossReport(
+    [
+      { ...base, bags: -3, reasonCode: "damage" },
+      { ...base, bags: -2, reasonCode: null, productId: "p2" },
+    ],
+    range,
+    new Map([["p1", 33_333]]),
+    { godowns: new Map([["g1", "Main"]]), vehicles: new Map() },
+  );
+  it("has ₹ headers, money in rupees from paise, sections and totals", () => {
+    const out = lossRows(r, range.from, range.to);
+    expect(out[0]).toEqual(["Damage and loss", "2026-10-01 to 2026-10-05"]);
+    expect(out).toContainEqual(["By reason"]);
+    expect(out).toContainEqual(["Reason", "Bags", "Value (₹)", "Cost unknown (bags)"]);
+    expect(out).toContainEqual(["Damaged", 3, "999.99", 0]);
+    expect(out).toContainEqual(["Not given", 2, "0.00", 2]);
+    expect(out).toContainEqual(["By place"]);
+    expect(out).toContainEqual(["Place", "Bags", "Value (₹)", "Cost unknown (bags)"]);
+    expect(out).toContainEqual(["Main", 5, "999.99", 2]);
+    expect(out.filter((row) => row[0] === "Total")).toEqual([
+      ["Total", 5, "999.99", 2],
+      ["Total", 5, "999.99", 2],
+    ]);
   });
 });

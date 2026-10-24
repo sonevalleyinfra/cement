@@ -172,3 +172,75 @@ export function stockNow(
   byPlace.sort((a, b) => (a.kind === b.kind ? a.label.localeCompare(b.label) : a.kind === "godown" ? -1 : 1));
   return { byProduct, byPlace, totalBags: byProduct.reduce((n, p) => n + p.bags, 0) };
 }
+
+export type PlaceFlow = {
+  key: string;
+  kind: "godown" | "vehicle";
+  label: string;
+  /** Every movement in this place before the range. */
+  openingBags: number;
+  /** In the range: purchase + opening stock + transfer in + plus corrections. */
+  inBags: number;
+  /** In the range, as a plus number: dispatch + transfer out + minus corrections. */
+  outBags: number;
+  /** Every movement in this place before the end of the range, summed separately. */
+  closingBags: number;
+  /** opening + in − out === closing. False only for a movement type this report does not know. */
+  reconciles: boolean;
+};
+
+/**
+ * Opening, in, out and closing per place (godown or truck) for the range [start, end).
+ * Rows at or after `end` are ignored. Places with all four numbers 0 are left out.
+ * Godowns come first, then trucks, each by name.
+ */
+export function placeFlows(
+  rows: readonly StockMoveRow[],
+  range: { start: Date; end: Date },
+  names: { godowns: Names; vehicles: Names },
+): PlaceFlow[] {
+  const start = range.start.getTime();
+  const end = range.end.getTime();
+  const places = new Map<string, PlaceFlow>();
+  for (const r of rows) {
+    const t = new Date(r.createdAt).getTime();
+    if (t >= end) continue;
+    const kind = r.godownId ? "godown" : "vehicle";
+    const id = r.godownId ?? r.vehicleId ?? "";
+    const key = placeKey({ kind, id });
+    let p = places.get(key);
+    if (!p) {
+      const label = (kind === "godown" ? names.godowns : names.vehicles).get(id) ?? (kind === "godown" ? "Godown" : "Truck");
+      p = { key, kind, label, openingBags: 0, inBags: 0, outBags: 0, closingBags: 0, reconciles: true };
+      places.set(key, p);
+    }
+    p.closingBags += r.bags;
+    if (t < start) {
+      p.openingBags += r.bags;
+      continue;
+    }
+    if (r.type === "purchase" || r.type === "opening") p.inBags += r.bags;
+    else if (r.type === "dispatch") p.outBags -= r.bags;
+    else if (r.type === "transfer" || r.type === "adjustment") {
+      if (r.bags > 0) p.inBags += r.bags;
+      else p.outBags -= r.bags;
+    }
+    // Any other type is counted in closing only, so the place will not reconcile (and is flagged).
+  }
+  const out = [...places.values()].filter((p) => p.openingBags !== 0 || p.inBags !== 0 || p.outBags !== 0 || p.closingBags !== 0);
+  for (const p of out) p.reconciles = p.openingBags + p.inBags - p.outBags === p.closingBags;
+  return out.sort((a, b) => (a.kind === b.kind ? a.label.localeCompare(b.label) : a.kind === "godown" ? -1 : 1));
+}
+
+/** Adds the places together (for the totals row). Transfers count in on one place and out on another. */
+export function totalPlaceFlow(list: readonly PlaceFlow[]): Omit<PlaceFlow, "key" | "kind" | "label"> {
+  const t = { openingBags: 0, inBags: 0, outBags: 0, closingBags: 0, reconciles: true };
+  for (const p of list) {
+    t.openingBags += p.openingBags;
+    t.inBags += p.inBags;
+    t.outBags += p.outBags;
+    t.closingBags += p.closingBags;
+    t.reconciles &&= p.reconciles;
+  }
+  return t;
+}
