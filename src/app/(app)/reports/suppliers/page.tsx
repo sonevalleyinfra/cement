@@ -5,7 +5,7 @@ import { FilterSelect } from "@/components/app/range-form";
 import { hasManyBrands } from "@/lib/catalogue-rules";
 import { formatDate } from "@/lib/datetime";
 import { rolesFor } from "@/lib/permissions";
-import { param, reportRange } from "@/lib/report-range";
+import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getSupplierStatement } from "@/lib/reports";
 import { requireRole } from "@/lib/session";
 import {
@@ -38,6 +38,7 @@ export default async function SupplierStatementPage({ searchParams }: { searchPa
     <ReportFrame
       title="Supplier statement"
       range={range}
+      csvHref={brand ? `/reports/suppliers/csv?${rangeQuery(range)}&brand=${brand.id}` : undefined}
       keep={brand && !hasManyBrands(suppliers) ? { brand: brand.id } : undefined}
       filters={
         hasManyBrands(suppliers) ? (

@@ -19,7 +19,7 @@ export default async function DuesReportPage({ searchParams }: { searchParams: P
   const q = rangeQuery(range);
   const adds = d.lines.every((l) => bucketsTotal(l.buckets) === l.duePaise) && bucketsTotal(d.total.buckets) === d.total.duePaise;
   return (
-    <ReportFrame title="Dues and aging" range={range}>
+    <ReportFrame title="Dues and aging" range={range} csvHref={`/reports/dues/csv?${q}`}>
       <Stats
         items={[
           { label: `Due on ${formatDate(istStartOf(range.to))}`, value: money(d.total.duePaise) },

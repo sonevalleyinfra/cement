@@ -44,6 +44,8 @@ export const AUDIT_ACTIONS = {
   cement_type: ["create", "activate", "deactivate", "rename"],
   grade: ["create", "activate", "deactivate", "rename"],
   vehicle: ["create"],
+  // Report downloads (entityId = the report name; details: report, from, to, retailerId / brandId)
+  report: ["export"],
 } as const;
 
 export type AuditEntity = keyof typeof AUDIT_ACTIONS;
@@ -77,7 +79,7 @@ export const ACTIVITY_GROUPS = {
   stock: ["stock"],
   payments: ["payment", "handover", "ledger"],
   suppliers: ["supplier_entry"],
-  masters: ["user", "retailer", "godown", "area", "brand", "product", "cement_type", "grade", "vehicle"],
+  masters: ["user", "retailer", "godown", "area", "brand", "product", "cement_type", "grade", "vehicle", "report"],
 } as const satisfies Record<string, readonly AuditEntity[]>;
 
 export type ActivityGroup = keyof typeof ACTIVITY_GROUPS;
@@ -370,6 +372,14 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
       if (row.action === "activate" || row.action === "deactivate") return switched(word);
       break;
     }
+    case "report":
+      if (row.action === "export") {
+        const from = s(d.from);
+        const to = s(d.to);
+        const which = s(d.report) || row.entityId;
+        return say(`exported ${which ? `the ${which}` : "a"} report${from && to ? ` (${from} to ${to})` : ""}`);
+      }
+      break;
     case "cement_type":
     case "grade": {
       const word = row.entity === "grade" ? "grade" : "type";
