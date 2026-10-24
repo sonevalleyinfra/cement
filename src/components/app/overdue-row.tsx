@@ -40,7 +40,7 @@ export function OverdueRow({ row, href, density = "full" }: { row: Row; href: st
         <Link
           href={href}
           className={cn(
-            "min-w-0 flex-1 truncate text-base font-semibold outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring",
+            "min-w-0 truncate text-base font-semibold outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring",
             faded,
           )}
         >
@@ -51,7 +51,7 @@ export function OverdueRow({ row, href, density = "full" }: { row: Row; href: st
             Off
           </span>
         )}
-        <span className={cn("tabular shrink-0 text-base font-bold", overdue && "text-risk-foreground", faded)}>
+        <span className={cn("tabular ml-auto shrink-0 text-base font-bold", overdue && "text-risk-foreground", faded)}>
           {money(overdue ? row.overduePaise : row.duePaise)}
         </span>
         <CallButton phone={row.phone} shop={row.name} className="relative z-10 -my-2 -mr-2" />

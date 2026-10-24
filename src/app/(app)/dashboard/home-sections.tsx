@@ -147,17 +147,16 @@ export async function SalesHome({ userId }: { userId: string }) {
       </Link>
       <div className="flex flex-col gap-2">
         <SectionCaption>My numbers</SectionCaption>
-        <div className="grid grid-cols-3 gap-3 divide-x divide-border rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+        {/* Same Stat row as the cards below: lakh amounts wrap to a second line instead of truncating. */}
+        <div className="flex flex-wrap gap-x-8 gap-y-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           {numbers.map((x) => (
-            <div key={x.label} className="flex min-w-0 flex-col gap-1 pl-3 first:pl-0">
-              <span className="text-xs text-muted-foreground">{x.label}</span>
-              <span className="tabular truncate text-xl font-bold">{x.value}</span>
-            </div>
+            <Stat key={x.label} label={x.label} value={x.value} />
           ))}
         </div>
       </div>
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
+        {/* -my-4 cancels the 48px tap area of "All", so the caption sits 8px above the list like "My numbers". */}
+        <div className="-my-4 flex items-center justify-between">
           <SectionCaption>Collect today</SectionCaption>
           <TextLink href="/ledger?show=overdue">All</TextLink>
         </div>
