@@ -196,3 +196,8 @@ export function pickPrefillRetailerId(
   if (typeof param !== "string" || param === "") return null;
   return allowed.some((r) => r.id === param) ? param : null;
 }
+
+/** Picker caption after the shop name: "Patna", or "Patna · Off" for a switched-off shop. */
+export function retailerMeta(r: { place: string; active: boolean }): string {
+  return [r.place, r.active ? "" : "Off"].filter(Boolean).join(" · ");
+}
