@@ -1,22 +1,43 @@
 import { asc, eq } from "drizzle-orm";
+import { CircleCheck } from "lucide-react";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
+import { FilterTabs } from "@/components/app/filter-tabs";
 import { ListCard } from "@/components/app/list-card";
+import { OverdueRow } from "@/components/app/overdue-row";
 import { PageHeader } from "@/components/app/page-header";
+import { SectionCaption } from "@/components/app/section-caption";
+import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getAllBalances } from "@/lib/ledger";
 import { balanceLine } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
+import { getOverdueRows } from "@/lib/overdue";
+import {
+  filterOverdue,
+  minDaysParam,
+  OVERDUE_MAX_ROWS,
+  OVERDUE_MIN_DAYS,
+  OVERDUE_PAGE_SIZE,
+  overdueEmptyTitle,
+  overdueLimitParam,
+  overdueSummary,
+  shopScope,
+} from "@/lib/overdue-rules";
+import { param } from "@/lib/report-range";
 import { hasAnyRole, hasRole } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
+import { shopsText } from "@/lib/words";
 import { ownRetailerId } from "./access";
 
-export default async function LedgerPage() {
+type Search = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function LedgerPage({ searchParams }: { searchParams: Search }) {
   const { user } = await requireUser();
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
   const isRetailer = hasRole(user.role, "retailer");
-  const header = <PageHeader title="Ledger" />;
+  const header = <PageHeader title={staff ? "Dues" : "Ledger"} />;
   const empty = (title: string) => (
     <div className="flex flex-col gap-4">
       {header}
@@ -24,6 +45,31 @@ export default async function LedgerPage() {
     </div>
   );
   if (!staff && !isRetailer) return empty("No access");
+
+  const sp = await searchParams;
+  const scope = staff ? shopScope(user.role, user.id) : null;
+  const show = param(sp.show) === "all" || !scope ? "all" : "overdue";
+  const tabs = scope && (
+    <FilterTabs
+      path="/ledger"
+      param="show"
+      value={show === "all" ? "all" : ""}
+      label="Show"
+      tabs={[
+        { value: "", label: "Overdue" },
+        { value: "all", label: "All" },
+      ]}
+    />
+  );
+  if (scope && show === "overdue") {
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        {tabs}
+        <OverdueList sp={sp} scope={scope} userId={user.id} />
+      </div>
+    );
+  }
 
   const own = staff ? null : await ownRetailerId(user.id);
   if (!staff && !own) return empty("Your login is not linked to a retailer");
@@ -41,6 +87,7 @@ export default async function LedgerPage() {
   return (
     <div className="flex flex-col gap-4">
       {header}
+      {tabs}
       <ul className="flex flex-col gap-3">
         {list.map((r, i) => {
           const line = balanceLine(balances.find((b) => b.retailerId === r.id)?.balancePaise ?? 0);
@@ -64,5 +111,92 @@ export default async function LedgerPage() {
         })}
       </ul>
     </div>
+  );
+}
+
+/**
+ * The collection call list. Sales people (without admin or accounts) only ever get their own shops:
+ * their scope comes from `shopScope`, never from the address. Others pick Mine / All shops.
+ */
+async function OverdueList({
+  sp,
+  scope,
+  userId,
+}: {
+  sp: Awaited<Search>;
+  scope: { repId: string | null; canPickAll: boolean };
+  userId: string;
+}) {
+  const mine = scope.canPickAll && param(sp.scope) === "mine";
+  const repId = scope.canPickAll ? (mine ? userId : null) : scope.repId;
+  const minDays = minDaysParam(sp.min);
+  const limit = overdueLimitParam(sp.limit);
+  const rows = filterOverdue(await getOverdueRows(), { minDays, repId });
+  const summary = overdueSummary(rows);
+  const shown = rows.slice(0, limit);
+  const on = shown.filter((r) => r.active);
+  const off = shown.filter((r) => !r.active);
+  // Sales-only viewers collect; everyone else opens the statement.
+  const href = (id: string) => (scope.canPickAll ? `/ledger/${id}` : `/receipts/new?retailer=${id}`);
+  const keep = { scope: mine ? "mine" : "", min: minDays ? String(minDays) : "" };
+  const more = new URLSearchParams({ limit: String(limit + OVERDUE_PAGE_SIZE) });
+  for (const [k, v] of Object.entries(keep)) if (v) more.set(k, v);
+  const list = (items: typeof shown) => (
+    <ul className="flex flex-col gap-2">
+      {items.map((r) => (
+        <li key={r.retailerId}>
+          <OverdueRow row={r} href={href(r.retailerId)} />
+        </li>
+      ))}
+    </ul>
+  );
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        {scope.canPickAll && (
+          <FilterTabs
+            path="/ledger"
+            param="scope"
+            value={mine ? "mine" : ""}
+            label="Shops"
+            extra={{ min: keep.min }}
+            tabs={[
+              { value: "mine", label: "Mine" },
+              { value: "", label: "All shops" },
+            ]}
+          />
+        )}
+        {/* The picked one links to "" (no filter), so tapping it again clears it. */}
+        <FilterTabs
+          path="/ledger"
+          param="min"
+          value=""
+          label="Days overdue"
+          extra={{ scope: keep.scope }}
+          tabs={OVERDUE_MIN_DAYS.map((d) => ({ value: d === minDays ? "" : String(d), label: `${d}+` }))}
+        />
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState icon={CircleCheck} tone="green" title={overdueEmptyTitle(minDays)} />
+      ) : (
+        <>
+          <p className="tabular text-sm font-semibold">
+            {formatINR(summary.overduePaise, { hidePaise: true })} overdue · {shopsText(summary.shops)}
+          </p>
+          {on.length > 0 && list(on)}
+          {off.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <SectionCaption>Off shops</SectionCaption>
+              {list(off)}
+            </div>
+          )}
+          {rows.length > shown.length && limit < OVERDUE_MAX_ROWS && (
+            <TextLink href={`/ledger?${more}`} scroll={false} className="self-center">
+              Show more
+            </TextLink>
+          )}
+        </>
+      )}
+    </>
   );
 }

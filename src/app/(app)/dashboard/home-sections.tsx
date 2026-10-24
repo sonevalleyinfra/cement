@@ -9,17 +9,22 @@ import {
   Package,
   Receipt,
   Store,
+  TriangleAlert,
   Truck,
   Wallet,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
+import { HintLine } from "@/components/app/hint-line";
 import { ListCard } from "@/components/app/list-card";
+import { OverdueRow } from "@/components/app/overdue-row";
 import { SectionCaption } from "@/components/app/section-caption";
 import { Stat } from "@/components/app/stat";
+import { TextLink } from "@/components/app/text-link";
 import { buttonVariants } from "@/components/ui/button";
 import {
   getAccountsHome,
@@ -32,14 +37,30 @@ import {
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR } from "@/lib/money";
+import { ageText, ageTone, coverTone, type Tone as NoteTone } from "@/lib/overdue-rules";
 import { supplierHomeLines } from "@/lib/supplier-rules";
 import { cn } from "@/lib/utils";
+import { daysText, formatCount } from "@/lib/words";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
 
 function Cards({ children }: { children: ReactNode }) {
   return <div className="flex flex-col gap-3">{children}</div>;
+}
+
+const NOTE_TONE: Record<NoteTone, string> = {
+  muted: "text-muted-foreground",
+  caution: "text-caution-foreground",
+  risk: "text-risk-foreground",
+};
+
+/** A 12px line under a card's stats ("Oldest 3 h", "Cover 6 days"). */
+type Note = { text: string; tone: NoteTone };
+
+/** "Oldest 3 h" for the longest-waiting item, or nothing when nothing waits. */
+function ageNote(oldest: Date | null, now: Date): Note | undefined {
+  return oldest ? { text: ageText(oldest, now), tone: ageTone(oldest, now) } : undefined;
 }
 
 /** The first card on each home section is featured (brand gradient); the rest get a coloured icon. */
@@ -50,6 +71,7 @@ function Card({
   index,
   icon,
   tone,
+  note,
 }: {
   href: string;
   title: string;
@@ -57,9 +79,30 @@ function Card({
   index: number;
   icon: LucideIcon;
   tone: Tone;
+  note?: Note;
 }) {
   const featured = index === 0;
   const Icon = icon;
+  const statRow =
+    stats.length > 0 ? (
+      <div className="flex w-full flex-wrap gap-x-8 gap-y-2">
+        {stats.map((s) => (
+          <Stat key={s.label} label={s.label} value={s.value} />
+        ))}
+      </div>
+    ) : undefined;
+  // On the gradient card the tone colours would not read, so a warning there is white, bold and has an icon.
+  const noteLine = note && (
+    <p
+      className={cn(
+        "tabular flex items-center gap-1 text-xs",
+        featured ? (note.tone === "muted" ? "text-muted-foreground" : "font-semibold text-white") : NOTE_TONE[note.tone],
+      )}
+    >
+      {note.tone !== "muted" && <TriangleAlert className="size-4 shrink-0" aria-hidden />}
+      {note.text}
+    </p>
+  );
   return (
     <ListCard
       href={href}
@@ -76,13 +119,14 @@ function Card({
         )
       }
       bottom={
-        stats.length > 0 ? (
-          <div className="flex w-full flex-wrap gap-x-8 gap-y-2">
-            {stats.map((s) => (
-              <Stat key={s.label} label={s.label} value={s.value} />
-            ))}
+        noteLine ? (
+          <div className="flex w-full flex-col gap-2">
+            {statRow}
+            {noteLine}
           </div>
-        ) : undefined
+        ) : (
+          statRow
+        )
       }
     />
   );
@@ -90,32 +134,73 @@ function Card({
 
 export async function SalesHome({ userId }: { userId: string }) {
   const s = await getSalesHome(userId);
+  const numbers = [
+    { label: "Today", value: money(s.collectedTodayPaise) },
+    { label: "This month", value: money(s.collectedMonthPaise) },
+    { label: "Bags (month)", value: formatCount(s.bagsMonth) },
+  ];
   return (
-    <Cards>
+    <div className="flex flex-col gap-6">
       {/* The most frequent field job; the cards below are plain, so it is the one highlight. */}
       <Link href="/receipts/new" className={cn(buttonVariants({ size: "lg" }), "w-full")}>
         Record payment
       </Link>
-      <Card index={0} href="/orders?show=rate" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
-      <Card
-        index={1}
-        href="/ledger"
-        title="My shops' dues" icon={Banknote} tone="rose"
-        stats={[
-          { label: "Retailers", value: num(s.retailersWithDues) },
-          { label: "Due", value: money(s.duesPaise) },
-        ]}
-      />
-    </Cards>
+      <div className="flex flex-col gap-2">
+        <SectionCaption>My numbers</SectionCaption>
+        <div className="grid grid-cols-3 gap-3 divide-x divide-border rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+          {numbers.map((x) => (
+            <div key={x.label} className="flex min-w-0 flex-col gap-1 pl-3 first:pl-0">
+              <span className="text-xs text-muted-foreground">{x.label}</span>
+              <span className="tabular truncate text-xl font-bold">{x.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <SectionCaption>Collect today</SectionCaption>
+          <TextLink href="/ledger?show=overdue">All</TextLink>
+        </div>
+        {s.collect === null ? (
+          <div className="flex items-center gap-2">
+            <HintLine tone="risk">Couldn&apos;t load</HintLine>
+            <TextLink href="/dashboard">Retry</TextLink>
+          </div>
+        ) : s.collect.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing to collect</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {s.collect.map((r) => (
+              <li key={r.retailerId}>
+                <OverdueRow row={r} href={`/receipts/new?retailer=${r.retailerId}`} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <Cards>
+        <Card index={0} href="/orders?show=rate" title="My orders" icon={ClipboardList} tone="orange" stats={[{ label: "Rate to fill", value: num(s.pendingRate) }, { label: "Today", value: num(s.today) }]} />
+        <Card
+          index={1}
+          href="/ledger"
+          title="My shops' dues" icon={Banknote} tone="rose"
+          stats={[
+            { label: "Retailers", value: num(s.retailersWithDues) },
+            { label: "Due", value: money(s.duesPaise) },
+          ]}
+        />
+      </Cards>
+    </div>
   );
 }
 
 export async function AccountsHome() {
   const s = await getAccountsHome();
+  const now = new Date();
   return (
     <Cards>
-      <Card index={0} href="/approvals" title="Approvals" icon={BadgeCheck} tone="moss" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
-      <Card index={1} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
+      <Card index={0} href="/approvals" title="Approvals" icon={BadgeCheck} tone="moss" stats={[{ label: "Waiting", value: num(s.approvals) }]} note={ageNote(s.oldest.approvals, now)} />
+      <Card index={1} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} note={ageNote(s.oldest.online, now)} />
       <Card
         index={2}
         href="/wallet"
@@ -124,23 +209,35 @@ export async function AccountsHome() {
           { label: "To confirm", value: num(s.handoversToConfirm) },
           { label: "Amount", value: money(s.cashToConfirmPaise) },
         ]}
+        note={ageNote(s.oldest.handovers, now)}
       />
     </Cards>
   );
 }
 
 export async function LogisticsHome() {
-  const s = await getLogisticsHome();
+  const now = new Date();
+  const s = await getLogisticsHome(now);
+  const cover = s.godown.coverDays;
   return (
     <Cards>
-      <Card index={0} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} />
+      <Card index={0} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} note={ageNote(s.oldestToDispatch, now)} />
+      <Card
+        index={1}
+        href="/stock"
+        title="Godown stock"
+        icon={Warehouse}
+        tone="blue"
+        stats={[{ label: "Bags", value: num(s.godown.bags) }]}
+        note={{ text: `Cover ${cover === null ? "—" : daysText(cover)}`, tone: coverTone(cover) }}
+      />
       {s.trucks.length === 0 ? (
-        <Card index={1} href="/stock" title="Truck stock" icon={Package} tone="blue" stats={[{ label: "Loaded trucks", value: "0" }]} />
+        <Card index={2} href="/stock" title="Truck stock" icon={Package} tone="blue" stats={[{ label: "Loaded trucks", value: "0" }]} />
       ) : (
         s.trucks.map((t, i) => (
           <Card
             key={t.truck}
-            index={i + 1}
+            index={i + 2}
             href="/stock"
             title={`Truck ${t.truck}`}
             icon={Truck}
