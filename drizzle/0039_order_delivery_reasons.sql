@@ -17,6 +17,10 @@
 -- has a default, and the previous version never writes a receipt_reversal row. Note that it does
 -- not set reason codes either, so its reject / cancel / reversal / stock correction would be
 -- refused by the NOT VALID checks: drop the three *_reason_code_required checks if rolling back.
+--   ALTER TABLE order_events DROP CONSTRAINT order_events_reason_code_required;
+--   ALTER TABLE receipts DROP CONSTRAINT receipts_reason_code_required;
+--   ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_reason_code_required;
+--   (the previous version would also post reversals as + receipt_credit again; readers handle both.)
 
 ALTER TABLE "ledger_entries" DROP CONSTRAINT "ledger_entries_kind_valid";--> statement-breakpoint
 ALTER TABLE "order_events" ADD COLUMN "reason_code" text;--> statement-breakpoint
