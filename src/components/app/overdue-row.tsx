@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CallButton } from "@/components/app/call-button";
 import { formatDayMonth } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
-import type { OverdueRow as Row } from "@/lib/overdue-rules";
+import { lastPaymentDay, type OverdueRow as Row } from "@/lib/overdue-rules";
 import { cn } from "@/lib/utils";
 import { daysText } from "@/lib/words";
 
@@ -68,7 +68,7 @@ export function OverdueRow({ row, href, density = "full" }: { row: Row; href: st
         <p className={cn("tabular text-xs text-muted-foreground", faded)}>
           Due {money(row.duePaise)} ·{" "}
           {row.lastPayment
-            ? `Paid ${money(row.lastPayment.totalPaise)} on ${formatDayMonth(row.lastPayment.createdAt)}`
+            ? `Paid ${money(row.lastPayment.totalPaise)} on ${formatDayMonth(lastPaymentDay(row.lastPayment))}`
             : "No payment yet"}
         </p>
       )}

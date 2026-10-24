@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BACKDATE_REASON_CODES,
   checkReason,
   isOrderEventReasonCode,
   isPaymentReasonCode,
@@ -34,6 +35,8 @@ describe("the lists", () => {
     expect(labelsOf("payment")).toEqual(["Wrong shop", "Wrong amount", "Duplicate", "Not received", "Bounced", "Other"]);
     expect(codesOf("stock")).toEqual(["transit_short", "transit_burst", "damage", "entry_mistake", "expired", "other"]);
     expect(labelsOf("stock")).toEqual(["Transit short", "Transit burst", "Damaged", "Wrong entry", "Expired", "Other"]);
+    expect(codesOf("backdate")).toEqual(["late_entry", "bank_delay", "entry_mistake", "owner_said", "other"]);
+    expect(labelsOf("backdate")).toEqual(["Late entry", "Bank delay", "Wrong entry", "Owner said", "Other"]);
     expect(codesOf("shop_off")).toEqual(["closed_down", "moved", "bad_debt", "duplicate", "other"]);
     expect(labelsOf("shop_off")).toEqual(["Closed down", "Moved", "Bad debt", "Duplicate", "Other"]);
   });
@@ -65,6 +68,18 @@ describe("the lists", () => {
     expect(isReasonCode("cancel", "truck_issue")).toBe(true);
     expect(isReasonCode("reject", "truck_issue")).toBe(false);
     expect(isReasonCode("reject", 3)).toBe(false);
+  });
+  it("the backdate code list matches its picker", () => {
+    expect(BACKDATE_REASON_CODES).toEqual(codesOf("backdate"));
+    expect(isReasonCode("backdate", "bank_delay")).toBe(true);
+    expect(isReasonCode("backdate", "bounced")).toBe(false);
+    expect(reasonLabel("late_entry", "backdate")).toBe("Late entry");
+    expect(reasonText("other", " cash found in drawer ", "backdate")).toBe("Other · cash found in drawer");
+  });
+  it("a backdate reason needs a code from its list, and a note for Other", () => {
+    expect(checkReason("backdate", "late_entry", "")).toEqual({ ok: true, code: "late_entry", note: "" });
+    expect(checkReason("backdate", "other", " ")).toEqual({ ok: false, error: "Add a note" });
+    expect(checkReason("backdate", "damage", "")).toEqual({ ok: false, error: "Pick a reason" });
   });
 });
 

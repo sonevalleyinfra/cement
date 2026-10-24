@@ -38,7 +38,10 @@ export type LedgerSourceRow = {
   balancePaise: number;
   note: string;
   actorId: string;
+  /** The ledger moment (a payment counts on the day it was received, see ledgerMomentSql). */
   createdAt: Date;
+  /** A payment received on an earlier day than it was typed in: show its date only (no time). */
+  backdated?: boolean;
   /** Dispatch rows: the product and bags sent (null when unknown). */
   product: string | null;
   bags: number | null;
@@ -48,6 +51,8 @@ export type LedgerViewRow = {
   id: string;
   label: string;
   createdAt: Date;
+  /** Show the date only (the time is not the moment it happened). */
+  backdated: boolean;
   /** Signed amount, or null when this viewer must not see it. */
   amountPaise: number | null;
   /** Balance after the row, or null when this viewer must not see it. */
@@ -72,6 +77,7 @@ export function ledgerRowsForViewer(role: string | null | undefined, rows: reado
     id: r.id,
     label: ledgerEntryLabel(r.kind, r.amountPaise),
     createdAt: r.createdAt,
+    backdated: r.backdated === true,
     amountPaise: staff || PAYMENT_KINDS.includes(r.kind) ? r.amountPaise : null,
     balancePaise: staff ? r.balancePaise : null,
     what: r.kind === "order_debit" ? [r.product, r.bags !== null ? `${r.bags} bags` : null].filter(Boolean).join(" · ") : "",

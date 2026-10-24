@@ -1,10 +1,11 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { PAYMENT_REASON_CODES } from "../../lib/reason-codes";
-import { PAYMENT_MODES, RECEIPT_STATUSES } from "../../lib/receipt-rules";
+import { bigint, check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { BACKDATE_REASON_CODES, PAYMENT_REASON_CODES } from "../../lib/reason-codes";
+import { ONLINE_METHODS, PAYMENT_MODES, RECEIPT_STATUSES } from "../../lib/receipt-rules";
 import { WALLET_KINDS } from "../../lib/wallet-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
+import { bankAccounts } from "./bank-accounts";
 import { retailers } from "./retailers";
 
 /**
@@ -17,6 +18,13 @@ import { retailers } from "./retailers";
  * reject or reversal; `rejectReason` / `reversalReason` then hold the optional note (rows from before
  * 0039 have no code and the free text there). `utr` is stored without spaces in capitals and is unique among online
  * payments that still stand (a rejected or reversed payment frees its UTR).
+ * Online details (drizzle/0041): `onlineMethod` (upi | neft | rtgs | imps), `bankAccountId` (the firm's
+ * account it came into) and `payerName` ('' = not given). New online rows must have the method and the
+ * account (BEFORE INSERT trigger receipts_online_details_required); online rows from before 0041 have
+ * null there ("not recorded"). Cash rows never have them (receipts_online_details_cash_none).
+ * `receivedOn` is the day (India) the money came: never after the day it was saved, and more than 2
+ * days before only with `backdateReasonCode` (lib/reason-codes.ts, backdate list; note in `backdateNote`).
+ * Old rows got the India day of `createdAt`. The ledger, aging and statement count a payment on that day.
  * Never deleted: enforced by DB triggers (drizzle/0037_books_append_only.sql).
  */
 export const receipts = pgTable(
@@ -30,8 +38,17 @@ export const receipts = pgTable(
     mode: text("mode").notNull(),
     totalPaise: bigint("total_paise", { mode: "number" }).notNull(),
     utr: text("utr"),
-    /** Optional note typed with an online payment. */
+    /** Optional note typed with the payment (cash ones too since 0041). */
     note: text("note").default("").notNull(),
+    onlineMethod: text("online_method"),
+    bankAccountId: uuid("bank_account_id").references(() => bankAccounts.id),
+    payerName: text("payer_name").default("").notNull(),
+    /** "YYYY-MM-DD", India. */
+    receivedOn: date("received_on", { mode: "string" })
+      .default(sql`((now() at time zone 'Asia/Kolkata')::date)`)
+      .notNull(),
+    backdateReasonCode: text("backdate_reason_code"),
+    backdateNote: text("backdate_note").default("").notNull(),
     /** received | unverified | verified | rejected | reversed */
     status: text("status").notNull(),
     receivedBy: text("received_by")
@@ -50,6 +67,7 @@ export const receipts = pgTable(
   (t) => [
     index("receipts_retailer_idx").on(t.retailerId, t.createdAt),
     index("receipts_created_idx").on(t.createdAt),
+    index("receipts_received_on_idx").on(t.receivedOn),
     uniqueIndex("receipts_utr_unique_idx")
       .on(t.utr)
       .where(sql`${t.mode} = 'online' and ${t.status} not in ('rejected', 'reversed')`),
@@ -60,6 +78,18 @@ export const receipts = pgTable(
     check("receipts_reason_code_valid", sql`${t.reasonCode} is null or ${oneOf(t.reasonCode, PAYMENT_REASON_CODES)}`),
     // NOT VALID in drizzle/0039: old rejected / reversed rows (final, never updated again) are skipped.
     check("receipts_reason_code_required", sql`${t.status} not in ('rejected', 'reversed') or ${t.reasonCode} is not null`),
+    check("receipts_online_method_valid", sql`${t.onlineMethod} is null or ${oneOf(t.onlineMethod, ONLINE_METHODS)}`),
+    check("receipts_online_details_cash_none", sql`${t.mode} = 'online' or (${t.onlineMethod} is null and ${t.bankAccountId} is null)`),
+    check("receipts_payer_name_valid", sql`char_length(${t.payerName}) <= 80 and ${t.payerName} = btrim(${t.payerName})`),
+    check(
+      "receipts_backdate_reason_code_valid",
+      sql`${t.backdateReasonCode} is null or ${oneOf(t.backdateReasonCode, BACKDATE_REASON_CODES)}`,
+    ),
+    check("receipts_received_on_not_future", sql`${t.receivedOn} <= (${t.createdAt} at time zone 'Asia/Kolkata')::date`),
+    check(
+      "receipts_backdate_reason_required",
+      sql`${t.backdateReasonCode} is not null or ${t.receivedOn} >= (${t.createdAt} at time zone 'Asia/Kolkata')::date - 2`,
+    ),
   ],
 );
 

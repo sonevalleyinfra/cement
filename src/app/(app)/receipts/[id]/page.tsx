@@ -3,15 +3,17 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
-import { receipts, retailers, user as users } from "@/db/schema";
-import { formatDateTime } from "@/lib/datetime";
+import { bankAccounts, receipts, retailers, user as users } from "@/db/schema";
+import { bankAccountLabel } from "@/lib/bank-account-rules";
+import { formatDate, formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
 import { reasonText } from "@/lib/reason-codes";
 import { canReverseReceipt } from "@/lib/receipt-reversal";
-import { canVerifyPayments, MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
+import { canVerifyPayments, MODE_LABELS, ONLINE_METHOD_LABELS, receiptChip } from "@/lib/receipt-rules";
+import { istStartOf } from "@/lib/report-range";
 import { showStaffDetails } from "@/lib/receipt-view-rules";
 import { requireUser } from "@/lib/session";
 import { ReasonAction, VerifyButton } from "../payment-actions";
@@ -32,6 +34,13 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       totalPaise: receipts.totalPaise,
       utr: receipts.utr,
       note: receipts.note,
+      onlineMethod: receipts.onlineMethod,
+      accountName: bankAccounts.name,
+      accountLast4: bankAccounts.last4,
+      payerName: receipts.payerName,
+      receivedOn: receipts.receivedOn,
+      backdateReasonCode: receipts.backdateReasonCode,
+      backdateNote: receipts.backdateNote,
       collector: users.name,
       createdAt: receipts.createdAt,
       checkedBy: receipts.checkedBy,
@@ -45,6 +54,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
     .from(receipts)
     .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
     .innerJoin(users, eq(users.id, receipts.receivedBy))
+    .leftJoin(bankAccounts, eq(bankAccounts.id, receipts.bankAccountId))
     .where(eq(receipts.id, id))
     .limit(1);
   if (!r) notFound();
@@ -67,6 +77,18 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
   const toCheck = !retailerView && r.mode === "online" && r.status === "unverified" && canVerifyPayments(user.role);
   const showReverse = !retailerView && canReverseReceipt(user.role, r.status);
   const chip = receiptChip(r.status);
+  // Old online payments have no method or account: those lines are left out. Notes and backdate reasons are staff only.
+  const details = (
+    [
+      ["Received on", formatDate(istStartOf(r.receivedOn))],
+      ["Method", r.onlineMethod ? (ONLINE_METHOD_LABELS[r.onlineMethod] ?? r.onlineMethod) : ""],
+      ["Into", r.accountName ? bankAccountLabel({ name: r.accountName, last4: r.accountLast4 }) : ""],
+      ["UTR", r.mode === "online" ? (r.utr ?? "") : ""],
+      ["Payer", r.payerName],
+      ["Note", staffDetails ? r.note : ""],
+      ["Backdated", staffDetails ? reasonText(r.backdateReasonCode, r.backdateNote, "backdate") : ""],
+    ] as const
+  ).filter(([, value]) => value);
 
   return (
     <div className="flex flex-col gap-4">
@@ -76,12 +98,18 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       </PageHeader>
       <div className="tabular text-3xl font-bold">{formatINR(r.totalPaise)}</div>
 
-      {r.mode === "online" && (
-        <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
-          <div className="text-muted-foreground">
-            UTR <span className="tabular font-semibold text-foreground">{r.utr}</span>
+      {/* Same facts block as the order page: 14px muted label, 16px semibold value, 32px rows. */}
+      <dl className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+        {details.map(([label, value]) => (
+          <div key={label} className="flex min-h-8 items-baseline justify-between gap-4">
+            <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
+            <dd className="tabular text-right text-base font-semibold break-words">{value}</dd>
           </div>
-          {staffDetails && r.note && <div className="text-muted-foreground">{r.note}</div>}
+        ))}
+      </dl>
+
+      {r.mode === "online" && ((checker && r.checkedAt) || (staffDetails && r.status === "rejected")) && (
+        <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">
           {checker && r.checkedAt && (
             <div className="text-muted-foreground">
               {r.status === "rejected" ? "Rejected" : "Verified"} · {checker} · {formatDateTime(r.checkedAt)}

@@ -40,6 +40,7 @@ const MORE_GROUPS: MoreGroup[] = [
       { href: "/wallet", label: "Cash", permission: "useWallet" },
       { href: "/ledger", label: "Ledger", permission: "viewLedger" },
       { href: "/suppliers", label: "Suppliers", permission: "viewSuppliers" },
+      { href: "/bank-accounts", label: "Bank accounts", permission: "manageBankAccounts" },
       { href: "/approvals", label: "Approvals", permission: "viewApprovals" },
     ],
   },

@@ -17,6 +17,7 @@ import {
 } from "@/db/schema";
 import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
 import { duesAging } from "@/lib/due-items";
+import { ledgerBackdatedSql, ledgerMomentSql } from "@/lib/ledger";
 import { lossReport } from "@/lib/loss-report";
 import { nameMaps, toMap } from "@/lib/names";
 import type { ReportRange } from "@/lib/report-range";
@@ -87,7 +88,7 @@ export async function getSalesReport(range: ReportRange) {
   return salesReport(await salesRows(range));
 }
 
-/** Dues with aging as of the last day of the range. */
+/** Dues with aging as of the last day of the range. A payment counts on the day it was received (ledgerMomentSql). */
 export async function getDuesAging(range: ReportRange) {
   const [rows, names] = await Promise.all([
     db
@@ -96,11 +97,12 @@ export async function getDuesAging(range: ReportRange) {
         kind: ledgerEntries.kind,
         amountPaise: ledgerEntries.amountPaise,
         orderId: ledgerEntries.orderId,
-        createdAt: ledgerEntries.createdAt,
+        createdAt: ledgerMomentSql,
       })
       .from(ledgerEntries)
-      .where(lt(ledgerEntries.createdAt, range.end))
-      .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id)),
+      .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
+      .where(lt(ledgerMomentSql, range.end))
+      .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id)),
     db.select({ id: retailers.id, name: retailers.name }).from(retailers),
   ]);
   return duesAging(rows, toMap(names), range.to);
@@ -114,7 +116,10 @@ export async function retailerOptions() {
     .orderBy(asc(retailers.name));
 }
 
-/** One retailer's statement for the range. */
+/**
+ * One retailer's statement for the range. `createdAt` is the ledger moment (a payment counts on the
+ * day it was received); `backdated` marks such a payment row (shown with its date only).
+ */
 export async function getRetailerStatement(retailerId: string, range: ReportRange) {
   const rows = await db
     .select({
@@ -122,11 +127,13 @@ export async function getRetailerStatement(retailerId: string, range: ReportRang
       kind: ledgerEntries.kind,
       amountPaise: ledgerEntries.amountPaise,
       note: ledgerEntries.note,
-      createdAt: ledgerEntries.createdAt,
+      createdAt: ledgerMomentSql,
+      backdated: ledgerBackdatedSql,
     })
     .from(ledgerEntries)
+    .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
     .where(eq(ledgerEntries.retailerId, retailerId))
-    .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id));
+    .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id));
   const at = byMoment(range);
   return buildStatement(rows, (r) => at(r.createdAt));
 }
@@ -247,7 +254,18 @@ const paymentColumns = {
   receivedBy: receipts.receivedBy,
 };
 
-/** Cash held now, online waiting now, and payments recorded in the range by mode. */
+/**
+ * Payments received in the range by `received_on` (IST dates, both ends inclusive). Reports → Cash
+ * and the owner Home "Collected" both read this, so the two always show the same rows.
+ */
+export function paymentsReceivedIn(range: ReportRange) {
+  return db
+    .select(paymentColumns)
+    .from(receipts)
+    .where(and(gte(receipts.receivedOn, range.from), lte(receipts.receivedOn, range.to)));
+}
+
+/** Cash held now, online waiting now, and payments received in the range (by `received_on`) by mode. */
 export async function getCashReport(range: ReportRange, now = new Date()) {
   const [holders, waiting, inRange] = await Promise.all([
     getCashHolders(),
@@ -255,10 +273,7 @@ export async function getCashReport(range: ReportRange, now = new Date()) {
       .select(paymentColumns)
       .from(receipts)
       .where(and(eq(receipts.mode, "online"), eq(receipts.status, "unverified"))),
-    db
-      .select(paymentColumns)
-      .from(receipts)
-      .where(and(gte(receipts.createdAt, range.start), lt(receipts.createdAt, range.end))),
+    paymentsReceivedIn(range),
   ]);
   return {
     holders,

@@ -8,6 +8,10 @@
  * Every demo dispatch has a valid driver phone.
  * and payments: cash by sales and logistics, one handover confirmed and one waiting, online
  * payments waiting / verified / rejected, and one reversed cash payment.
+ * Two bank accounts ("SBI Current" ··4521, "HDFC UPI"); every online payment has a method (UPI / NEFT /
+ * IMPS) and the account it came into, two have a payer name. One cash payment was received the day
+ * before it was typed in, and one online payment entered by the admin was received 10 days back
+ * (backdate reason "late_entry"). Every payment's received_on is on or before the India day it was saved.
  * Orders carry a source, "needed by" dates, two site deliveries, shop and staff notes, and the rejected,
  * cancelled, reversed and corrected rows carry reason codes (lib/reason-codes.ts).
  * Four areas, and every shop's master data and credit terms (with a first credit-history row).
@@ -21,6 +25,7 @@ import { db } from "@/db";
 import {
   areas,
   auditLog,
+  bankAccounts,
   brands,
   creditLimitChanges,
   cementTypes,
@@ -342,6 +347,29 @@ async function seedSuppliers(adminId: string, prismId: string, productRows: { id
 
 const AREAS = ["Patna City", "Gaya Road", "Arrah Bazar", "North Bihar"];
 
+const BANK_ACCOUNTS = [
+  { name: "SBI Current", last4: "4521", upiId: null },
+  { name: "HDFC UPI", last4: null, upiId: "sonevalley@hdfcbank" },
+];
+
+/** The demo bank accounts, found again if they already exist (new ones get their activity row). */
+async function seedBankAccounts(adminId: string): Promise<Map<string, string>> {
+  await db.transaction(async (tx) => {
+    const added = await tx
+      .insert(bankAccounts)
+      .values(BANK_ACCOUNTS.map((a) => ({ ...a, createdBy: adminId })))
+      .onConflictDoNothing()
+      .returning();
+    for (const a of added) {
+      const details = { name: a.name, last4: a.last4, upiId: a.upiId };
+      await log(tx, { actorId: adminId, entity: "bank_account", entityId: a.id, action: "add", details }, new Date());
+    }
+  });
+  const names = BANK_ACCOUNTS.map((a) => a.name);
+  const rows = await db.select({ id: bankAccounts.id, name: bankAccounts.name }).from(bankAccounts).where(inArray(bankAccounts.name, names));
+  return new Map(rows.map((a) => [a.name, a.id]));
+}
+
 /** The demo areas, found again if they already exist (new ones get their activity row). */
 async function seedAreas(adminId: string): Promise<Map<string, string>> {
   await db.transaction(async (tx) => {
@@ -462,6 +490,9 @@ async function main() {
   console.log("[seed-demo] Users ready.");
 
   const areaIds = await seedAreas(admin.id);
+  const accountIds = await seedBankAccounts(admin.id);
+  const sbi = accountIds.get("SBI Current")!;
+  const hdfc = accountIds.get("HDFC UPI")!;
 
   // Shops, trucks and the godown are found again if they already exist.
   const shops = [
@@ -816,6 +847,8 @@ async function main() {
         totalPaise: 1_000_000,
         status: "received",
         receivedBy: ids.sales,
+        // Back-dated rows set received_on themselves (the default is today, after their saved day).
+        receivedOn: toISTDateKey(at(50)),
         createdAt: at(50),
         updatedAt: at(50),
       })
@@ -827,7 +860,7 @@ async function main() {
         entity: "payment",
         entityId: r.id,
         action: "record",
-        details: { receiptNo: r.receiptNo, retailerId: r.retailerId, mode: "cash", amountPaise: r.totalPaise },
+        details: { receiptNo: r.receiptNo, retailerId: r.retailerId, mode: "cash", amountPaise: r.totalPaise, receivedOn: r.receivedOn },
       },
       at(50),
     );
@@ -862,19 +895,35 @@ async function main() {
 
   // Payments (spec section 6). Amounts in paise.
   // Cash is "received": the dues go down at once and the person who took it holds the cash.
-  const cash = (shopIdx: number, paise: number, by: string) =>
+  const cash = (shopIdx: number, paise: number, by: string, receivedOn = today, note = "") =>
     db.transaction(async (tx) => {
-      const plan = planReceipt({ retailerId: shopRows[shopIdx].id, mode: "cash", totalPaise: paise });
-      if (!plan.ok || !plan.ledger) throw new Error("Bad demo cash payment");
+      const plan = planReceipt({
+        retailerId: shopRows[shopIdx].id,
+        mode: "cash",
+        totalPaise: paise,
+        note,
+        role: "sales",
+        today,
+        receivedOn,
+      });
+      if (!plan.ok || !plan.ledger) throw new Error(plan.ok ? "Bad demo cash payment" : plan.error);
       const [r] = await tx
         .insert(receipts)
-        .values({ retailerId: shopRows[shopIdx].id, mode: "cash", totalPaise: paise, status: plan.status, receivedBy: by })
+        .values({
+          retailerId: shopRows[shopIdx].id,
+          mode: "cash",
+          totalPaise: paise,
+          note: plan.note,
+          receivedOn: plan.receivedOn,
+          status: plan.status,
+          receivedBy: by,
+        })
         .returning();
       await postEntry(tx, plan.ledger, by, `Payment #${r.receiptNo}`, r.id);
       await tx.insert(walletMovements).values({ collectorId: by, kind: "collected", amountPaise: paise, receiptId: r.id, actorId: by });
       await log(
         tx,
-        { actorId: by, entity: "payment", entityId: r.id, action: "record", details: paymentFacts(r) },
+        { actorId: by, entity: "payment", entityId: r.id, action: "record", details: { ...paymentFacts(r), receivedOn: r.receivedOn } },
         r.createdAt,
       );
       return r;
@@ -888,8 +937,37 @@ async function main() {
     ...(r.utr ? { utr: r.utr } : {}),
   });
   // Online is "unverified" (dues unchanged) until accounts verify or reject it.
-  const online = async (shopIdx: number, paise: number, by: string, utr: string, result: "unverified" | "verified" | "rejected") => {
-    const plan = planReceipt({ retailerId: shopRows[shopIdx].id, mode: "online", totalPaise: paise, utr });
+  type OnlineExtra = {
+    method: "upi" | "neft" | "imps";
+    accountId: string;
+    payerName?: string;
+    role?: string;
+    receivedOn?: string;
+    backdateReasonCode?: string;
+    backdateNote?: string;
+  };
+  const online = async (
+    shopIdx: number,
+    paise: number,
+    by: string,
+    utr: string,
+    result: "unverified" | "verified" | "rejected",
+    extra: OnlineExtra,
+  ) => {
+    const plan = planReceipt({
+      retailerId: shopRows[shopIdx].id,
+      mode: "online",
+      totalPaise: paise,
+      utr,
+      role: extra.role ?? "sales",
+      today,
+      receivedOn: extra.receivedOn ?? today,
+      onlineMethod: extra.method,
+      bankAccountId: extra.accountId,
+      payerName: extra.payerName,
+      backdateReasonCode: extra.backdateReasonCode,
+      backdateNote: extra.backdateNote,
+    });
     if (!plan.ok) throw new Error(plan.error);
     await db.transaction(async (tx) => {
       const [r] = await tx
@@ -899,6 +977,12 @@ async function main() {
           mode: "online",
           totalPaise: paise,
           utr: plan.utr,
+          onlineMethod: plan.onlineMethod,
+          bankAccountId: plan.bankAccountId,
+          payerName: plan.payerName,
+          receivedOn: plan.receivedOn,
+          backdateReasonCode: plan.backdate?.code ?? null,
+          backdateNote: plan.backdate?.note ?? "",
           status: result,
           receivedBy: by,
           checkedBy: result === "unverified" ? null : ids.accounts,
@@ -908,7 +992,14 @@ async function main() {
         })
         .returning();
       // Recorded first, then verified or rejected, as in the app.
-      await log(tx, { actorId: by, entity: "payment", entityId: r.id, action: "record", details: paymentFacts(r) }, r.createdAt);
+      const recorded = {
+        ...paymentFacts(r),
+        receivedOn: r.receivedOn,
+        onlineMethod: r.onlineMethod,
+        bankAccountId: r.bankAccountId,
+        ...(r.backdateReasonCode ? { backdateReasonCode: r.backdateReasonCode } : {}),
+      };
+      await log(tx, { actorId: by, entity: "payment", entityId: r.id, action: "record", details: recorded }, r.createdAt);
       if (result !== "unverified") {
         await log(
           tx,
@@ -951,8 +1042,8 @@ async function main() {
     }
   };
 
-  // Sales takes Rs 10,000 cash from Kumar Cement Store and Rs 2,000 from Sharma Traders.
-  await cash(3, 1_000_000, ids.sales);
+  // Sales takes Rs 10,000 cash from Kumar Cement Store (yesterday, typed in today) and Rs 2,000 from Sharma Traders.
+  await cash(3, 1_000_000, ids.sales, daysAgo(1), "Collected at the shop yesterday evening");
   const wrong = await cash(0, 200_000, ids.sales);
   // Accounts reverse the Rs 2,000 (wrong shop) while sales still holds it.
   await db.transaction(async (tx) => {
@@ -993,10 +1084,19 @@ async function main() {
   // Logistics takes Rs 5,000 cash from Yadav Enterprises and asks to hand it over (waiting for accounts).
   await cash(4, 500_000, ids.logistics);
   await handover(ids.logistics, 500_000, "pending");
-  // Online: one waiting for accounts, one verified, one rejected.
-  await online(4, 700_000, ids.logistics, "DEMOUTR0001", "unverified");
-  await online(3, 400_000, ids.sales, "DEMOUTR0002", "verified");
-  await online(2, 300_000, ids.sales, "DEMOUTR0003", "rejected");
+  // Online: one waiting for accounts, one verified, one rejected, each with its method and account.
+  await online(4, 700_000, ids.logistics, "DEMOUTR0001", "unverified", { method: "upi", accountId: hdfc, payerName: "Ravi Yadav" });
+  await online(3, 400_000, ids.sales, "DEMOUTR0002", "verified", { method: "neft", accountId: sbi });
+  await online(2, 300_000, ids.sales, "DEMOUTR0003", "rejected", { method: "imps", accountId: sbi });
+  // The admin enters a NEFT received 10 days ago (late entry); accounts verify it now. It counts on its received day.
+  await online(5, 800_000, admin.id, "DEMOUTR0004", "verified", {
+    method: "neft",
+    accountId: sbi,
+    payerName: "Mishra Constructions",
+    role: "admin",
+    receivedOn: daysAgo(10),
+    backdateReasonCode: "late_entry",
+  });
 
   await seedSuppliers(admin.id, prism.id, productRows);
 

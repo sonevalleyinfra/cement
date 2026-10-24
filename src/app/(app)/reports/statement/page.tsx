@@ -50,7 +50,9 @@ export default async function RetailerStatementPage({ searchParams }: { searchPa
             rows={[
               ["", "Opening", "", money(s.openingPaise)],
               ...s.entries.map((e) => [
-                <span key="d" className="text-xs font-normal">{formatDateTime(e.createdAt)}</span>,
+                <span key="d" className="text-xs font-normal">
+                  {e.backdated ? formatDate(e.createdAt) : formatDateTime(e.createdAt)}
+                </span>,
                 <span key="k" className="flex flex-col">
                   <span>{ledgerEntryLabel(e.kind, e.amountPaise)}</span>
                   {e.note && <span className="text-xs text-muted-foreground">{e.note}</span>}

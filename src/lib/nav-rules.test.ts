@@ -49,6 +49,11 @@ describe("moreGroups", () => {
     expect(people?.rows).toContainEqual({ href: "/areas", label: "Areas", permission: "editRetailers" });
     for (const role of ["sales", "accounts", "logistics", "retailer"]) expect(hrefs(role)).not.toContain("/areas");
   });
+  it("lists Bank accounts under Money for admin only", () => {
+    const money = moreGroups("admin").find((g) => g.title === "Money");
+    expect(money?.rows).toContainEqual({ href: "/bank-accounts", label: "Bank accounts", permission: "manageBankAccounts" });
+    for (const role of ["sales", "accounts", "logistics", "retailer"]) expect(hrefs(role)).not.toContain("/bank-accounts");
+  });
   it("shows Books check only to admin", () => {
     expect(hrefs("accounts")).not.toContain("/reports/books");
     expect(hrefs("sales")).not.toContain("/reports/books");

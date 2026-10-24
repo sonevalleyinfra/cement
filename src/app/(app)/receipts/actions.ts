@@ -3,9 +3,11 @@
 import { and, eq, notInArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { receipts, retailers, user, walletMovements } from "@/db/schema";
+import { bankAccounts, receipts, retailers, user, walletMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
-import { isUniqueViolation } from "@/lib/db-errors";
+import { BANK_ACCOUNT_OFF } from "@/lib/bank-account-rules";
+import { toISTDateKey } from "@/lib/datetime";
+import { isCheckViolation, isUniqueViolation } from "@/lib/db-errors";
 import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { getBalance, postEntry, type DbOrTx } from "@/lib/ledger";
@@ -20,6 +22,7 @@ import {
   planReceipt,
   planReject,
   planVerify,
+  RECEIVED_ON_RANGE,
   UTR_FREED_STATUSES,
   UTR_TAKEN,
 } from "@/lib/receipt-rules";
@@ -74,7 +77,9 @@ async function lockRetailer(tx: DbOrTx, retailerId: string) {
 /**
  * Records one payment from a retailer. Any staff member may.
  * Cash: the ledger credit (dues go down now) and the cash held by the recorder, in one transaction.
- * Online: saved as unverified with its UTR (dues unchanged); accounts are told.
+ * Online: saved as unverified with its UTR, method and the account it came into (dues unchanged);
+ * accounts are told. Both: an optional note and the day received (staff up to 2 days back; admin
+ * older with a backdate reason, see checkReceivedOn).
  * `requestId` is the form's one-time id: a second tap gives the first payment back (request-rules.ts).
  */
 export async function saveReceipt(input: {
@@ -83,6 +88,12 @@ export async function saveReceipt(input: {
   totalPaise: number;
   utr?: string;
   note?: string;
+  receivedOn: string;
+  onlineMethod?: string | null;
+  bankAccountId?: string | null;
+  payerName?: string;
+  backdateReasonCode?: string | null;
+  backdateNote?: string;
   requestId: string;
 }): Promise<SaveReceiptResult> {
   const session = await requireRole(...rolesFor("recordReceipt"));
@@ -96,7 +107,15 @@ export async function saveReceipt(input: {
     mode: input.mode,
     totalPaise: input.totalPaise,
     utr: typeof input.utr === "string" ? input.utr : null,
-    note: input.mode === "online" && typeof input.note === "string" ? input.note : null,
+    note: typeof input.note === "string" ? input.note : null,
+    role: session.user.role,
+    today: toISTDateKey(new Date()),
+    receivedOn: input.receivedOn,
+    onlineMethod: input.onlineMethod,
+    bankAccountId: input.bankAccountId,
+    payerName: input.payerName,
+    backdateReasonCode: input.backdateReasonCode,
+    backdateNote: input.backdateNote,
   });
   if (!plan.ok) return plan;
 
@@ -107,6 +126,15 @@ export async function saveReceipt(input: {
       // Then the recorder (lock order): someone switched off meanwhile cannot take new cash (staff-cash.ts).
       const recorder = await lockCashRecorder(tx, session.user.id, "recordReceipt");
       if (!recorder.ok) return recorder;
+      if (plan.bankAccountId) {
+        // Key share: the account cannot be deleted while this payment is saved; switched off = refused.
+        const [account] = await tx
+          .select({ active: bankAccounts.active })
+          .from(bankAccounts)
+          .where(eq(bankAccounts.id, plan.bankAccountId))
+          .for("key share");
+        if (!account?.active) return { ok: false, error: BANK_ACCOUNT_OFF };
+      }
       if (plan.utr) {
         const same = await tx
           .select({ mode: receipts.mode, status: receipts.status, utr: receipts.utr })
@@ -123,6 +151,12 @@ export async function saveReceipt(input: {
           totalPaise: input.totalPaise,
           utr: plan.utr,
           note: plan.note,
+          onlineMethod: plan.onlineMethod,
+          bankAccountId: plan.bankAccountId,
+          payerName: plan.payerName,
+          receivedOn: plan.receivedOn,
+          backdateReasonCode: plan.backdate?.code ?? null,
+          backdateNote: plan.backdate?.note ?? "",
           status: plan.status,
           receivedBy: session.user.id,
         })
@@ -139,6 +173,11 @@ export async function saveReceipt(input: {
           mode: input.mode,
           amountPaise: input.totalPaise,
           ...(plan.utr ? { utr: plan.utr } : {}),
+          receivedOn: plan.receivedOn,
+          ...(plan.onlineMethod ? { onlineMethod: plan.onlineMethod, bankAccountId: plan.bankAccountId } : {}),
+          ...(plan.backdate
+            ? { backdateReasonCode: plan.backdate.code, ...(plan.backdate.note ? { backdateNote: plan.backdate.note } : {}) }
+            : {}),
         },
       });
       if (plan.walletPaise > 0) {
@@ -178,6 +217,10 @@ export async function saveReceipt(input: {
   } catch (error) {
     // Two people saving the same UTR at the same moment: the database rule stops the second.
     if (isUniqueViolation(error, "receipts_utr_unique_idx")) return { ok: false, error: UTR_TAKEN };
+    // Saved just after midnight in India: the day picked is now one day further back than allowed.
+    if (isCheckViolation(error, "receipts_backdate_reason_required", "receipts_received_on_not_future")) {
+      return { ok: false, error: RECEIVED_ON_RANGE };
+    }
     throw error;
   }
 }

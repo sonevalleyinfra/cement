@@ -17,6 +17,7 @@
  *   reason, mode, utr, receiptNo, name, ...     short text / numbers
  */
 import { formatINR } from "./money";
+import { ONLINE_METHOD_LABELS } from "./receipt-rules";
 import { CLAIM_LABELS, isClaimStatus } from "./purchase-rules";
 import { SUPPLIER_KINDS } from "./supplier-rules";
 
@@ -34,6 +35,8 @@ export const AUDIT_ACTIONS = {
   payment: ["record", "verify", "reject", "reverse"],
   handover: ["request", "confirm", "reject"],
   ledger: ["opening", "adjustment"],
+  // The firm's bank accounts online payments come into (admin list at /bank-accounts)
+  bank_account: ["add", "edit", "switch_off", "switch_on", "delete"],
   // Supplier accounts, one per brand (spec section 7)
   supplier_entry: SUPPLIER_KINDS,
   // Masters
@@ -79,7 +82,7 @@ export const LEGACY_ENTITIES: Record<string, AuditEntity> = { prism_entry: "supp
 export const ACTIVITY_GROUPS = {
   orders: ["order", "dispatch"],
   stock: ["stock"],
-  payments: ["payment", "handover", "ledger"],
+  payments: ["payment", "handover", "ledger", "bank_account"],
   suppliers: ["supplier_entry"],
   masters: ["user", "retailer", "godown", "area", "brand", "product", "cement_type", "grade", "vehicle", "report"],
 } as const satisfies Record<string, readonly AuditEntity[]>;
@@ -262,9 +265,10 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
     case "payment": {
       const money = amount !== null ? rs(amount) : "a payment";
       const mode = s(d.mode) === "online" ? "online" : "cash";
+      const method = ONLINE_METHOD_LABELS[s(d.onlineMethod)];
       switch (row.action) {
         case "record":
-          return say(`recorded ${money} ${mode} from ${shop}${s(d.utr) ? ` (UTR ${s(d.utr)})` : ""}`);
+          return say(`recorded ${money} ${mode}${method ? ` (${method})` : ""} from ${shop}${s(d.utr) ? ` (UTR ${s(d.utr)})` : ""}`);
         case "verify":
           return say(`verified ${money} online from ${shop}`);
         case "reject":
@@ -300,6 +304,20 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
       if (row.action === "adjustment") return say(`adjusted ${possessive(shop)} dues by ${signed(value)}${reason}`);
       break;
     }
+    case "bank_account":
+      switch (row.action) {
+        case "add":
+          return say(`added ${thing("bank account")}`);
+        case "edit":
+          return say(`edited ${thing("bank account")}`);
+        case "switch_off":
+          return say(`switched off ${thing("bank account")}`);
+        case "switch_on":
+          return say(`switched on ${thing("bank account")}`);
+        case "delete":
+          return say(`deleted ${thing("bank account")}`);
+      }
+      break;
     case "supplier_entry":
     case "prism_entry": {
       const value = amount ?? 0;

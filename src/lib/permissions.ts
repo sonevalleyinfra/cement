@@ -48,6 +48,8 @@ export const ACTION_ROLES = {
   setOpeningBalance: ["admin"],
   /** Add a + or - adjustment to a retailer's ledger, with a reason. */
   adjustLedger: ["admin"],
+  /** The firm's bank accounts that online payments come into (add, edit, switch off). */
+  manageBankAccounts: ["admin"],
   // Supplier accounts, one per brand (docs/idea.md section 7): admin only
   viewSuppliers: ["admin"],
   /** Opening balance, payment to a supplier, scheme credit and adjustment. (A purchase is `manageStock`.) */

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { ledgerEntries, receipts, retailers, user } from "@/db/schema";
 import { toISTDateKey } from "@/lib/datetime";
 import { LAST_PAYMENT_SKIPS } from "@/lib/home-rules";
+import { ledgerMomentSql } from "@/lib/ledger";
 import { buildOverdueRows, type LastPayment, type OverdueShop } from "@/lib/overdue-rules";
 
 /**
@@ -17,10 +18,12 @@ export async function getOverdueRows(asOf = new Date()) {
         kind: ledgerEntries.kind,
         amountPaise: ledgerEntries.amountPaise,
         orderId: ledgerEntries.orderId,
-        createdAt: ledgerEntries.createdAt,
+        // A payment counts on the day it was received (ledgerMomentSql).
+        createdAt: ledgerMomentSql,
       })
       .from(ledgerEntries)
-      .orderBy(asc(ledgerEntries.createdAt), asc(ledgerEntries.id)),
+      .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
+      .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id)),
     db
       .select({
         id: retailers.id,
@@ -34,18 +37,18 @@ export async function getOverdueRows(asOf = new Date()) {
       })
       .from(retailers)
       .leftJoin(user, eq(user.id, retailers.salesRepId)),
-    // The newest payment per shop that still stands (not rejected or reversed).
+    // The newest payment per shop that still stands (not rejected or reversed), by the day it was received.
     db
       .selectDistinctOn([receipts.retailerId], {
         retailerId: receipts.retailerId,
         totalPaise: receipts.totalPaise,
-        createdAt: receipts.createdAt,
+        receivedOn: receipts.receivedOn,
       })
       .from(receipts)
       .where(notInArray(receipts.status, [...LAST_PAYMENT_SKIPS]))
-      .orderBy(receipts.retailerId, desc(receipts.createdAt)),
+      .orderBy(receipts.retailerId, desc(receipts.receivedOn), desc(receipts.createdAt)),
   ]);
   const shopMap = new Map<string, OverdueShop>(shops.map((s) => [s.id, s]));
-  const last = new Map<string, LastPayment>(payments.map((p) => [p.retailerId, { totalPaise: p.totalPaise, createdAt: p.createdAt }]));
+  const last = new Map<string, LastPayment>(payments.map((p) => [p.retailerId, { totalPaise: p.totalPaise, receivedOn: p.receivedOn }]));
   return buildOverdueRows(rows, shopMap, last, toISTDateKey(asOf));
 }

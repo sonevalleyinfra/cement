@@ -53,6 +53,8 @@ describe("allowed entities and actions", () => {
     expect(isAllowedAudit("retailer", "credit_change")).toBe(true);
     for (const action of ["create", "update", "activate", "deactivate"]) expect(isAllowedAudit("area", action)).toBe(true);
     expect(isAllowedAudit("area", "delete")).toBe(false);
+    for (const action of ["add", "edit", "switch_off", "switch_on", "delete"]) expect(isAllowedAudit("bank_account", action)).toBe(true);
+    expect(isAllowedAudit("bank_account", "create")).toBe(false);
   });
 
   it("refuses unknown pairs", () => {
@@ -68,6 +70,7 @@ describe("allowed entities and actions", () => {
     expect(new Set(grouped).size).toBe(grouped.length);
     expect(groupOf("dispatch")).toBe("orders");
     expect(groupOf("ledger")).toBe("payments");
+    expect(groupOf("bank_account")).toBe("payments");
     expect(groupOf("vehicle")).toBe("masters");
     expect(groupOf("unknown")).toBeNull();
     expect(groupOf("brand")).toBe("masters");
@@ -94,6 +97,7 @@ describe("activitySentence", () => {
     ["p1", "Prism Trade OPC 43"],
     ["g1", "Main Godown"],
     ["a1", "Patna City"],
+    ["ba1", "SBI Current"],
     ["v1", "BR01AB1234"],
     ["b1", "Prism"],
     ["b2", "UltraTech"],
@@ -166,6 +170,9 @@ describe("activitySentence", () => {
     expect(say(row("payment", "record", { amountPaise: 700_050, mode: "online", retailerId: "r1", utr: "UTR1" }))).toBe(
       "Ramesh recorded ₹7,000.50 online from Sharma Traders (UTR UTR1)",
     );
+    expect(
+      say(row("payment", "record", { amountPaise: 500_000, mode: "online", onlineMethod: "neft", retailerId: "r1", utr: "N1" })),
+    ).toBe("Ramesh recorded ₹5,000 online (NEFT) from Sharma Traders (UTR N1)");
     expect(say(row("payment", "reverse", { amountPaise: 200_000, mode: "cash", retailerId: "r1", reason: "Wrong shop" }))).toBe(
       "Ramesh reversed ₹2,000 cash payment from Sharma Traders: Wrong shop",
     );
@@ -184,6 +191,18 @@ describe("activitySentence", () => {
     expect(say(row("ledger", "opening", { amountPaise: -30_000, retailerId: "r1" }))).toBe(
       "Ramesh set Sharma Traders' opening balance: advance ₹300",
     );
+  });
+
+  it("bank accounts", () => {
+    expect(say(row("bank_account", "add", { name: "SBI Current" }, "ba1"))).toBe("Ramesh added bank account SBI Current");
+    expect(say(row("bank_account", "edit", { before: { last4: null }, after: { last4: "4521" } }, "ba1"))).toBe(
+      "Ramesh edited bank account SBI Current",
+    );
+    expect(say(row("bank_account", "switch_off", { name: "SBI Current" }, "ba1"))).toBe("Ramesh switched off bank account SBI Current");
+    expect(say(row("bank_account", "switch_on", { name: "SBI Current" }, "ba1"))).toBe("Ramesh switched on bank account SBI Current");
+    // A deleted account is gone from the names: the row keeps its name.
+    expect(say(row("bank_account", "delete", { name: "Old HDFC" }, "gone"))).toBe("Ramesh deleted bank account Old HDFC");
+    expect(say(row("bank_account", "delete", {}, "gone"))).toBe("Ramesh deleted a bank account");
   });
 
   it("supplier accounts name the brand", () => {

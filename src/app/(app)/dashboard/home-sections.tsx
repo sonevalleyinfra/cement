@@ -42,7 +42,7 @@ import { NO_LIMIT_FILTER, NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR, formatINRCompact } from "@/lib/money";
 import { getCashWithStaff, getOwnerMonth, getOwnerRisk, getOwnerToday, getTopOverdue } from "@/lib/owner-home";
 import { cashAgePill, deltaPct, homeWindows, perBagDelta, supplierValue, windowsText, type HomeWindows } from "@/lib/owner-home-rules";
-import { ageText, ageTone, coverTone, type Tone as NoteTone } from "@/lib/overdue-rules";
+import { ageText, ageTone, coverTone, lastPaymentDay, type Tone as NoteTone } from "@/lib/overdue-rules";
 import { getSuppliers } from "@/lib/suppliers";
 import { cn } from "@/lib/utils";
 import { bagsText, daysText, formatCount, shopsText } from "@/lib/words";
@@ -596,7 +596,7 @@ export async function RetailerHome({ userId }: { userId: string }) {
           s.lastPayment
             ? [
                 { label: "Last", value: money(s.lastPayment.totalPaise) },
-                { label: "On", value: formatDate(s.lastPayment.createdAt) },
+                { label: "On", value: formatDate(lastPaymentDay(s.lastPayment)) },
               ]
             : [{ label: "Last", value: "None" }]
         }

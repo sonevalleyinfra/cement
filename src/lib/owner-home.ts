@@ -1,7 +1,6 @@
-import { and, gte, lt } from "drizzle-orm";
 import { cache } from "react";
 import { db } from "@/db";
-import { receipts, retailers, walletMovements } from "@/db/schema";
+import { retailers, walletMovements } from "@/db/schema";
 import { hasNoLimit, totalDuesPaise } from "@/lib/home-rules";
 import { dueRows } from "@/lib/home-stats";
 import { nameMaps } from "@/lib/names";
@@ -16,7 +15,7 @@ import {
   type HomeWindows,
 } from "@/lib/owner-home-rules";
 import { istStartOf, rangeOf, type ReportRange } from "@/lib/report-range";
-import { getProfitReport, getSalesReport, purchaseCostRows } from "@/lib/reports";
+import { getProfitReport, getSalesReport, paymentsReceivedIn, purchaseCostRows } from "@/lib/reports";
 import { purchaseCostTotals } from "@/lib/sales-report";
 import { paymentsByMode } from "@/lib/staff-report";
 import { getBalances } from "@/lib/stock";
@@ -27,19 +26,9 @@ import { getBalances } from "@/lib/stock";
  * Every formula is in `owner-home-rules.ts`; this file only reads rows.
  */
 
-/** Payments recorded in the range, by mode (same rows as Reports → Cash). */
+/** Payments received in the range (by `received_on`), by mode: the same rows as Reports → Cash. */
 async function collected(range: ReportRange) {
-  const rows = await db
-    .select({
-      mode: receipts.mode,
-      status: receipts.status,
-      totalPaise: receipts.totalPaise,
-      createdAt: receipts.createdAt,
-      receivedBy: receipts.receivedBy,
-    })
-    .from(receipts)
-    .where(and(gte(receipts.createdAt, range.start), lt(receipts.createdAt, range.end)));
-  return collections(paymentsByMode(rows));
+  return collections(paymentsByMode(await paymentsReceivedIn(range)));
 }
 
 /** The overdue rows once per request and IST day (Risk and Top overdue share them). */
