@@ -1,6 +1,7 @@
 /**
  * Credit terms of a shop: a limit (paise), credit days and a status. Plain functions: no database.
- * Stored and editable only in this version: nothing is refused because of them yet (v2 B1).
+ * Approving an order checks them (v2 B1, credit-check-rules.ts): over the limit, overdue or a shop on
+ * hold / blocked needs an override reason (soft block). Dispatch does not check them yet.
  */
 
 import { formatINR, parseRupeesToPaise } from "./money";

@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { db } from "@/db";
 import { retailers, walletMovements } from "@/db/schema";
+import { getOverrideTotals } from "@/lib/credit-check";
 import { hasNoLimit, totalDuesPaise } from "@/lib/home-rules";
 import { dueRows } from "@/lib/home-stats";
 import { nameMaps } from "@/lib/names";
@@ -60,13 +61,15 @@ export async function getOwnerMonth(w: HomeWindows) {
 }
 
 export async function getOwnerRisk(w: HomeWindows, now: Date) {
-  const [dues, overdue, sales90, balances, costs, shops] = await Promise.all([
+  const [dues, overdue, sales90, balances, costs, shops, overrides] = await Promise.all([
     dueRows(),
     overdueRows(w.today),
     getSalesReport(w.last90),
     getBalances(),
     purchaseCostRows(now),
     db.select({ active: retailers.active, creditLimitPaise: retailers.creditLimitPaise }).from(retailers),
+    // Approvals over the credit check this month so far (IST).
+    getOverrideTotals(w.mtd),
   ]);
   const outstanding = totalDuesPaise(dues);
   const overduePaise = overdue.reduce((n, r) => n + r.overduePaise, 0);
@@ -76,6 +79,7 @@ export async function getOwnerRisk(w: HomeWindows, now: Date) {
     dso: dsoDays(outstanding, sales90.valuePaise),
     stock: stockValue(balances, purchaseCostTotals(costs)),
     noLimitShops: shops.filter(hasNoLimit).length,
+    overrides: { count: overrides.count, overLimitPaise: overrides.overLimitPaise },
   };
 }
 

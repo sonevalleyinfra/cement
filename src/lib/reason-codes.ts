@@ -42,7 +42,7 @@ export const RATE_CHANGE_REASONS = list([
   { code: "other", label: "Other" },
 ]);
 
-/** Approving over the credit limit. Codes only for now: the screen comes with the credit check (B1). */
+/** Approving an order the credit check flags (over the limit, overdue, shop on hold / blocked; v2 B1). */
 export const OVERRIDE_REASONS = list([
   { code: "payment_promised", label: "Payment promised" },
   { code: "old_customer", label: "Old customer" },

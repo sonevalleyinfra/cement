@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
 import { IconTile } from "@/components/app/icon-tile";
 import { KeyValue } from "@/components/app/key-value";
+import { Meter } from "@/components/app/meter";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -197,6 +198,12 @@ export default function DesignPage() {
       <HintLine>Last ₹353 · 12 Oct · Week ₹348–360</HintLine>
       <HintLine tone="caution">₹18 below last rate</HintLine>
       <HintLine tone="risk">Couldn&apos;t load</HintLine>
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Meter</h2>
+      <div className="flex flex-col gap-2 rounded-xl bg-muted p-3">
+        <Meter percent={72} label="Credit used" />
+        <Meter percent={100} tone="risk" label="Credit used" />
+      </div>
 
       <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Change on last month</h2>
       <div className="flex flex-wrap items-center gap-4">

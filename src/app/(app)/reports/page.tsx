@@ -1,9 +1,10 @@
-import { BookOpen, ChartColumn, Coins, Factory, Hourglass, Package, PackageX, ShieldCheck, Users, Wallet, type LucideIcon } from "lucide-react";
+import { BookOpen, ChartColumn, CircleAlert, Coins, Factory, Hourglass, Package, PackageX, ShieldCheck, Users, Wallet, type LucideIcon } from "lucide-react";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { RangeForm } from "@/components/app/range-form";
 import { Stat } from "@/components/app/stat";
+import { getOverrideTotals } from "@/lib/credit-check";
 import { rolesFor } from "@/lib/permissions";
 import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getCashHolders, getDuesAging, getLossReport, getProfitReport, getSalesReport, getSupplierClosings } from "@/lib/reports";
@@ -18,13 +19,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const session = await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
-  const [sales, dues, cash, suppliers, profit, losses] = await Promise.all([
+  const [sales, dues, cash, suppliers, profit, losses, overrides] = await Promise.all([
     getSalesReport(range),
     getDuesAging(range),
     getCashHolders(),
     getSupplierClosings(range),
     getProfitReport(range),
     getLossReport(range),
+    getOverrideTotals(range),
   ]);
   const q = rangeQuery(range);
   const cards: Card[] = [
@@ -34,6 +36,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     { href: `/reports/statement?${q}`, title: "Retailer statement", icon: BookOpen, tone: "rose", stats: [] },
     { href: `/reports/stock?${q}`, title: "Stock", icon: Package, tone: "blue", stats: [] },
     { href: `/reports/losses?${q}`, title: "Damage and loss", icon: PackageX, tone: "amber", stats: [{ label: "Lost value", value: money(losses.total.valuePaise) }] },
+    {
+      href: `/reports/overrides?${q}`,
+      title: "Credit overrides",
+      icon: CircleAlert,
+      tone: "rose",
+      stats: [{ label: "Overrides", value: num(overrides.count) }, { label: "Over limit", value: money(overrides.overLimitPaise) }],
+    },
     { href: `/reports/cash?${q}`, title: "Cash and online", icon: Wallet, tone: "green", stats: [{ label: "Held by staff", value: money(cash.reduce((n, h) => n + h.heldPaise, 0)) }] },
     {
       href: `/reports/suppliers?${q}`,

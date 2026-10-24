@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { dispatches, ledgerEntries, orders, products, receipts } from "@/db/schema";
+import { ledgerBackdatedSql, ledgerMomentSql } from "@/lib/ledger-sql";
 import type { LedgerEntry } from "@/lib/ledger-rules";
 
 /** A database or a transaction. */
@@ -26,21 +27,7 @@ export async function postEntry(
   return row.id;
 }
 
-/**
- * The moment a ledger row counts at (ledger, aging, statement). A payment credit (`receipt_credit`,
- * minus) whose payment was received on an earlier India day than the row was posted counts at the last
- * millisecond of that received day; every other row (dispatches, adjustments, reversals, and the old
- * + receipt_credit reversal rows) counts at `created_at`. Exactly mirrors `paymentMoment` in
- * lib/receipt-rules.ts. Needs `leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))`.
- */
-export const ledgerMomentSql = sql<Date>`case when ${ledgerEntries.kind} = 'receipt_credit' and ${ledgerEntries.amountPaise} < 0 and ${receipts.receivedOn} < (${ledgerEntries.createdAt} at time zone 'Asia/Kolkata')::date then ((${receipts.receivedOn} + 1)::timestamp at time zone 'Asia/Kolkata') - interval '1 millisecond' else ${ledgerEntries.createdAt} end`.mapWith(
-  ledgerEntries.createdAt,
-);
-
-/** True when the row counts on an earlier day than it was posted (show its date only, no time). */
-export const ledgerBackdatedSql = sql<boolean>`coalesce(${ledgerEntries.kind} = 'receipt_credit' and ${ledgerEntries.amountPaise} < 0 and ${receipts.receivedOn} < (${ledgerEntries.createdAt} at time zone 'Asia/Kolkata')::date, false)`.mapWith(
-  Boolean,
-);
+export { ledgerBackdatedSql, ledgerMomentSql } from "@/lib/ledger-sql";
 
 /** Net balance per retailer (for the list cards; positive = retailer owes). Server-only. */
 export async function getAllBalances(conn: Pick<typeof db, "select"> = db) {

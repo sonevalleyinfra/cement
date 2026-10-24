@@ -38,11 +38,13 @@ import {
   getSalesHome,
 } from "@/lib/home-stats";
 import { formatDate } from "@/lib/datetime";
+import { overridesMonthText } from "@/lib/credit-check-rules";
 import { NO_LIMIT_FILTER, NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR, formatINRCompact } from "@/lib/money";
 import { getCashWithStaff, getOwnerMonth, getOwnerRisk, getOwnerToday, getTopOverdue } from "@/lib/owner-home";
 import { cashAgePill, deltaPct, homeWindows, perBagDelta, supplierValue, windowsText, type HomeWindows } from "@/lib/owner-home-rules";
 import { ageText, ageTone, coverTone, lastPaymentDay, type Tone as NoteTone } from "@/lib/overdue-rules";
+import { rangeQuery } from "@/lib/report-range";
 import { getSuppliers } from "@/lib/suppliers";
 import { cn } from "@/lib/utils";
 import { bagsText, daysText, formatCount, shopsText } from "@/lib/words";
@@ -416,6 +418,17 @@ async function OwnerRisk({ w, now }: { w: HomeWindows; now: Date }) {
           <ChevronRight className="size-4 shrink-0" aria-hidden />
         </Link>
       )}
+      <Link
+        href={`/reports/overrides?${rangeQuery(w.mtd)}`}
+        className={cn(
+          "flex min-h-12 items-center gap-2 rounded-xl px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          s.overrides.count > 0 ? "bg-caution-soft text-caution-foreground" : "bg-muted text-muted-foreground",
+        )}
+      >
+        <TriangleAlert className="size-4 shrink-0" aria-hidden />
+        <span className="flex-1">{overridesMonthText(s.overrides)}</span>
+        <ChevronRight className="size-4 shrink-0" aria-hidden />
+      </Link>
     </div>
   );
 }
