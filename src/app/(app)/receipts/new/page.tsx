@@ -34,7 +34,7 @@ export default async function NewReceiptPage({
       .orderBy(asc(bankAccounts.name)),
   ]);
   const list = payableShops(shops, new Map(balances.map((b) => [b.retailerId, b.balancePaise]))).map(
-    ({ id, name, place }) => ({ id, name, place }),
+    ({ id, name, place, active }) => ({ id, name, place, active }),
   );
   if (list.length === 0) {
     return (

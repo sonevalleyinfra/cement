@@ -6,6 +6,7 @@ import {
   pickableRetailerLogins,
   pickPrefillRetailerId,
   planShopEdit,
+  retailerMeta,
   type RetailerLogin,
   validateRetailer,
 } from "./retailer-rules";
@@ -280,5 +281,18 @@ describe("pickPrefillRetailerId", () => {
   });
   it("ignores everything when the list is empty", () => {
     expect(pickPrefillRetailerId("a1", [])).toBeNull();
+  });
+});
+
+describe("retailerMeta", () => {
+  it("shows the place for a switched-on shop", () => {
+    expect(retailerMeta({ place: "Patna", active: true })).toBe("Patna");
+  });
+  it("adds Off for a switched-off shop", () => {
+    expect(retailerMeta({ place: "Patna", active: false })).toBe("Patna · Off");
+  });
+  it("handles a shop with no place", () => {
+    expect(retailerMeta({ place: "", active: false })).toBe("Off");
+    expect(retailerMeta({ place: "", active: true })).toBe("");
   });
 });

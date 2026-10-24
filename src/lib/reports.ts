@@ -89,9 +89,9 @@ export async function getSalesReport(range: ReportRange) {
 }
 
 /** Dues with aging as of the last day of the range. A payment counts on the day it was received (ledgerMomentSql). */
-export async function getDuesAging(range: ReportRange) {
+export async function getDuesAging(range: ReportRange, conn: Pick<typeof db, "select"> = db) {
   const [rows, names] = await Promise.all([
-    db
+    conn
       .select({
         retailerId: ledgerEntries.retailerId,
         kind: ledgerEntries.kind,
@@ -103,9 +103,10 @@ export async function getDuesAging(range: ReportRange) {
       })
       .from(ledgerEntries)
       .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
-      .where(lt(ledgerMomentSql, range.end))
+      // ledgerMomentSql is raw sql, so lt() would hand postgres-js the Date unencoded: bind it as text.
+      .where(sql`${ledgerMomentSql} < ${range.end.toISOString()}::timestamptz`)
       .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id)),
-    db.select({ id: retailers.id, name: retailers.name }).from(retailers),
+    conn.select({ id: retailers.id, name: retailers.name }).from(retailers),
   ]);
   return duesAging(rows, toMap(names), range.to);
 }
