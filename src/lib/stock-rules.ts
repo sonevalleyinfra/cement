@@ -1,4 +1,5 @@
 /** Pure stock rules (no database). Stock is an append-only list of signed movements. */
+import { checkReason, reasonLabel, type StockReasonCode } from "./reason-codes";
 import { isAdmin } from "./roles";
 import { bagsText } from "./words";
 
@@ -14,6 +15,8 @@ export type Movement = {
   bags: number;
   orderId?: string | null;
   reason?: string;
+  /** Adjustments: the picked reason code (reason-codes.ts, stock list). */
+  reasonCode?: string | null;
 };
 
 export type StockKey = { productId: string; placeKey: string };
@@ -49,34 +52,25 @@ export function canDispatch(
   return { ok: true };
 }
 
-/** Why stock was corrected (spec section 4): picked from this list, with an optional note. */
-export const STOCK_FIX_REASONS = ["damage", "burst", "shortage", "count"] as const;
-export type StockFixReason = (typeof STOCK_FIX_REASONS)[number];
-
-export const STOCK_FIX_LABELS: Record<StockFixReason, string> = {
-  damage: "Damage",
-  burst: "Burst bags",
-  shortage: "Shortage",
-  count: "Count",
-};
-
-export function isStockFixReason(value: unknown): value is StockFixReason {
-  return typeof value === "string" && (STOCK_FIX_REASONS as readonly string[]).includes(value);
-}
-
-/** The reason text kept on the correction: "Damage" or "Damage: rain in godown" (200 characters at most). */
-export function stockFixText(reason: StockFixReason, note: string | null | undefined): string {
+/**
+ * Why stock was corrected: a code from the stock list in reason-codes.ts (transit short, transit burst,
+ * damaged, wrong entry, expired, other) with an optional note ("other" needs one). Corrections saved
+ * before the codes have only their text in `reason` (e.g. "Burst bags: rain"); it is shown as it is.
+ * The reason text kept on the correction: "Damaged" or "Damaged: rain in godown" (200 characters at most).
+ */
+export function stockFixText(code: StockReasonCode, note: string | null | undefined): string {
+  const label = reasonLabel(code, "stock");
   const clean = String(note ?? "").trim().replace(/\s+/g, " ");
-  return (clean ? `${STOCK_FIX_LABELS[reason]}: ${clean}` : STOCK_FIX_LABELS[reason]).slice(0, 200);
+  return (clean ? `${label}: ${clean}` : label).slice(0, 200);
 }
 
-/** Admin-only correction: a reason from the list (damage, burst, shortage, count) and an optional note. */
+/** Admin-only correction: a reason code from the stock list and an optional note. */
 export function adjustmentMovement(
   movements: readonly Movement[],
   key: StockKey,
   deltaBags: number,
-  reason: unknown,
-  note: string | null | undefined,
+  reasonCode: unknown,
+  note: unknown,
   role: string | null | undefined,
 ): { ok: true; movement: Movement } | { ok: false; error: string } {
   if (!isAdmin(role)) return { ok: false, error: "Only an admin can adjust stock." };
@@ -84,11 +78,15 @@ export function adjustmentMovement(
     return { ok: false, error: "Adjustment must be a whole number other than zero." };
   }
   if (Math.abs(deltaBags) > MAX_STOCK_ENTRY_BAGS) return { ok: false, error: "That is too many bags." };
-  if (!isStockFixReason(reason)) return { ok: false, error: "Pick a reason." };
+  const why = checkReason("stock", reasonCode, note);
+  if (!why.ok) return why;
   if (balance(movements, key) + deltaBags < 0) {
     return { ok: false, error: "Stock cannot go below zero." };
   }
-  return { ok: true, movement: { ...key, type: "adjustment", bags: deltaBags, reason: stockFixText(reason, note) } };
+  return {
+    ok: true,
+    movement: { ...key, type: "adjustment", bags: deltaBags, reason: stockFixText(why.code, why.note), reasonCode: why.code },
+  };
 }
 
 /** Moves bags between two places (e.g. leftover bags back to the godown, loading a truck). */

@@ -72,6 +72,12 @@ describe("duesFromLedger", () => {
     expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(1), duePaise: 1000 }]);
   });
 
+  it("a receipt_reversal row brings the dues back, exactly like an old + receipt_credit row", () => {
+    const f = one([order("o1", 1000, 1), pay(1000, 2), row("receipt_reversal", 1000, null, 3)]);
+    expect(f.items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(1), duePaise: 1000 }]);
+    expect(f).toEqual(one([order("o1", 1000, 1), pay(1000, 2), row("receipt_credit", 1000, null, 3)]));
+  });
+
   it("a plus adjustment is its own item, aged from its own day", () => {
     const f = one([order("o1", 100, 1), row("adjustment", 250, null, 40), pay(50, 41)]);
     expect(f.duePaise).toBe(300);

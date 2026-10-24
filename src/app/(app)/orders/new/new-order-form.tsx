@@ -2,7 +2,8 @@
 
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PageHeader } from "@/components/app/page-header";
@@ -16,6 +17,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { productGroups } from "@/lib/catalogue-rules";
 import { firstMissing } from "@/lib/form-rules";
+import {
+  addDaysToKey,
+  DELIVER_TO,
+  DELIVER_TO_LABELS,
+  MAX_ORDER_NOTE,
+  MAX_RECEIVER_NAME,
+  MAX_REQUIRED_BY_DAYS,
+  MAX_SITE_ADDRESS,
+  ORDER_SOURCE_LABELS,
+  STAFF_ORDER_SOURCES,
+  type DeliverTo,
+} from "@/lib/order-delivery-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
@@ -24,12 +37,58 @@ import { getOrderHints, type OrderHints } from "../hints-actions";
 type Retailer = { id: string; name: string; place: string };
 type Product = { id: string; name: string; channel: string; brand: string };
 
+/** One row of chips where exactly one is picked (Source, Deliver to). */
+function ChipChoice<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label id={id}>{label}</Label>
+      <div role="radiogroup" aria-labelledby={id} className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={o.value === value}
+            className={chipClass(o.value === value)}
+            onClick={() => onChange(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: (id: string) => ReactNode }) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children(id)}
+    </div>
+  );
+}
+
 export function NewOrderForm({
   retailers,
   products,
   fixedRetailerId,
   initialRetailerId = null,
   askRate,
+  defaultSource,
+  todayKey,
 }: {
   retailers: Retailer[];
   products: Product[];
@@ -38,6 +97,10 @@ export function NewOrderForm({
   initialRetailerId?: string | null;
   /** Staff type the rate per bag; a retailer never sees it. */
   askRate: boolean;
+  /** Staff: the Source chip picked first (by role). Null for a shop's own login (always "Shop app"). */
+  defaultSource: string | null;
+  /** Today in India ("YYYY-MM-DD"): the first day "Needed by" allows. */
+  todayKey: string;
 }) {
   const router = useRouter();
   const [retailerId, setRetailerId] = useState<string | null>(fixedRetailerId ?? initialRetailerId);
@@ -46,8 +109,30 @@ export function NewOrderForm({
   const [rate, setRate] = useState("");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  // The error goes away as soon as the retailer, product, bags or rate is changed.
-  const { error, setError, clearError } = useFormError([retailerId, productId, bags, rate]);
+  const [source, setSource] = useState(defaultSource ?? "");
+  const [deliverTo, setDeliverTo] = useState<DeliverTo>("shop");
+  const [siteAddress, setSiteAddress] = useState("");
+  const [receiverName, setReceiverName] = useState("");
+  const [receiverPhone, setReceiverPhone] = useState("");
+  const [requiredBy, setRequiredBy] = useState("");
+  const [shopNote, setShopNote] = useState("");
+  const [staffNote, setStaffNote] = useState("");
+  // The error goes away as soon as any field is changed.
+  const { error, setError, clearError } = useFormError([
+    retailerId,
+    productId,
+    bags,
+    rate,
+    source,
+    deliverTo,
+    siteAddress,
+    receiverName,
+    receiverPhone,
+    requiredBy,
+    shopNote,
+    staffNote,
+  ]);
+  const staff = defaultSource !== null;
   const { pending, run } = useSubmit();
   // Staff only: the shop's last rate, this week's range and the stock, for the picked shop and product.
   const [hints, setHints] = useState<{ key: string; data: OrderHints | null } | null>(null);
@@ -76,7 +161,12 @@ export function NewOrderForm({
     ? retailers.filter((r) => `${r.name} ${r.place}`.toLowerCase().includes(q))
     : retailers;
 
-  const hint = firstMissing([[Number(bags || 0) <= 0, "Enter the bags"]]);
+  const site = deliverTo === "site";
+  const hint = firstMissing([
+    [Number(bags || 0) <= 0, "Enter the bags"],
+    [site && !siteAddress.trim(), "Enter the site address"],
+    [site && !receiverPhone.trim(), "Enter the receiver's phone"],
+  ]);
 
   function submit() {
     clearError();
@@ -87,6 +177,14 @@ export function NewOrderForm({
           productId,
           bags: Number(bags || 0),
           rateRupees: askRate ? rate : undefined,
+          deliverTo,
+          siteAddress: site ? siteAddress : "",
+          receiverName,
+          receiverPhone,
+          requiredBy,
+          source: staff ? source : undefined,
+          shopNote,
+          staffNote: staff ? staffNote : undefined,
           requestId,
         }),
       (res) => {
@@ -133,6 +231,99 @@ export function NewOrderForm({
         <RateField value={rate} onChange={setRate} bags={Number(bags || 0)}>
           <RateHints hint={current?.rate ?? null} rateText={rate} />
         </RateField>
+      )}
+
+      <ChipChoice
+        label="Deliver to"
+        options={DELIVER_TO.map((v) => ({ value: v, label: DELIVER_TO_LABELS[v] }))}
+        value={deliverTo}
+        onChange={setDeliverTo}
+      />
+      {site && (
+        <div className="animate-in-up flex flex-col gap-4">
+          <Field label="Site address">
+            {(id) => (
+              <Input
+                id={id}
+                value={siteAddress}
+                onChange={(e) => setSiteAddress(e.target.value)}
+                maxLength={MAX_SITE_ADDRESS}
+                autoComplete="off"
+              />
+            )}
+          </Field>
+          <Field label="Receiver name">
+            {(id) => (
+              <Input
+                id={id}
+                value={receiverName}
+                onChange={(e) => setReceiverName(e.target.value)}
+                maxLength={MAX_RECEIVER_NAME}
+                autoComplete="off"
+              />
+            )}
+          </Field>
+          <Field label="Receiver phone">
+            {(id) => (
+              <Input
+                id={id}
+                type="tel"
+                inputMode="numeric"
+                value={receiverPhone}
+                onChange={(e) => setReceiverPhone(e.target.value)}
+                maxLength={16}
+                autoComplete="off"
+              />
+            )}
+          </Field>
+        </div>
+      )}
+
+      <Field label="Needed by (optional)">
+        {(id) => (
+          <Input
+            id={id}
+            type="date"
+            value={requiredBy}
+            min={todayKey}
+            max={addDaysToKey(todayKey, MAX_REQUIRED_BY_DAYS)}
+            onChange={(e) => setRequiredBy(e.target.value)}
+          />
+        )}
+      </Field>
+
+      {staff && (
+        <ChipChoice
+          label="Source"
+          options={STAFF_ORDER_SOURCES.map((v) => ({ value: v, label: ORDER_SOURCE_LABELS[v] }))}
+          value={source}
+          onChange={setSource}
+        />
+      )}
+
+      <Field label={staff ? "Note for shop (optional)" : "Note (optional)"}>
+        {(id) => (
+          <Input
+            id={id}
+            value={shopNote}
+            onChange={(e) => setShopNote(e.target.value)}
+            maxLength={MAX_ORDER_NOTE}
+            autoComplete="off"
+          />
+        )}
+      </Field>
+      {staff && (
+        <Field label="Staff note (optional)">
+          {(id) => (
+            <Input
+              id={id}
+              value={staffNote}
+              onChange={(e) => setStaffNote(e.target.value)}
+              maxLength={MAX_ORDER_NOTE}
+              autoComplete="off"
+            />
+          )}
+        </Field>
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}

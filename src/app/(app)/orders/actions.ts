@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, products, retailers } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { toISTDateKey } from "@/lib/datetime";
 import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { isBagsInRange, resolveOrderRetailer, validatePlaceOrder } from "@/lib/order-access";
+import { checkDelivery, checkNotes, orderSourceFor } from "@/lib/order-delivery-rules";
 import { planCancel } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
 import {
@@ -16,11 +18,11 @@ import {
   canFillRate,
   checkRateChange,
   checkRateInput,
-  checkRejectReason,
   RATE_FILLED,
   rateEditReason,
   rateOnPlace,
 } from "@/lib/rate-rules";
+import { checkReason, reasonText } from "@/lib/reason-codes";
 import { checkRequestId } from "@/lib/request-rules";
 import { orderSalesRep } from "@/lib/sales-rep-rules";
 import { notify } from "@/lib/notify";
@@ -44,6 +46,8 @@ function refresh(orderId?: string) {
 /**
  * Places an order. Sales, retailer and admin only.
  * Staff type the rate (rupees and paise per bag); a retailer never sends one.
+ * Delivery, source and the two notes follow order-delivery-rules.ts (a shop's own login is always
+ * "shop_app" and can only write the shop note). Note text never goes into the activity log.
  * `requestId` is the form's one-time id: a second tap places nothing more (request-rules.ts).
  */
 export async function placeOrder(input: {
@@ -51,7 +55,14 @@ export async function placeOrder(input: {
   productId: string | null;
   bags: number;
   rateRupees?: string;
-  notes?: string;
+  deliverTo?: string;
+  siteAddress?: string;
+  receiverName?: string;
+  receiverPhone?: string;
+  requiredBy?: string;
+  source?: string;
+  staffNote?: string;
+  shopNote?: string;
   requestId: string;
 }): Promise<PlaceOrderResult> {
   const session = await requireRole(...rolesFor("placeOrder"));
@@ -71,6 +82,13 @@ export async function placeOrder(input: {
   const me = session.user;
   const rate = rateOnPlace(me.role, input.rateRupees);
   if (!rate.ok) return rate;
+  const source = orderSourceFor(me.role, input.source);
+  if (!source.ok) return source;
+  const delivery = checkDelivery(input, toISTDateKey(new Date()));
+  if (!delivery.ok) return delivery;
+  const notes = checkNotes(me.role, input);
+  if (!notes.ok) return notes;
+  const d = delivery.delivery;
 
   const [own] = await db
     .select({ id: retailers.id })
@@ -101,7 +119,14 @@ export async function placeOrder(input: {
         bags: input.bags,
         ratePaise: rate.ratePaise,
         status: "placed",
-        notes: String(input.notes ?? "").trim().slice(0, 500),
+        deliverTo: d.deliverTo,
+        siteAddress: d.siteAddress,
+        receiverName: d.receiverName,
+        receiverPhone: d.receiverPhone,
+        requiredBy: d.requiredBy,
+        source: source.source,
+        staffNote: notes.staffNote,
+        shopNote: notes.shopNote,
         placedBy: me.id,
         salesRepId,
       })
@@ -117,7 +142,15 @@ export async function placeOrder(input: {
       entity: "order",
       entityId: order.id,
       action: "place",
-      details: { retailerId, productId: product.id, bags: input.bags, ratePaise: rate.ratePaise },
+      details: {
+        retailerId,
+        productId: product.id,
+        bags: input.bags,
+        ratePaise: rate.ratePaise,
+        source: source.source,
+        deliverTo: d.deliverTo,
+        requiredBy: d.requiredBy,
+      },
     });
     await notify(tx, order.id, "placed", me.id);
     return { ok: true, resultId: order.id };
@@ -171,10 +204,15 @@ export async function fillRate(orderId: string, rateText: string): Promise<Place
 
 /**
  * Logistics or admin changes a rate that is set, at any step before the order is fully dispatched
- * (reason needed; rate-rules.ts). It is billed on the bags dispatched from now on; bags already sent
+ * (reason code needed, note optional; rate-rules.ts). It is billed on the bags dispatched from now on; bags already sent
  * keep their rate. Accounts, the shop's sales person and admin are told (old → new rate and why).
  */
-export async function changeRate(orderId: string, rateText: string, reason: string): Promise<PlaceOrderResult> {
+export async function changeRate(
+  orderId: string,
+  rateText: string,
+  reasonCode: string,
+  note: string,
+): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("changeRate"));
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
 
@@ -182,7 +220,7 @@ export async function changeRate(orderId: string, rateText: string, reason: stri
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!o) return { ok: false, error: "Order not found." };
     if (!canChangeRate(me.role, o)) return { ok: false, error: "The rate of this order cannot be changed." };
-    const check = checkRateChange(o.ratePaise, rateText, reason);
+    const check = checkRateChange(o.ratePaise, rateText, reasonCode, note);
     if (!check.ok) return check;
     await tx.update(orders).set({ ratePaise: check.ratePaise, updatedAt: new Date() }).where(eq(orders.id, orderId));
     await tx.insert(orderEvents).values({
@@ -190,7 +228,8 @@ export async function changeRate(orderId: string, rateText: string, reason: stri
       fromStatus: o.status,
       toStatus: o.status,
       actorId: me.id,
-      reason: rateEditReason(check.reason),
+      reason: rateEditReason(check.note),
+      reasonCode: check.code,
       fromRatePaise: o.ratePaise,
       toRatePaise: check.ratePaise,
     });
@@ -199,12 +238,17 @@ export async function changeRate(orderId: string, rateText: string, reason: stri
       entity: "order",
       entityId: orderId,
       action: "change_rate",
-      details: { ...orderFacts(o), ratePaise: { before: o.ratePaise, after: check.ratePaise }, reason: check.reason },
+      details: {
+        ...orderFacts(o),
+        ratePaise: { before: o.ratePaise, after: check.ratePaise },
+        reasonCode: check.code,
+        ...(check.note ? { note: check.note } : {}),
+      },
     });
     await notify(tx, orderId, "rate_edited", me.id, undefined, {
       fromPaise: o.ratePaise,
       toPaise: check.ratePaise,
-      reason: check.reason,
+      reason: reasonText(check.code, check.note, "rate_change"),
     });
     return { ok: true };
   });
@@ -213,24 +257,25 @@ export async function changeRate(orderId: string, rateText: string, reason: stri
 }
 
 /**
- * Accounts or admin approves or rejects a placed order with a rate (reason needed to reject). Nothing is billed here.
+ * Accounts or admin approves or rejects a placed order with a rate (a reason code is needed to reject). Nothing is billed here.
  * `seenRatePaise` is the rate on their screen: if it changed meanwhile, nothing is decided (canDecide).
  */
 export async function decideOrder(
   orderId: string,
   decision: "approved" | "rejected",
-  reason: string | undefined,
+  reasonCode: string | null,
+  note: string | null,
   seenRatePaise: number,
 ): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("decideOrder"));
   // Only these two outcomes: anything else (e.g. "cancelled") must go through cancelOrder.
   if (decision !== "approved" && decision !== "rejected") return { ok: false, error: "Pick approve or reject." };
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
-  let why = "";
+  let why: { code: string; note: string } | null = null;
   if (decision === "rejected") {
-    const check = checkRejectReason(typeof reason === "string" ? reason : "");
+    const check = checkReason("reject", reasonCode, note);
     if (!check.ok) return check;
-    why = check.reason;
+    why = { code: check.code, note: check.note };
   }
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
@@ -239,13 +284,24 @@ export async function decideOrder(
     const allowed = canDecide(me.role, o, decision, seenRatePaise);
     if (!allowed.ok) return allowed;
     await tx.update(orders).set({ status: decision, updatedAt: new Date() }).where(eq(orders.id, orderId));
-    await tx.insert(orderEvents).values({ orderId, fromStatus: o.status, toStatus: decision, actorId: me.id, reason: why });
+    await tx.insert(orderEvents).values({
+      orderId,
+      fromStatus: o.status,
+      toStatus: decision,
+      actorId: me.id,
+      reason: why?.note ?? "",
+      reasonCode: why?.code ?? null,
+    });
     await writeAudit(tx, {
       actorId: me.id,
       entity: "order",
       entityId: orderId,
       action: decision === "approved" ? "approve" : "reject",
-      details: { ...orderFacts(o), ratePaise: o.ratePaise, ...(why ? { reason: why } : {}) },
+      details: {
+        ...orderFacts(o),
+        ratePaise: o.ratePaise,
+        ...(why ? { reasonCode: why.code, ...(why.note ? { note: why.note } : {}) } : {}),
+      },
     });
     await notify(tx, orderId, decision, me.id);
     return { ok: true };
@@ -258,7 +314,7 @@ export async function decideOrder(
  * Admin cancels the bags not dispatched yet (rules in planCancel). No stock moves and nothing is
  * posted: only dispatched bags were billed, and they stay billed.
  */
-export async function cancelOrder(orderId: string, reason: string): Promise<PlaceOrderResult> {
+export async function cancelOrder(orderId: string, reasonCode: string, note: string): Promise<PlaceOrderResult> {
   const { user: me } = await requireRole(...rolesFor("cancelOrder"));
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
 
@@ -274,7 +330,8 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
       status: o.status,
       orderedBags: o.bags,
       dispatchedBags: sent?.bags ?? 0,
-      reason: String(reason ?? ""),
+      reasonCode,
+      note,
     });
     if (!plan.ok) return plan;
     await tx.update(orders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(orders.id, orderId));
@@ -283,14 +340,20 @@ export async function cancelOrder(orderId: string, reason: string): Promise<Plac
       fromStatus: o.status,
       toStatus: "cancelled",
       actorId: me.id,
-      reason: plan.reason,
+      reason: plan.note,
+      reasonCode: plan.code,
     });
     await writeAudit(tx, {
       actorId: me.id,
       entity: "order",
       entityId: orderId,
       action: "cancel",
-      details: { ...orderFacts(o), cancelledBags: plan.cancelledBags, reason: plan.reason },
+      details: {
+        ...orderFacts(o),
+        cancelledBags: plan.cancelledBags,
+        reasonCode: plan.code,
+        ...(plan.note ? { note: plan.note } : {}),
+      },
     });
     await notify(tx, orderId, "cancelled", me.id, plan.cancelledBags);
     return { ok: true };

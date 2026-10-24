@@ -11,9 +11,9 @@
  *   their own shop (admin may fill an empty rate too). No reason needed.
  * - Once a rate is set, only logistics or admin change it, at any step before the order is fully
  *   dispatched (placed, approved, partly dispatched), always with a reason. It is logged as a rate
- *   change (old → new) and accounts, the shop's sales person and admin are told. The new rate is
+ *   change (old → new, with a reason code and an optional note) and accounts, the shop's sales person and admin are told. The new rate is
  *   billed on the bags dispatched from then on.
- * - Accounts approve only once the rate is filled. Rejecting needs a reason.
+ * - Accounts approve only once the rate is filled. Rejecting needs a reason code (reason-codes.ts).
  * - History rows about the rate never contain the price (retailers read the history).
  *
  * Choices where the spec is silent:
@@ -21,15 +21,9 @@
  * - Rejecting also waits for the rate (the spec says approve / reject "only when the rate is filled").
  */
 import { formatINR } from "./money";
-import {
-  canUserTransition,
-  cleanReason,
-  isOrderStatus,
-  isValidRatePaise,
-  isValidReason,
-  orderTotalPaise,
-} from "./order-rules";
+import { canUserTransition, isOrderStatus, isValidRatePaise, orderTotalPaise } from "./order-rules";
 import { isStaff } from "./permissions";
+import { checkReason, type ReasonCode } from "./reason-codes";
 import { hasAnyRole, hasRole, isAdmin } from "./roles";
 
 /** Highest rate per bag we accept, in whole rupees. Change here if prices rise. */
@@ -127,19 +121,23 @@ export function canChangeRate(
   return hasAnyRole(role, ["logistics"]);
 }
 
-export type RateChangeCheck = { ok: true; ratePaise: number; reason: string } | { ok: false; error: string };
+export type RateChangeCheck =
+  | { ok: true; ratePaise: number; code: ReasonCode<"rate_change">; note: string }
+  | { ok: false; error: string };
 
-/** A rate change: a valid, different rate and a reason. */
+/** A rate change: a valid, different rate and a reason code (note optional, needed for "other"). */
 export function checkRateChange(
   currentRatePaise: number | null,
   rateText: string | null | undefined,
-  reason: string | null | undefined,
+  reasonCode: unknown,
+  note: unknown,
 ): RateChangeCheck {
   const rate = checkRateInput(String(rateText ?? ""));
   if (!rate.ok) return rate;
   if (rate.paise === currentRatePaise) return { ok: false, error: "That is the rate already." };
-  if (!isValidReason(reason)) return { ok: false, error: "Enter a reason for changing the rate." };
-  return { ok: true, ratePaise: rate.paise, reason: cleanReason(reason) };
+  const why = checkReason("rate_change", reasonCode, note);
+  if (!why.ok) return why;
+  return { ok: true, ratePaise: rate.paise, code: why.code, note: why.note };
 }
 
 export type DecideCheck = { ok: true } | { ok: false; error: string };
@@ -173,21 +171,15 @@ export function isWaitingApproval(order: { status: string; ratePaise: number | n
   return order.status === "placed" && order.ratePaise !== null;
 }
 
-export type RejectCheck = { ok: true; reason: string } | { ok: false; error: string };
-
-export function checkRejectReason(reason: string | null | undefined): RejectCheck {
-  if (!isValidReason(reason)) return { ok: false, error: "Enter a reason for rejecting." };
-  return { ok: true, reason: cleanReason(reason) };
-}
-
 /* ---------- History rows about the rate (never the price itself) ---------- */
 
 export const RATE_FILLED = "Rate filled";
 const RATE_EDIT_PREFIX = "Rate edited:";
 
-/** History reason for a rate change (a rate that was already set). */
-export function rateEditReason(reason: string): string {
-  return `${RATE_EDIT_PREFIX} ${reason}`;
+/** History reason for a rate change (a rate that was already set): "Rate edited:" plus the note, if any. */
+export function rateEditReason(note: string): string {
+  const clean = note.trim();
+  return clean ? `${RATE_EDIT_PREFIX} ${clean}` : RATE_EDIT_PREFIX;
 }
 
 /** "₹350 → ₹360" (just "₹350" when there was no rate before). Staff only: retailers never see rates. */

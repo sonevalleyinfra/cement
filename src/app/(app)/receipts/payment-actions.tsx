@@ -3,11 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { FormHint } from "@/components/app/form-hint";
+import { ReasonPicker } from "@/components/app/reason-picker";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { firstMissing } from "@/lib/form-rules";
+import { reasonHint } from "@/lib/reason-codes";
 import type { CashPlace } from "@/lib/receipt-reversal";
-import { MAX_REASON } from "@/lib/receipt-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { rejectOnline, reverseReceipt, verifyOnline } from "./actions";
 
@@ -43,7 +43,7 @@ const choice = (on: boolean) =>
   `min-h-12 rounded-xl px-3 py-2 text-left text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${on ? "bg-primary text-primary-foreground ring-primary" : "bg-card ring-foreground/10"}`;
 
 /**
- * Reason + confirm, then rejects an online payment ("reject") or reverses a payment ("reverse").
+ * Reason code (ReasonPicker, payment list) + confirm, then rejects an online payment ("reject") or reverses a payment ("reverse").
  * Reversing cash also asks where the cash is now (`cashHolder` = who recorded it; null for online).
  */
 export function ReasonAction({
@@ -63,15 +63,17 @@ export function ReasonAction({
 }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
-  const [reason, setReason] = useState("");
+  const [code, setCode] = useState<string | null>(null);
+  const [note, setNote] = useState("");
   const [cashPlace, setCashPlace] = useState<CashPlace | null>(null);
   const needsPlace = action === "reverse" && cashHolder !== null;
-  const { error, setError, clearError } = useFormError([reason, cashPlace]);
+  const { error, setError, clearError } = useFormError([code, note, cashPlace]);
   const [pending, start] = useTransition();
   const label = action === "reject" ? "Reject" : "Reverse";
-  const reasonLabel = action === "reject" ? "Reason for rejecting" : "Reason for reversing";
+  const question = action === "reject" ? "Reject payment?" : "Reverse payment?";
+  const why = reasonHint("payment", code, note);
   const hint = firstMissing([
-    [reason.trim() === "", "Enter a reason"],
+    [why !== null, why ?? ""],
     [needsPlace && cashPlace === null, "Pick where the cash is"],
   ]);
 
@@ -97,12 +99,16 @@ export function ReasonAction({
         inline ? "flex flex-col gap-2" : "flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6"
       }
     >
-      <Input
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        maxLength={MAX_REASON}
-        placeholder={reasonLabel}
-        aria-label={reasonLabel}
+      <p className="text-base font-semibold">{question}</p>
+      <ReasonPicker
+        action="payment"
+        label={question}
+        code={code}
+        onCodeChange={setCode}
+        note={note}
+        onNoteChange={setNote}
+        disabled={pending}
+        showHint={false}
       />
       {needsPlace && (
         <div className="grid gap-2" role="radiogroup" aria-label="Where is the cash now">
@@ -147,8 +153,8 @@ export function ReasonAction({
             start(async () => {
               const res =
                 action === "reject"
-                  ? await rejectOnline(receiptId, reason)
-                  : await reverseReceipt(receiptId, reason, cashPlace ?? undefined);
+                  ? await rejectOnline(receiptId, code ?? "", note)
+                  : await reverseReceipt(receiptId, code ?? "", note, cashPlace ?? undefined);
               if (res.ok) {
                 clearError();
                 router.refresh();
@@ -156,7 +162,7 @@ export function ReasonAction({
             });
           }}
         >
-          {pending ? "Saving…" : `Confirm ${label.toLowerCase()}`}
+          {pending ? "Saving…" : label}
         </Button>
       </div>
     </div>

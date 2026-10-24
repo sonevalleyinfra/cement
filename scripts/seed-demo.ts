@@ -5,6 +5,8 @@
  * credit) and a second brand, UltraTech (one product, one purchase and one payment, no opening),
  * and payments: cash by sales and logistics, one handover confirmed and one waiting, online
  * payments waiting / verified / rejected, and one reversed cash payment.
+ * Orders carry a source, "needed by" dates, two site deliveries, shop and staff notes, and the rejected,
+ * cancelled, reversed and corrected rows carry reason codes (lib/reason-codes.ts).
  * Four areas, and every shop's master data and credit terms (with a first credit-history row).
  * Run with `pnpm seed:demo` (after `pnpm dev` has created the tables and the admin).
  * Safe to run twice: it skips whatever already exists (orders are added only once).
@@ -43,6 +45,8 @@ import { dispatchEntry } from "@/lib/ledger-rules";
 import { productName } from "@/lib/catalogue-rules";
 import { postSupplierEntry } from "@/lib/suppliers";
 import { creditEntry, openingEntry as supplierOpening, paymentEntry, purchaseEntry } from "@/lib/supplier-rules";
+import { addDaysToKey, type OrderSource } from "@/lib/order-delivery-rules";
+import { stockFixText } from "@/lib/stock-rules";
 import { planReversal } from "@/lib/receipt-reversal";
 import { planReceipt, planVerify } from "@/lib/receipt-rules";
 import { statusAfterDispatch, type OrderStatus } from "@/lib/order-rules";
@@ -435,6 +439,30 @@ async function main() {
   const prod = productRows[0];
   const RATE = 35000; // Rs 350 a bag, in paise
 
+  // Admin corrects the stock: 2 bags burst on the way in (a reason code and a note).
+  const fixNote = "torn while unloading";
+  const [fixed] = await db
+    .insert(stockMovements)
+    .values({
+      productId: prod.id,
+      godownId: godown.id,
+      type: "adjustment",
+      bags: -2,
+      reason: stockFixText("transit_burst", fixNote),
+      reasonCode: "transit_burst",
+      actorId: admin.id,
+      createdAt: at(110),
+    })
+    .returning({ id: stockMovements.id });
+  await db.insert(auditLog).values({
+    actorId: admin.id,
+    entity: "stock",
+    entityId: fixed.id,
+    action: "adjustment",
+    details: { productId: prod.id, bags: -2, place: `godown:${godown.id}`, reasonCode: "transit_burst", reason: stockFixText("transit_burst", fixNote) },
+    createdAt: at(110),
+  });
+
   // [shop, bags, final status, loads dispatched]. Shop 0 is the retailer login's shop: its order
   // was placed by the retailer and waits for the sales person to fill the rate.
   const plan: [number, number, OrderStatus, number[]][] = [
@@ -444,10 +472,41 @@ async function main() {
     [3, 100, "partly_dispatched", [40]],
     [4, 50, "dispatched", [30, 20]],
     [5, 30, "cancelled", []],
+    [2, 40, "rejected", []],
+  ];
+  // Delivery, source and notes for each order above (same position). One staff note talks about the
+  // rate, so a click-through as the shop shows it never leaks.
+  const today = toISTDateKey(new Date());
+  type Extra = {
+    source: OrderSource;
+    requiredIn?: number;
+    site?: { address: string; name: string; phone: string };
+    shopNote?: string;
+    staffNote?: string;
+  };
+  const extras: Extra[] = [
+    { source: "shop_app", requiredIn: 3, shopNote: "Please send before noon" },
+    {
+      source: "rep_visit",
+      requiredIn: 2,
+      site: { address: "Plot 12, Patliputra Colony (new house)", name: "Mohan", phone: "9123456781" },
+      staffNote: "Wants Rs 5 off the rate; told no",
+    },
+    { source: "phone", requiredIn: 1, shopNote: "Call before coming" },
+    {
+      source: "whatsapp",
+      requiredIn: -1,
+      site: { address: "Road No. 5, Kankarbagh (shop extension)", name: "Anil", phone: "9123456782" },
+      shopNote: "Unload at the back gate",
+    },
+    { source: "office" },
+    { source: "rep_visit", requiredIn: 5, staffNote: "Owner travelling this week" },
+    { source: "phone", requiredIn: 4 },
   ];
 
   const orderIds: string[] = [];
-  for (const [shopIdx, bags, status, loads] of plan) {
+  for (const [i, [shopIdx, bags, status, loads]] of plan.entries()) {
+    const extra = extras[i];
     await db.transaction(async (tx) => {
       const shop = shopRows[shopIdx];
       const byRetailer = shopIdx === 0;
@@ -459,6 +518,14 @@ async function main() {
           bags,
           ratePaise: byRetailer ? null : RATE,
           status,
+          deliverTo: extra.site ? "site" : "shop",
+          siteAddress: extra.site?.address ?? null,
+          receiverName: extra.site?.name ?? null,
+          receiverPhone: extra.site?.phone ?? null,
+          requiredBy: extra.requiredIn === undefined ? null : addDaysToKey(today, extra.requiredIn),
+          source: extra.source,
+          shopNote: extra.shopNote ?? "",
+          staffNote: extra.staffNote ?? "",
           placedBy: byRetailer ? ids.retailer : ids.sales,
           salesRepId: ids.sales,
         })
@@ -469,19 +536,32 @@ async function main() {
       let clock = Date.now() - 60_000;
       let from: string | null = null;
       const facts = { retailerId: shop.id, productId: prod.id, bags };
-      const event = async (to: string, actorId: string, reason = "") => {
+      const event = async (to: string, actorId: string, reason = "", reasonCode: string | null = null) => {
         const when = new Date((clock += 1000));
-        await tx.insert(orderEvents).values({ orderId: o.id, fromStatus: from, toStatus: to, actorId, reason, createdAt: when });
+        await tx
+          .insert(orderEvents)
+          .values({ orderId: o.id, fromStatus: from, toStatus: to, actorId, reason, reasonCode, createdAt: when });
         // The activity log row shares the history row's moment (the Books check matches on it).
-        const action = ({ placed: "place", approved: "approve", cancelled: "cancel" } as const)[to as "placed"];
+        const action = ({ placed: "place", approved: "approve", rejected: "reject", cancelled: "cancel" } as const)[
+          to as "placed"
+        ];
         if (action) {
-          const details = to === "cancelled" ? { ...facts, cancelledBags: bags, reason } : { ...facts, ratePaise: o.ratePaise };
+          const why = { reasonCode, ...(reason ? { note: reason } : {}) };
+          const details =
+            to === "cancelled"
+              ? { ...facts, cancelledBags: bags, ...why }
+              : to === "rejected"
+                ? { ...facts, ratePaise: o.ratePaise, ...why }
+                : to === "placed"
+                  ? { ...facts, ratePaise: o.ratePaise, source: o.source, deliverTo: o.deliverTo, requiredBy: o.requiredBy }
+                  : { ...facts, ratePaise: o.ratePaise };
           await log(tx, { actorId, entity: "order", entityId: o.id, action, details } as AuditEntry, when);
         }
         from = to;
       };
       await event("placed", byRetailer ? ids.retailer : ids.sales);
-      if (status !== "placed") await event("approved", ids.accounts);
+      if (status === "rejected") await event("rejected", ids.accounts, "", "rate_dispute");
+      else if (status !== "placed") await event("approved", ids.accounts);
 
       // Each load takes bags out of the godown and bills them: bags x rate (one ledger debit per load).
       let sent = 0;
@@ -526,7 +606,7 @@ async function main() {
         await postEntry(tx, debit.entry, ids.logistics, `${load} bags in ${truck.number}`);
         await event(statusAfterDispatch(bags, sent), ids.logistics, `${load} bags in ${truck.number}`);
       }
-      if (status === "cancelled") await event("cancelled", admin.id, "Shop closed for repairs");
+      if (status === "cancelled") await event("cancelled", admin.id, "Shop closed for repairs", "shop_asked");
     });
   }
 
@@ -551,6 +631,7 @@ async function main() {
           bags,
           ratePaise: rate,
           status: "dispatched",
+          source: "rep_visit",
           placedBy: ids.sales,
           salesRepId: ids.sales,
           createdAt: placedAt,
@@ -723,6 +804,7 @@ async function main() {
           receivedBy: by,
           checkedBy: result === "unverified" ? null : ids.accounts,
           checkedAt: result === "unverified" ? null : new Date(),
+          reasonCode: result === "rejected" ? "not_in_bank" : null,
           rejectReason: result === "rejected" ? "Not in the bank statement" : "",
         })
         .returning();
@@ -736,7 +818,10 @@ async function main() {
             entity: "payment",
             entityId: r.id,
             action: result === "verified" ? "verify" : "reject",
-            details: { ...paymentFacts(r), ...(result === "rejected" ? { reason: "Not in the bank statement" } : {}) },
+            details: {
+              ...paymentFacts(r),
+              ...(result === "rejected" ? { reasonCode: "not_in_bank", note: "Not in the bank statement" } : {}),
+            },
           },
           new Date(r.createdAt.getTime() + 1000),
         );
@@ -772,11 +857,11 @@ async function main() {
   const wrong = await cash(0, 200_000, ids.sales);
   // Accounts reverse the Rs 2,000 (wrong shop) while sales still holds it.
   await db.transaction(async (tx) => {
-    const plan = planReversal("accounts", wrong, "Wrong shop", "holder", { balancePaise: 1_200_000, availablePaise: 1_200_000 });
+    const plan = planReversal("accounts", wrong, "wrong_shop", "", "holder", { balancePaise: 1_200_000, availablePaise: 1_200_000 });
     if (!plan.ok) throw new Error(plan.error);
     await postEntry(
       tx,
-      { retailerId: wrong.retailerId, kind: "receipt_credit", amountPaise: plan.ledgerPaise },
+      { retailerId: wrong.retailerId, kind: plan.ledgerKind, amountPaise: plan.ledgerPaise },
       ids.accounts,
       plan.note,
       wrong.id,
@@ -790,7 +875,7 @@ async function main() {
     });
     await tx
       .update(receipts)
-      .set({ status: "reversed", reversedAt: new Date(), reversedBy: ids.accounts, reversalReason: plan.reason })
+      .set({ status: "reversed", reversedAt: new Date(), reversedBy: ids.accounts, reasonCode: plan.code, reversalReason: plan.reason })
       .where(eq(receipts.id, wrong.id));
     await log(
       tx,
@@ -799,7 +884,7 @@ async function main() {
         entity: "payment",
         entityId: wrong.id,
         action: "reverse",
-        details: { ...paymentFacts(wrong), reason: plan.reason, cashWith: "holder" },
+        details: { ...paymentFacts(wrong), reasonCode: plan.code, cashWith: "holder" },
       },
       new Date(),
     );

@@ -75,6 +75,8 @@ const QUERIES: Record<Exclude<CheckId, "I12">, SQL> = {
     where s.kind = 'purchase'
     group by s.stock_movement_id
     having count(*) <> 1 or s.stock_movement_id is null`,
+  // I7 sums every ledger row of a payment by receipt_id, whatever its kind: the payment credit and
+  // its reversal (receipt_reversal, or a + receipt_credit row from before 0039) net to 0 once reversed.
   I7: sql`
     select 'receipt' kind, r.id::text ref, 'Payment #' || r.receipt_no || ' · ' || r.mode || ' · ' || r.status what,
       'paise' unit, x.led got, (case when r.status in ('received', 'verified') then -r.total_paise else 0 end)::bigint want

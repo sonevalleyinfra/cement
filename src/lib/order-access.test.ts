@@ -15,6 +15,7 @@ import {
   resolveOrderRetailer,
   validatePlaceOrder,
 } from "./order-access";
+import { rateEditReason } from "./rate-rules";
 
 describe("price and placing", () => {
   it("retailer-only sees no price", () => {
@@ -118,6 +119,39 @@ describe("historyForViewer", () => {
     expect(historyForViewer("user", events).map((e) => e.id)).toEqual(["1", "2", "4", "5", "7", "8"]);
     expect(historyForViewer(null, events).map((e) => e.id)).toEqual(["1", "2", "4", "5", "7", "8"]);
   });
+  describe("with reason codes", () => {
+    const coded = [
+      { id: "a", toStatus: "rejected", reason: "", reasonCode: "over_credit" },
+      { id: "b", toStatus: "rejected", reason: "same order twice", reasonCode: "duplicate" },
+      { id: "c", toStatus: "cancelled", reason: "rate too high for them", reasonCode: "shop_asked" },
+      { id: "d", toStatus: "rejected", reason: "talked to owner", reasonCode: "rate_dispute" },
+      { id: "e", toStatus: "approved", reason: "Rate edited:", reasonCode: "price_revision" },
+      { id: "f", toStatus: "cancelled", reason: "truck broke down", reasonCode: "truck_issue" },
+      { id: "g", toStatus: "cancelled", reason: "moved town", reasonCode: "other" },
+      { id: "h", toStatus: "cancelled", reason: "Shop closed", reasonCode: null },
+    ];
+    it("staff see every code and note", () => {
+      expect(historyForViewer("accounts", coded)).toEqual(coded);
+      expect(historyReason(coded[0])).toBe("Over limit");
+      expect(historyReason(coded[3])).toBe("Rate dispute · talked to owner");
+      expect(historyReason(coded[4])).toBe("Market change");
+    });
+    it("a shop sees only shop-visible labels and their notes (without money talk), and no rate rows", () => {
+      for (const role of ["retailer", null, "user"]) {
+        const seen = historyForViewer(role, coded);
+        expect(seen.map((e) => e.id)).toEqual(["a", "b", "c", "d", "f", "g", "h"]);
+        const line = (id: string) => historyReason(seen.find((e) => e.id === id)!);
+        expect(line("a")).toBe("");
+        expect(line("b")).toBe("Duplicate · same order twice");
+        expect(line("c")).toBe("Shop asked");
+        // A staff-only code hides its note as well.
+        expect(line("d")).toBe("");
+        expect(line("f")).toBe("Truck issue · truck broke down");
+        expect(line("g")).toBe("");
+        expect(line("h")).toBe("Shop closed");
+      }
+    });
+  });
   it("spots money words", () => {
     for (const t of ["new RATE", "price", "₹400", "Rs 400", "rs.400", "400/-", "rupees", "discount", "cost"]) {
       expect(mentionsMoney(t)).toBe(true);
@@ -145,9 +179,14 @@ describe("historyStepLabel", () => {
 
 describe("historyReason", () => {
   it("drops the rate prefix and the bare rate-filled row", () => {
-    expect(historyReason("Rate edited: diesel up")).toBe("diesel up");
-    expect(historyReason("Rate filled")).toBe("");
-    expect(historyReason("40 bags in KA01AB1234")).toBe("40 bags in KA01AB1234");
+    expect(historyReason({ reason: "Rate edited: diesel up" })).toBe("diesel up");
+    expect(historyReason({ reason: "Rate filled" })).toBe("");
+    expect(historyReason({ reason: "40 bags in KA01AB1234" })).toBe("40 bags in KA01AB1234");
+  });
+  it("a rate change with only a code shows the label (rateEditReason('') round trip)", () => {
+    expect(historyReason({ reason: rateEditReason(""), reasonCode: "owner_said" })).toBe("Owner said");
+    expect(historyReason({ reason: rateEditReason("diesel"), reasonCode: "price_revision" })).toBe("Market change · diesel");
+    expect(historyStepLabel({ toStatus: "approved", reason: rateEditReason("") })).toBe("Rate edited");
   });
 });
 

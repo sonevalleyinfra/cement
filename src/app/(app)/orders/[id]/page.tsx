@@ -1,10 +1,11 @@
 import { asc, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import { PageHeader } from "@/components/app/page-header";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDate, formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
 import { getRateHints, getStockAvailable } from "@/lib/order-hints";
@@ -17,6 +18,7 @@ import {
   historyStepLabel,
   orderAmountSummary,
 } from "@/lib/order-access";
+import { DELIVER_TO_LABELS, notesForViewer, orderSourceLabel } from "@/lib/order-delivery-rules";
 import { canCancelOrder, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { requireUser } from "@/lib/session";
@@ -24,25 +26,44 @@ import { bagsText } from "@/lib/words";
 import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
 
+/** One row of the facts block: a muted label on the left, the value on the right. */
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex min-h-8 items-baseline justify-between gap-4">
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <span className="text-right text-base font-semibold break-words">{children}</span>
+    </div>
+  );
+}
+
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { user } = await requireUser();
   if (!isUuid(id)) notFound();
+  // Staff see prices, every order and the staff note. The staff note is not even selected for anyone else.
+  const showPrice = canSeePrice(user.role);
 
+  const columns = {
+    id: orders.id,
+    retailerId: orders.retailerId,
+    productId: orders.productId,
+    bags: orders.bags,
+    ratePaise: orders.ratePaise,
+    status: orders.status,
+    deliverTo: orders.deliverTo,
+    siteAddress: orders.siteAddress,
+    receiverName: orders.receiverName,
+    receiverPhone: orders.receiverPhone,
+    requiredBy: orders.requiredBy,
+    source: orders.source,
+    shopNote: orders.shopNote,
+    salesRepId: orders.salesRepId,
+    placedBy: orders.placedBy,
+    retailer: retailers.name,
+    product: products.name,
+  };
   const [o] = await db
-    .select({
-      id: orders.id,
-      retailerId: orders.retailerId,
-      productId: orders.productId,
-      bags: orders.bags,
-      ratePaise: orders.ratePaise,
-      status: orders.status,
-      notes: orders.notes,
-      salesRepId: orders.salesRepId,
-      placedBy: orders.placedBy,
-      retailer: retailers.name,
-      product: products.name,
-    })
+    .select(showPrice ? { ...columns, staffNote: orders.staffNote } : columns)
     .from(orders)
     .innerJoin(retailers, eq(orders.retailerId, retailers.id))
     .innerJoin(products, eq(orders.productId, products.id))
@@ -51,7 +72,6 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   if (!o) notFound();
 
   // Staff see every order; anyone else (a retailer) only their own shop's orders.
-  const showPrice = canSeePrice(user.role);
   if (!showPrice) {
     const [own] = await db
       .select({ id: retailers.id })
@@ -67,6 +87,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         id: orderEvents.id,
         toStatus: orderEvents.toStatus,
         reason: orderEvents.reason,
+        reasonCode: orderEvents.reasonCode,
         fromRatePaise: orderEvents.fromRatePaise,
         toRatePaise: orderEvents.toRatePaise,
         createdAt: orderEvents.createdAt,
@@ -100,6 +121,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   // Staff only. Never one rate that was not billed: see orderAmountSummary.
   const amount = showPrice ? orderAmountSummary({ status: o.status, bags: o.bags, ratePaise: o.ratePaise, loads }) : null;
   const cancelled = cancelledNote(o.status, o.bags, sentBags);
+  const notes = notesForViewer(user.role, { shopNote: o.shopNote, staffNote: "staffNote" in o ? o.staffNote : null });
+  const site = o.deliverTo === "site";
 
   const canCancel = canCancelOrder(user.role, o.status);
   const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o) ? "change" : null;
@@ -120,7 +143,29 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         </p>
         {cancelled && <p>{cancelled}</p>}
       </PageHeader>
-      {o.notes && <p className="text-sm">{o.notes}</p>}
+      <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+        <Fact label="Deliver to">
+          {site ? `${DELIVER_TO_LABELS.site} · ${o.siteAddress ?? ""}` : DELIVER_TO_LABELS.shop}
+        </Fact>
+        {(o.receiverName || o.receiverPhone) && (
+          <Fact label="Receiver">
+            {o.receiverName}
+            {o.receiverName && o.receiverPhone && " · "}
+            {o.receiverPhone && (
+              <a
+                href={`tel:${o.receiverPhone}`}
+                className="tabular -my-2 inline-flex min-h-12 items-center underline underline-offset-2"
+              >
+                {o.receiverPhone}
+              </a>
+            )}
+          </Fact>
+        )}
+        {o.requiredBy && <Fact label="Needed by">{formatDate(o.requiredBy)}</Fact>}
+        {showPrice && o.source && <Fact label="Source">{orderSourceLabel(o.source)}</Fact>}
+        {notes.shopNote && <Fact label={showPrice ? "Note for shop" : "Note"}>{notes.shopNote}</Fact>}
+        {notes.staffNote && <Fact label="Staff note">{notes.staffNote}</Fact>}
+      </div>
       {amount && (
         <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <div className="text-xs text-muted-foreground">{amount.caption}</div>
@@ -183,7 +228,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             {historyRateLine(user.role, e) && (
               <div className="tabular text-sm font-semibold">{historyRateLine(user.role, e)}</div>
             )}
-            {historyReason(e.reason) && <div className="text-sm">{historyReason(e.reason)}</div>}
+            {historyReason(e) && <div className="text-sm">{historyReason(e)}</div>}
           </li>
         ))}
       </ol>

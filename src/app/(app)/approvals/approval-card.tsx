@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { FormHint } from "@/components/app/form-hint";
 import { HintLine } from "@/components/app/hint-line";
+import { ReasonPicker } from "@/components/app/reason-picker";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { firstMissing } from "@/lib/form-rules";
 import { formatINR } from "@/lib/money";
 import { stagger } from "@/lib/motion";
 import { orderTotalPaise } from "@/lib/order-rules";
 import { deviationText, lastRateText, rateDeviation, type RateHint } from "@/lib/rate-hint-rules";
+import { reasonHint } from "@/lib/reason-codes";
 import { useFormError } from "@/lib/use-form-error";
 import { decideOrder } from "../orders/actions";
 
@@ -21,7 +21,7 @@ export function ApprovalCard({
   index,
   hint = null,
 }: {
-  order: { id: string; retailer: string; product: string; bags: number; ratePaise: number };
+  order: { id: string; retailer: string; product: string; bags: number; ratePaise: number; staffNote: string };
   /** What the retailer owes right now (0 when nothing or an advance). */
   duesPaise: number;
   index: number;
@@ -30,16 +30,17 @@ export function ApprovalCard({
 }) {
   const router = useRouter();
   const [rejecting, setRejecting] = useState(false);
-  const [reason, setReason] = useState("");
-  const { error, setError, clearError } = useFormError(reason);
+  const [code, setCode] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const { error, setError, clearError } = useFormError([code, note]);
   const [pending, start] = useTransition();
   const dev = rateDeviation(order.ratePaise, hint?.last?.ratePaise ?? null);
-  const missing = firstMissing([[reason.trim() === "", "Enter a reason"]]);
+  const missing = reasonHint("reject", code, note);
 
   function decide(decision: "approved" | "rejected") {
     clearError();
     start(async () => {
-      const res = await decideOrder(order.id, decision, reason, order.ratePaise);
+      const res = await decideOrder(order.id, decision, code, note, order.ratePaise);
       if (!res.ok) setError(res.error);
       // Also after an error: a changed rate shows on the card at once.
       router.refresh();
@@ -71,13 +72,24 @@ export function ApprovalCard({
         <span className="text-muted-foreground">Dues</span>
         <span className="tabular font-semibold">{formatINR(duesPaise, { hidePaise: true })}</span>
       </div>
+      {order.staffNote && (
+        <p className="text-sm">
+          <span className="text-muted-foreground">Staff note · </span>
+          {order.staffNote}
+        </p>
+      )}
       {rejecting ? (
         <div className="flex flex-col gap-2">
-          <Input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Reason for rejecting"
-            aria-label="Reason for rejecting"
+          <p className="text-base font-semibold">Reject order?</p>
+          <ReasonPicker
+            action="reject"
+            label="Reject order?"
+            code={code}
+            onCodeChange={setCode}
+            note={note}
+            onNoteChange={setNote}
+            disabled={pending}
+            showHint={false}
           />
           {error && <p className="text-sm text-destructive">{error}</p>}
           <FormHint>{missing}</FormHint>
@@ -93,7 +105,7 @@ export function ApprovalCard({
               Back
             </Button>
             <Button variant="destructive" onClick={() => decide("rejected")} disabled={pending || missing !== null}>
-              Confirm reject
+              Reject
             </Button>
           </div>
         </div>

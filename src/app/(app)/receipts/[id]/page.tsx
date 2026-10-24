@@ -9,6 +9,7 @@ import { isUuid } from "@/lib/ids";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
+import { reasonText } from "@/lib/reason-codes";
 import { canReverseReceipt } from "@/lib/receipt-reversal";
 import { canVerifyPayments, MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { showStaffDetails } from "@/lib/receipt-view-rules";
@@ -36,6 +37,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       checkedBy: receipts.checkedBy,
       checkedAt: receipts.checkedAt,
       rejectReason: receipts.rejectReason,
+      reasonCode: receipts.reasonCode,
       reversedAt: receipts.reversedAt,
       reversedBy: receipts.reversedBy,
       reversalReason: receipts.reversalReason,
@@ -85,7 +87,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               {r.status === "rejected" ? "Rejected" : "Verified"} · {checker} · {formatDateTime(r.checkedAt)}
             </div>
           )}
-          {staffDetails && r.status === "rejected" && r.rejectReason && <div>Reason: {r.rejectReason}</div>}
+          {staffDetails && r.status === "rejected" && reasonText(r.reasonCode, r.rejectReason, "payment") && (
+            <div>Reason: {reasonText(r.reasonCode, r.rejectReason, "payment")}</div>
+          )}
         </div>
       )}
 
@@ -96,7 +100,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
             {reverser ? <>{reverser} · </> : ""}
             {r.reversedAt && formatDateTime(r.reversedAt)}
           </div>
-          {staffDetails && r.reversalReason && <div>Reason: {r.reversalReason}</div>}
+          {staffDetails && reasonText(r.reasonCode, r.reversalReason, "payment") && (
+            <div>Reason: {reasonText(r.reasonCode, r.reversalReason, "payment")}</div>
+          )}
         </div>
       )}
 
