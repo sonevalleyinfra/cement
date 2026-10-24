@@ -5,6 +5,7 @@ import {
   historyRateLine,
   historyReason,
   historyStepLabel,
+  isReversalEvent,
   mentionsMoney,
   orderAmountSummary,
   canPlaceOrder,
@@ -159,6 +160,63 @@ describe("historyForViewer", () => {
     for (const t of ["", "Dues too high", "40 bags in KA01", "wrong product", "hrs late", "separate truck"]) {
       expect(mentionsMoney(t)).toBe(false);
     }
+  });
+});
+
+describe("reversal history rows (v2 B2)", () => {
+  const staffOnly = { id: "r1", toStatus: "approved", reasonCode: "returned", reason: "Returned 30 bags in KA01AB1234: Returned · shop said wet" };
+  const visibleCode = {
+    id: "r2",
+    toStatus: "partly_dispatched",
+    reasonCode: "entry_mistake",
+    reason: "Returned 10 bags in KA01AB1234: Wrong entry · typed 110 not 100",
+  };
+  const onCancelled = { id: "r3", toStatus: "cancelled", reasonCode: "wrong_shop", reason: "Returned 5 bags in KA01AB1234: Wrong shop" };
+  it("are labelled 'Bags returned', never the new status", () => {
+    for (const e of [staffOnly, visibleCode, onCancelled]) expect(historyStepLabel(e)).toBe("Bags returned");
+    expect(isReversalEvent({ reason: "40 bags in KA01AB1234", reasonCode: null })).toBe(false);
+    expect(historyStepLabel({ toStatus: "approved", reason: "" })).toBe("Approved");
+    expect(historyStepLabel({ toStatus: "cancelled", reason: "Shop closed" })).toBe("Cancelled");
+  });
+  it("staff see the whole reason once; a shop sees the bags and truck only, no code or note", () => {
+    expect(historyReason(visibleCode)).toBe("10 bags from KA01AB1234 · Wrong entry · typed 110 not 100");
+    expect(historyForViewer("admin", [visibleCode])).toEqual([visibleCode]);
+    const seen = historyForViewer("retailer", [staffOnly, visibleCode, onCancelled]);
+    expect(seen.map((e) => [e.reason, e.reasonCode])).toEqual([
+      ["Returned 30 bags in KA01AB1234", null],
+      ["Returned 10 bags in KA01AB1234", null],
+      ["Returned 5 bags in KA01AB1234", null],
+    ]);
+    expect(seen.map(historyStepLabel)).toEqual(["Bags returned", "Bags returned", "Bags returned"]);
+    expect(seen.map(historyReason)).toEqual(["30 bags from KA01AB1234", "10 bags from KA01AB1234", "5 bags from KA01AB1234"]);
+  });
+});
+
+describe("reversal rows need the code and the exact shape (gatekeeper, PR #65)", () => {
+  it("a staff note that only starts like a reversal goes through the staff-code and money filters", () => {
+    const owes = { reason: "Returned 5 bags in town, shop owes Rs 2,00,000 at 360 rate", reasonCode: "over_credit" };
+    expect(historyForViewer("retailer", [owes]).map((e) => e.reason)).toEqual([""]);
+    const colon = { reason: "Returned 5 bags in town ₹9000: x", reasonCode: "over_credit" };
+    expect(historyForViewer("retailer", [colon]).map((e) => [e.reason, e.reasonCode])).toEqual([["", null]]);
+    // A reversal code is not enough without the shape lib/reversals.ts writes.
+    const loose = { reason: "Returned 5 bags in town rate 360: x", reasonCode: "entry_mistake" };
+    expect(isReversalEvent(loose)).toBe(false);
+    expect(historyForViewer("retailer", [loose]).map((e) => e.reason)).toEqual([""]);
+    // Nor the shape without a reversal code.
+    expect(isReversalEvent({ reason: "Returned 5 bags in KA01AB1234: x", reasonCode: "over_credit" })).toBe(false);
+    expect(isReversalEvent({ reason: "Returned 5 bags in KA01AB1234: x", reasonCode: null })).toBe(false);
+  });
+  it("a real reversal row shows the shop its bags and truck only", () => {
+    const real = { reason: "Returned 30 bags in KA01AB1234: Wrong entry · note", reasonCode: "entry_mistake" };
+    const [seen] = historyForViewer("retailer", [real]);
+    expect([seen.reason, seen.reasonCode]).toEqual(["Returned 30 bags in KA01AB1234", null]);
+    expect(historyReason(seen)).toBe("30 bags from KA01AB1234");
+    expect(historyReason({ reason: "Returned 1 bags in truck: Other", reasonCode: "other" })).toBe("1 bag from truck · Other");
+  });
+  it("a cancel row with a code reversals share, but no reversal shape, is unchanged", () => {
+    const cancel = { toStatus: "cancelled", reason: "Typed the wrong shop", reasonCode: "entry_mistake" };
+    expect(historyForViewer("retailer", [cancel])).toEqual([cancel]);
+    expect(historyStepLabel(cancel)).toBe("Cancelled");
   });
 });
 

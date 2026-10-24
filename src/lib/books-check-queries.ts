@@ -31,9 +31,15 @@ export const QUERIES: Record<Exclude<CheckId, "I12">, SQL> = {
     join retailers r on r.id = o.retailer_id
     cross join lateral (select coalesce(sum(d.bags), 0)::bigint sent from dispatches d where d.order_id = o.id) x
     where x.sent > o.bags
+      or x.sent < 0
       or (o.status = 'dispatched' and x.sent <> o.bags)
       or (o.status = 'partly_dispatched' and not (x.sent between 1 and o.bags - 1))
-      or (o.status in ('placed', 'approved', 'rejected') and x.sent <> 0)`,
+      or (o.status in ('placed', 'approved', 'rejected') and x.sent <> 0)
+    union all
+    select 'order', d.order_id::text, 'Load reversed more than sent', 'bags', x.back, d.bags::bigint
+    from dispatches d
+    cross join lateral (select coalesce(sum(-r.bags), 0)::bigint back from dispatches r where r.reverses_dispatch_id = d.id) x
+    where d.bags > 0 and x.back > d.bags`,
   I3: sql`
     select 'order' kind, o.id::text ref, 'Order · ' || r.name || ' · billed' what,
       'paise' unit, b.led got, a.disp want
@@ -41,7 +47,8 @@ export const QUERIES: Record<Exclude<CheckId, "I12">, SQL> = {
     join retailers r on r.id = o.retailer_id
     cross join lateral (select coalesce(sum(d.bags::bigint * d.rate_paise), 0)::bigint disp from dispatches d where d.order_id = o.id) a
     cross join lateral (
-      select coalesce(sum(l.amount_paise), 0)::bigint led from ledger_entries l where l.order_id = o.id and l.kind = 'order_debit'
+      select coalesce(sum(l.amount_paise), 0)::bigint led from ledger_entries l
+      where l.order_id = o.id and l.kind in ('order_debit', 'dispatch_reversal')
     ) b
     where a.disp <> b.led`,
   I4: sql`
@@ -51,7 +58,8 @@ export const QUERIES: Record<Exclude<CheckId, "I12">, SQL> = {
     join retailers r on r.id = o.retailer_id
     cross join lateral (select coalesce(sum(d.bags), 0)::bigint sent from dispatches d where d.order_id = o.id) a
     cross join lateral (
-      select (-coalesce(sum(m.bags), 0))::bigint as taken from stock_movements m where m.order_id = o.id and m.type = 'dispatch'
+      select (-coalesce(sum(m.bags), 0))::bigint as taken from stock_movements m
+      where m.order_id = o.id and m.type in ('dispatch', 'return')
     ) b
     where a.sent <> b.taken`,
   I5: sql`
@@ -75,6 +83,30 @@ export const QUERIES: Record<Exclude<CheckId, "I12">, SQL> = {
     where s.kind = 'purchase'
     group by s.stock_movement_id
     having count(*) <> 1 or s.stock_movement_id is null
+    union all
+    select 'supplier', p.brand_id::text,
+      'Purchase reversal · ' || p.name || case when s.id is null then ' · no supplier entry' when s.brand_id <> p.brand_id then ' · other supplier' else '' end,
+      'paise', s.amount_paise::bigint, (m.bags::bigint * m.unit_cost_paise)::bigint
+    from stock_movements m
+    join products p on p.id = m.product_id
+    left join supplier_ledger_entries s on s.stock_movement_id = m.id and s.kind = 'purchase_reversal'
+    where m.type = 'purchase_reversal'
+      and (s.id is null or s.amount_paise is distinct from m.bags::bigint * m.unit_cost_paise or s.brand_id <> p.brand_id)
+    union all
+    select 'supplier', s.brand_id::text, 'Supplier purchase reversal without its stock row', 'paise', s.amount_paise::bigint, null
+    from supplier_ledger_entries s
+    left join stock_movements m on m.id = s.stock_movement_id and m.type = 'purchase_reversal'
+    where s.kind = 'purchase_reversal' and m.id is null
+    union all
+    select 'supplier', p.brand_id::text, 'Purchase · ' || p.name || ' · reversed more than received', 'bags', x.back,
+      coalesce(h.received_bags, m.bags)::bigint
+    from stock_movements m
+    join products p on p.id = m.product_id
+    left join purchases h on h.stock_movement_id = m.id
+    cross join lateral (
+      select coalesce(sum(-r.bags), 0)::bigint back from stock_movements r where r.reverses_movement_id = m.id and r.type = 'purchase_reversal'
+    ) x
+    where m.type = 'purchase' and x.back > coalesce(h.received_bags, m.bags)
     union all
     select 'supplier', p.brand_id::text, 'Purchase header · ' || p.name || ' · billed', 'bags', m.bags::bigint, h.billed_bags::bigint
     from purchases h
@@ -205,7 +237,7 @@ export function activityLogQuery(since: Date): SQL {
   return sql`
     select 'stock' kind, null::text ref, 'Stock ' || m.type || ' · ' || p.name what, 'bags' unit, m.bags::bigint got, null::bigint want
     from stock_movements m join products p on p.id = m.product_id
-    where m.type in ('opening', 'purchase', 'adjustment') and m.created_at >= ${t}
+    where m.type in ('opening', 'purchase', 'adjustment', 'purchase_reversal') and m.created_at >= ${t}
       and not exists (select 1 from audit_log a where a.entity = 'stock' and a.entity_id = m.id::text)
     union all
     select 'stock', null, 'Stock move · ' || p.name, 'bags', (-m.bags)::bigint, null
@@ -216,6 +248,11 @@ export function activityLogQuery(since: Date): SQL {
     select 'order', d.order_id::text, 'Dispatch', 'bags', d.bags::bigint, null
     from dispatches d
     where d.created_at >= ${t} and not exists (select 1 from audit_log a where a.entity = 'dispatch' and a.entity_id = d.id::text)
+    union all
+    select 'order', m.order_id::text, 'Stock return', 'bags', m.bags::bigint, null
+    from stock_movements m
+    where m.type = 'return' and m.created_at >= ${t}
+      and not exists (select 1 from audit_log a where a.entity = 'dispatch' and a.action = 'reverse' and a.entity_id = m.dispatch_id::text)
     union all
     select 'retailer', l.retailer_id::text, 'Ledger ' || l.kind, 'paise', l.amount_paise::bigint, null
     from ledger_entries l
@@ -248,7 +285,7 @@ export function activityLogQuery(since: Date): SQL {
     union all
     select 'supplier', s.brand_id::text, 'Supplier ' || s.kind, 'paise', s.amount_paise::bigint, null
     from supplier_ledger_entries s
-    where s.kind <> 'purchase' and s.created_at >= ${t}
+    where s.kind not in ('purchase', 'purchase_reversal') and s.created_at >= ${t}
       and not exists (select 1 from audit_log a where a.entity in ('supplier_entry', 'prism_entry') and a.entity_id = s.id::text)
     union all
     select 'order', e.order_id::text, 'Order history · ' || e.to_status, null, null, null

@@ -36,6 +36,12 @@ describe("salesReport", () => {
     });
   });
 
+  it("a reversal row (minus bags) is a negative sale on its day, not a load", () => {
+    const r = salesReport([sale({ bags: 10, ratePaise: 35_000 }), sale({ bags: -4, ratePaise: 35_000 })]);
+    expect([r.loads, r.bags, r.valuePaise]).toEqual([1, 6, 6 * 35_000]);
+    expect(r.byProduct.map((l) => [l.loads, l.bags])).toEqual([[1, 6]]);
+  });
+
   it("sales = dispatched bags × the rate on each dispatch, grouped four ways", () => {
     const r = salesReport([
       sale({}),
@@ -176,6 +182,21 @@ describe("landed cost in profit", () => {
     const r = profitReport([sale({ bags: 10, ratePaise: 35_000 })], rows);
     expect(r.lines[0].avgCostPaise).toBe(30_881);
     expect(r.lines[0].costPaise).toBe(308_811);
+  });
+
+  it("a purchase reversal is minus bags at the reversed purchase's landed cost; fully reversed = never bought", () => {
+    const bought = { productId: "p1", bags: 600, unitCostPaise: 29_500, receivedBags: 588, landedUnitCostPaise: 31_031 };
+    const other = { productId: "p1", bags: 100, unitCostPaise: 28_500, receivedBags: 100, landedUnitCostPaise: 30_000 };
+    const reversal = (bags: number) => ({ type: "purchase_reversal", productId: "p1", bags: -bags, unitCostPaise: 29_500, receivedBags: 588, landedUnitCostPaise: 31_031 });
+    expect(landedCostRows([reversal(88)])).toEqual([{ productId: "p1", bags: -88, unitCostPaise: 31_031, reversal: true }]);
+    const full = purchaseCostTotals(landedCostRows([bought, other, reversal(588)]));
+    expect(full.get("p1")).toEqual(purchaseCostTotals(landedCostRows([other])).get("p1"));
+    const part = purchaseCostTotals(landedCostRows([bought, reversal(88)]));
+    expect(part.get("p1")).toEqual({ bags: 500, costPaise: 500 * 31_031 });
+    // Net bags 0: the average is unknown, never a division by zero.
+    expect(averageCostPerBag(purchaseCostTotals(landedCostRows([bought, reversal(588)])).get("p1"))).toBeNull();
+    // A minus row that is not a reversal is still skipped.
+    expect(purchaseCostTotals([{ productId: "p1", bags: -5, unitCostPaise: 100 }]).get("p1")).toBeUndefined();
   });
 
   it("an old purchase with no header keeps movement bags × invoice cost", () => {

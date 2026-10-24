@@ -14,6 +14,9 @@
  *   Reversals from before that kind existed are "receipt_credit" rows with plus the amount, and
  *   stay so (append-only): every reader treats both alike. The books check I7 sums every row of a
  *   payment by receipt_id, whatever its kind, so it covers both.
+ * - An admin may reverse a dispatch (all of it, or bags returned; v2 B2): a "dispatch_reversal" row
+ *   with minus the returned bags x that load's rate, linked to the order and to the reversal dispatch
+ *   row (lib/reversals.ts). For aging it cancels that load's debit, not the oldest dues (due-items.ts).
  * - Admin may add an adjustment (+ the retailer owes more, - owes less) with a reason, to fix
  *   anything else.
  * - Retailers can see their own ledger: their total dues, what came (no dispatch amounts) and their
@@ -21,7 +24,14 @@
  */
 import { checkReason } from "./receipt-rules";
 
-export const LEDGER_KINDS = ["opening", "order_debit", "receipt_credit", "adjustment", "receipt_reversal"] as const;
+export const LEDGER_KINDS = [
+  "opening",
+  "order_debit",
+  "receipt_credit",
+  "adjustment",
+  "receipt_reversal",
+  "dispatch_reversal",
+] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 export type LedgerEntry = {

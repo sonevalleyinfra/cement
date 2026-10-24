@@ -29,7 +29,11 @@
  */
 import { checkReason } from "./receipt-rules";
 
-export const SUPPLIER_KINDS = ["opening", "purchase", "payment", "credit", "adjustment"] as const;
+/**
+ * `purchase_reversal` (v2 B2): an admin reversed (part of) a purchase; always -, bags x the purchase's
+ * invoice cost per bag, linked to the purchase_reversal stock movement (lib/reversals.ts).
+ */
+export const SUPPLIER_KINDS = ["opening", "purchase", "payment", "credit", "adjustment", "purchase_reversal"] as const;
 export type SupplierKind = (typeof SUPPLIER_KINDS)[number];
 
 export const SUPPLIER_PAYMENT_MODES = ["bank", "cash", "other"] as const;
@@ -43,6 +47,7 @@ const KIND_LABELS: Record<SupplierKind, string> = {
   payment: "Payment",
   credit: "Credit",
   adjustment: "Adjustment",
+  purchase_reversal: "Purchase reversed",
 };
 
 /** The word shown for one entry. */

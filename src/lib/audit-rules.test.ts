@@ -118,6 +118,17 @@ describe("activitySentence", () => {
     );
   });
 
+  it("reversals (v2 B2)", () => {
+    expect(
+      say(row("dispatch", "reverse", { bags: 30, productId: "p1", retailerId: "r1", amountPaise: -1_050_000, to: "godown:g1", reasonCode: "returned", note: "wet" })),
+    ).toBe("Ramesh took back 30 bags of Prism Trade OPC 43 from Sharma Traders into Main Godown (₹10,500): Returned · wet");
+    expect(
+      say(row("stock", "purchase_reversal", { bags: -50, productId: "p1", place: "godown:g1", amountPaise: -1_250_000, brandId: "b1", reasonCode: "entry_mistake" })),
+    ).toBe("Ramesh reversed a purchase: 50 bags of Prism Trade OPC 43 out of Main Godown (₹12,500 less to Prism): Wrong entry");
+    expect(isAllowedAudit("dispatch", "reverse")).toBe(true);
+    expect(isAllowedAudit("stock", "purchase_reversal")).toBe(true);
+  });
+
   it("orders", () => {
     expect(say(row("order", "place", { bags: 100, productId: "p1", retailerId: "r1" }))).toBe(
       "Ramesh placed an order for 100 bags of Prism Trade OPC 43 for Sharma Traders",

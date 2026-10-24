@@ -1,7 +1,7 @@
 /**
  * Reason codes: the "why" picked from a short list (plus an optional note) when an order is rejected
  * or cancelled, a rate is changed, an approval goes over the credit limit, a payment is rejected or
- * reversed, stock is corrected, a shop that still owes is turned off, or an admin records a payment received more than 2 days ago. Plain functions (no database) so they are easy to test.
+ * reversed, stock is corrected, a dispatch or purchase is reversed, a shop that still owes is turned off, or an admin records a payment received more than 2 days ago. Plain functions (no database) so they are easy to test.
  * Source: cement v2 plan A4 and design spec section 6 (ReasonPicker).
  *
  * - Each list is ordered by how common the reason is; "other" is always last. Labels are 3 words at most.
@@ -88,6 +88,15 @@ export const SHOP_OFF_REASONS = list([
   { code: "other", label: "Other" },
 ]);
 
+/** An admin reversing a dispatch (full or bags returned) or a purchase (v2 B2). Staff only. */
+export const REVERSAL_REASONS = list([
+  { code: "entry_mistake", label: "Wrong entry" },
+  { code: "returned", label: "Returned" },
+  { code: "wrong_shop", label: "Wrong shop" },
+  { code: "short_received", label: "Short received" },
+  { code: "other", label: "Other" },
+]);
+
 export const REASON_LISTS = {
   reject: REJECT_REASONS,
   cancel: CANCEL_REASONS,
@@ -97,6 +106,7 @@ export const REASON_LISTS = {
   stock: STOCK_REASONS,
   backdate: BACKDATE_REASONS,
   shop_off: SHOP_OFF_REASONS,
+  reversal: REVERSAL_REASONS,
 } as const;
 
 export type ReasonAction = keyof typeof REASON_LISTS;
@@ -106,9 +116,9 @@ function codes<A extends ReasonAction>(action: A): ReasonCode<A>[] {
   return REASON_LISTS[action].map((o) => o.code) as ReasonCode<A>[];
 }
 
-/** Every code an order history row may carry (reject, cancel, rate change, override), once each. */
+/** Every code an order history row may carry (reject, cancel, rate change, override, reversal), once each. */
 export const ORDER_EVENT_REASON_CODES = [
-  ...new Set([...codes("reject"), ...codes("cancel"), ...codes("rate_change"), ...codes("override")]),
+  ...new Set([...codes("reject"), ...codes("cancel"), ...codes("rate_change"), ...codes("override"), ...codes("reversal")]),
 ] as const;
 export type OrderEventReasonCode = (typeof ORDER_EVENT_REASON_CODES)[number];
 
@@ -117,6 +127,9 @@ export type PaymentReasonCode = ReasonCode<"payment">;
 
 export const STOCK_REASON_CODES = codes("stock");
 export type StockReasonCode = ReasonCode<"stock">;
+
+export const REVERSAL_REASON_CODES = codes("reversal");
+export type ReversalReasonCode = ReasonCode<"reversal">;
 
 export const BACKDATE_REASON_CODES = codes("backdate");
 export type BackdateReasonCode = ReasonCode<"backdate">;
@@ -132,6 +145,10 @@ export function isOrderEventReasonCode(code: unknown): code is OrderEventReasonC
 
 export function isPaymentReasonCode(code: unknown): code is PaymentReasonCode {
   return isReasonCode("payment", code);
+}
+
+export function isReversalReasonCode(code: unknown): code is ReversalReasonCode {
+  return isReasonCode("reversal", code);
 }
 
 export function isStockReasonCode(code: unknown): code is StockReasonCode {

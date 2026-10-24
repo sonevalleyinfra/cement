@@ -13,6 +13,9 @@ export async function getPurchases() {
   return db
     .select({
       id: purchases.id,
+      movementId: purchases.stockMovementId,
+      // Bags of it reversed so far (v2 B2). Outer column written in full: drizzle may print it unqualified in a subquery.
+      reversedBags: sql<number>`(select coalesce(sum(-r.bags), 0) from stock_movements r where r.reverses_movement_id = "purchases"."stock_movement_id" and r.type = 'purchase_reversal')`.mapWith(Number),
       productName: products.name,
       placeName: sql<string>`coalesce(${godowns.name}, ${vehicles.number})`,
       invoiceNo: purchases.invoiceNo,

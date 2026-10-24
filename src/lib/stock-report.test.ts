@@ -78,6 +78,19 @@ describe("stockFlows", () => {
     expect(f.reconciles).toBe(false);
   });
 
+  it("v2 B2: a return nets out of dispatched, a purchase reversal out of purchased, and both reconcile", () => {
+    const rows = [
+      move("purchase", 200, "2026-10-01T05:00:00Z"),
+      move("dispatch", -100, "2026-10-02T05:00:00Z"),
+      move("return", 30, "2026-10-03T05:00:00Z"),
+      move("purchase_reversal", -50, "2026-10-03T06:00:00Z"),
+    ];
+    const [f] = stockFlows(rows, range, names);
+    expect(f).toMatchObject({ purchasedBags: 150, dispatchedBags: 70, closingBags: 80, reconciles: true });
+    const [p] = placeFlows(rows, range, { godowns: new Map([["g1", "Main"]]), vehicles: new Map() });
+    expect(p).toMatchObject({ inBags: 150, outBags: 70, closingBags: 80, reconciles: true });
+  });
+
   it("flags a movement type it does not know", () => {
     const [f] = stockFlows([move("mystery", 10, "2026-10-02T00:00:00Z")], range, names);
     expect(f.reconciles).toBe(false);

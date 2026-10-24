@@ -59,6 +59,8 @@ export const ACTION_ROLES = {
   manageStock: ["admin"],
   /** Move bags between two places (godown / vehicle). */
   transferStock: ["logistics"],
+  /** Reverse a dispatch (bags back, full or part) or a purchase, with a reason (v2 B2, owner decision D3). */
+  reverseStock: ["admin"],
   // Masters
   /** See the shops list (any staff member; sales may order for, and see the dues of, any shop). */
   viewRetailers: STAFF,

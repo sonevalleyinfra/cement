@@ -17,7 +17,7 @@ import { formatINR } from "./money";
 import { isOrderStatus, isValidBags, orderTotalPaise, orderValuePaise, remainingBags } from "./order-rules";
 import { isStaff } from "./permissions";
 import { isRateEvent, rateEventLabel, rateMoveText } from "./rate-rules";
-import { isShopVisibleReason, reasonLabel } from "./reason-codes";
+import { isShopVisibleReason, REVERSAL_REASON_CODES, reasonLabel } from "./reason-codes";
 import { hasAnyRole, isRetailerOnly } from "./roles";
 import { bagsText } from "./words";
 
@@ -127,6 +127,35 @@ export function mentionsMoney(text: string | null | undefined): boolean {
  * The order history this person may read. Staff see everything. Anyone else does not
  * see rate rows, nor reason codes meant for staff (the code becomes null), nor notes that mention money.
  */
+/**
+ * A reversal's history row (v2 B2, lib/reversals.ts writes exactly
+ * "Returned 30 bags in KA01AB1234: Wrong entry · note", with the truck number normalised, or "truck").
+ * Both the code and that exact shape are needed: "entry_mistake" / "other" are cancel codes too, and a
+ * staff note may start with "Returned 5 bags in town" (gatekeeper, PR #65).
+ */
+const REVERSAL_ROW = /^Returned (\d+) bags in ([A-Z0-9]+|truck): ([\s\S]*)$/;
+/** The same row after historyForViewer cut it for a shop: just "Returned 30 bags in KA01AB1234", no code. */
+const SHOP_REVERSAL_ROW = /^Returned (\d+) bags in ([A-Z0-9]+|truck)$/;
+
+const isReversalCode = (code: string | null | undefined): boolean =>
+  !!code && (REVERSAL_REASON_CODES as readonly string[]).includes(code);
+
+/** The parts of a reversal row (bags, truck, staff text), or null when the row is not one. */
+function reversalParts(event: { reason: string; reasonCode?: string | null }) {
+  const full = isReversalCode(event.reasonCode) ? REVERSAL_ROW.exec(event.reason) : null;
+  if (full) return { bags: Number(full[1]), truck: full[2], rest: full[3] };
+  const cut = event.reasonCode ? null : SHOP_REVERSAL_ROW.exec(event.reason);
+  return cut ? { bags: Number(cut[1]), truck: cut[2], rest: "" } : null;
+}
+
+export function isReversalEvent(event: { reason: string; reasonCode?: string | null }): boolean {
+  return reversalParts(event) !== null;
+}
+
+/**
+ * The order history this person may read. Staff see everything. Anyone else does not
+ * see rate rows, nor reason codes meant for staff (the code becomes null), nor notes that mention money.
+ */
 export function historyForViewer<T extends { reason: string; reasonCode?: string | null }>(
   role: string | null | undefined,
   events: readonly T[],
@@ -135,6 +164,9 @@ export function historyForViewer<T extends { reason: string; reasonCode?: string
   return events
     .filter((e) => !isRateEvent(e.reason))
     .map((e) => {
+      // A reversal row: the shop keeps "Returned 30 bags in <truck>" (like a load row), never the staff reason or note.
+      const back = isReversalCode(e.reasonCode) ? REVERSAL_ROW.exec(e.reason) : null;
+      if (back) return { ...e, reason: `Returned ${back[1]} bags in ${back[2]}`, reasonCode: null };
       let shown = e;
       // A staff-only code hides its note too (it was typed for staff, e.g. "Over limit · 2 lakh due").
       if (shown.reasonCode && !isShopVisibleReason(shown.reasonCode)) shown = { ...shown, reasonCode: null, reason: "" };
@@ -157,9 +189,11 @@ export function historyRateLine(
  * "approved" to "approved"), so it shows as "Rate filled" / "Rate edited". Other rows show their
  * new status ("partly_dispatched" = "Partly dispatched").
  */
-export function historyStepLabel(event: { toStatus: string; reason: string }): string {
+export function historyStepLabel(event: { toStatus: string; reason: string; reasonCode?: string | null }): string {
   const rate = rateEventLabel(event.reason);
   if (rate) return rate;
+  // Not "Approved" / "Partly dispatched": the order was not decided again, bags came back.
+  if (isReversalEvent(event)) return "Bags returned";
   const words = event.toStatus.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -171,6 +205,9 @@ export function historyStepLabel(event: { toStatus: string; reason: string }): s
 export function historyReason(event: { reason: string; reasonCode?: string | null }): string {
   const { reason } = event;
   let note = reason;
+  // A reversal row reads "30 bags from X · Wrong entry · note": its step label already says "Bags returned".
+  const back = reversalParts(event);
+  if (back) return [`${bagsText(back.bags)} from ${back.truck}`, back.rest.trim()].filter(Boolean).join(" · ");
   if (reason.startsWith("Rate edited: ")) note = reason.slice("Rate edited: ".length);
   else if (isRateEvent(reason)) note = "";
   return [reasonLabel(event.reasonCode), note.trim()].filter(Boolean).join(" · ");

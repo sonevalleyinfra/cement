@@ -58,7 +58,8 @@ function addTo(map: Map<string, SalesLine>, key: string, label: string, bags: nu
   const line = map.get(key) ?? { key, label, bags: 0, valuePaise: 0, loads: 0 };
   line.bags += bags;
   line.valuePaise += value;
-  line.loads += 1;
+  // A reversal row (minus bags, v2 B2) is a negative sale on its day, not a load.
+  if (bags > 0) line.loads += 1;
   map.set(key, line);
 }
 
@@ -83,7 +84,7 @@ export function salesReport(rows: readonly SaleRow[]): SalesReport {
     addTo(day, key, key, r.bags, v);
   }
   return {
-    loads: rows.length,
+    loads: rows.filter((r) => r.bags > 0).length,
     bags,
     valuePaise: value,
     byProduct: [...product.values()].sort(biggestFirst),
@@ -95,12 +96,20 @@ export function salesReport(rows: readonly SaleRow[]): SalesReport {
 
 /* ---------- Profit ---------- */
 
-export type PurchaseCostRow = { productId: string; bags: number; unitCostPaise: number | null };
+/**
+ * `reversal`: a purchase reversal (v2 B2): minus bags at the reversed purchase's landed cost, so a fully
+ * reversed purchase leaves the average exactly as if it never happened.
+ */
+export type PurchaseCostRow = { productId: string; bags: number; unitCostPaise: number | null; reversal?: boolean };
 
 export type CostTotals = { bags: number; costPaise: number };
 
-/** A purchase movement with its header, if it has one (null columns = saved before drizzle/0040). */
+/**
+ * A purchase movement with its header, if it has one (null columns = saved before drizzle/0040).
+ * A `purchase_reversal` movement comes with the header of the purchase it reverses.
+ */
 export type PurchaseWithHeader = {
+  type?: string;
   productId: string;
   bags: number;
   unitCostPaise: number | null;
@@ -108,20 +117,27 @@ export type PurchaseWithHeader = {
   landedUnitCostPaise: number | null;
 };
 
-/** Cost rows at the landed cost: received bags × landed cost; without a header, movement bags × invoice cost. */
+/**
+ * Cost rows at the landed cost: received bags × landed cost; without a header, movement bags × invoice cost.
+ * A purchase reversal: its own (minus) bags × the reversed purchase's landed cost (else its invoice cost).
+ */
 export function landedCostRows(rows: readonly PurchaseWithHeader[]): PurchaseCostRow[] {
-  return rows.map((r) => ({
-    productId: r.productId,
-    bags: r.receivedBags ?? r.bags,
-    unitCostPaise: r.landedUnitCostPaise ?? r.unitCostPaise,
-  }));
+  return rows.map((r) =>
+    r.type === "purchase_reversal"
+      ? { productId: r.productId, bags: r.bags, unitCostPaise: r.landedUnitCostPaise ?? r.unitCostPaise, reversal: true }
+      : { productId: r.productId, bags: r.receivedBags ?? r.bags, unitCostPaise: r.landedUnitCostPaise ?? r.unitCostPaise },
+  );
 }
 
-/** Σ bags and Σ bags × cost per product, from purchases with a known cost (others are skipped). */
+/**
+ * Σ bags and Σ bags × cost per product, from purchases with a known cost (others are skipped).
+ * Only a reversal row may have minus bags; the average is null while the net bags are 0 or less.
+ */
 export function purchaseCostTotals(rows: readonly PurchaseCostRow[]): Map<string, CostTotals> {
   const out = new Map<string, CostTotals>();
   for (const r of rows) {
-    if (r.unitCostPaise === null || r.unitCostPaise <= 0 || r.bags <= 0) continue;
+    if (r.unitCostPaise === null || r.unitCostPaise <= 0 || r.bags === 0) continue;
+    if (r.bags < 0 && !r.reversal) continue;
     const t = out.get(r.productId) ?? { bags: 0, costPaise: 0 };
     t.bags += r.bags;
     t.costPaise += saleValuePaise(r.bags, r.unitCostPaise);

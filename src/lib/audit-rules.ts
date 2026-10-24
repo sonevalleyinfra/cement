@@ -19,6 +19,7 @@
 import { formatINR } from "./money";
 import { ONLINE_METHOD_LABELS } from "./receipt-rules";
 import { CLAIM_LABELS, isClaimStatus } from "./purchase-rules";
+import { reasonText } from "./reason-codes";
 import { SUPPLIER_KINDS } from "./supplier-rules";
 
 /* ---------- What may be logged ---------- */
@@ -27,10 +28,12 @@ import { SUPPLIER_KINDS } from "./supplier-rules";
 export const AUDIT_ACTIONS = {
   // Orders and dispatch (spec section 3)
   order: ["place", "fill_rate", "change_rate", "approve", "reject", "cancel"],
-  dispatch: ["create"],
+  // reverse: an admin reversed (part of) a load (entityId = the reversal dispatch row, v2 B2)
+  dispatch: ["create", "reverse"],
   // Stock (spec section 4)
   // claim: a purchase's short / burst claim moved on (entityId = the purchase id)
-  stock: ["opening", "purchase", "adjustment", "transfer", "claim"],
+  // purchase_reversal: an admin reversed (part of) a purchase (entityId = the new movement, v2 B2)
+  stock: ["opening", "purchase", "adjustment", "transfer", "claim", "purchase_reversal"],
   // Money (spec sections 5 and 6)
   payment: ["record", "verify", "reject", "reverse"],
   handover: ["request", "confirm", "reject"],
@@ -237,10 +240,17 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
       }
       break;
     }
-    case "dispatch":
+    case "dispatch": {
+      if (row.action === "reverse") {
+        const why2 = reasonText(s(d.reasonCode), s(d.note), "reversal");
+        return say(
+          `took back ${bags !== null ? `${bagsText(bags)} of ` : ""}${product} from ${shop} into ${place(d.to)}${amount !== null ? ` (${rs(Math.abs(amount))})` : ""}${why2 ? `: ${why2}` : ""}`,
+        );
+      }
       return say(
         `dispatched ${bags !== null ? `${bagsText(bags)} of ` : ""}${product} to ${shop}${amount !== null ? ` (${rs(amount)})` : ""}`,
       );
+    }
     case "stock": {
       const count = bags !== null ? bagsText(bags) : "bags";
       switch (row.action) {
@@ -255,6 +265,13 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
           return say(`corrected ${product} at ${place(d.place)} by ${bags !== null && bags < 0 ? "−" : "+"}${count}${reason}`);
         case "transfer":
           return say(`moved ${count} of ${product} from ${place(d.from)} to ${place(d.to)}`);
+        case "purchase_reversal": {
+          const why2 = reasonText(s(d.reasonCode), s(d.note), "reversal");
+          const less = amount !== null ? ` (${rs(Math.abs(amount))} less to ${name(d.brandId, "the supplier")})` : "";
+          return say(
+            `reversed a purchase: ${bags !== null ? bagsText(Math.abs(bags)) : "bags"} of ${product} out of ${place(d.place)}${less}${why2 ? `: ${why2}` : ""}`,
+          );
+        }
         case "claim": {
           const to = isClaimStatus(d.to) ? CLAIM_LABELS[d.to] : "changed";
           return say(`marked the claim on ${s(d.invoiceNo) ? `invoice ${s(d.invoiceNo)}` : "a purchase"} as ${to}`);

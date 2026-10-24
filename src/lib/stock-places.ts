@@ -2,7 +2,11 @@ import { asc, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { godowns, stockMovements, vehicles } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { atPlace } from "@/lib/stock-place-lock";
 import { placeKey, type PlaceKind, type PlaceRef } from "@/lib/stock-rules";
+
+// Moved to stock-place-lock.ts (no `@/db`, so code that runs in a given transaction can use them).
+export { atPlace, lockPlace } from "@/lib/stock-place-lock";
 
 /** An open database transaction. */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -33,36 +37,6 @@ export async function getPlaces(): Promise<Place[]> {
     ...g.map((p) => ({ ...p, kind: "godown" as const, key: placeKey({ kind: "godown", id: p.id }) })),
     ...v.map((p) => ({ ...p, kind: "vehicle" as const, key: placeKey({ kind: "vehicle", id: p.id }) })),
   ];
-}
-
-/**
- * Locks the godown or truck for the rest of the transaction, so two people cannot take the
- * same bags at once and the place cannot be switched off while bags arrive.
- * Refused when the place is unknown or switched off.
- */
-export async function lockPlace(
-  tx: Tx,
-  place: PlaceRef,
-): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
-  const [row] =
-    place.kind === "godown"
-      ? await tx
-          .select({ name: godowns.name, active: godowns.active })
-          .from(godowns)
-          .where(eq(godowns.id, place.id))
-          .for("no key update")
-      : await tx
-          .select({ name: vehicles.number, active: vehicles.active })
-          .from(vehicles)
-          .where(eq(vehicles.id, place.id))
-          .for("no key update");
-  if (!row || !row.active) return { ok: false, error: "Pick an active place." };
-  return { ok: true, name: row.name };
-}
-
-/** Rows of one place: the godown or truck column matches (for `where`). */
-export function atPlace(place: PlaceRef) {
-  return place.kind === "godown" ? eq(stockMovements.godownId, place.id) : eq(stockMovements.vehicleId, place.id);
 }
 
 /** Bags at a godown or truck, every product together (for the switch-off check). */

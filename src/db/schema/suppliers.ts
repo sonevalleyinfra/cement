@@ -25,7 +25,7 @@ export const supplierLedgerEntries = pgTable(
     brandId: uuid("brand_id")
       .notNull()
       .references(() => brands.id),
-    /** opening | purchase | payment | credit | adjustment */
+    /** opening | purchase | payment | credit | adjustment | purchase_reversal (v2 B2: always -, linked to its stock movement) */
     kind: text("kind").notNull(),
     amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
     entryDate: date("entry_date", { mode: "string" })
@@ -51,12 +51,20 @@ export const supplierLedgerEntries = pgTable(
     uniqueIndex("supplier_ledger_entries_one_opening_idx")
       .on(t.brandId)
       .where(sql`${t.kind} = 'opening'`),
+    // One supplier entry per purchase_reversal movement.
+    uniqueIndex("supplier_ledger_entries_one_purchase_reversal_idx")
+      .on(t.stockMovementId)
+      .where(sql`${t.kind} = 'purchase_reversal'`),
     check("supplier_ledger_entries_kind_valid", oneOf(t.kind, SUPPLIER_KINDS)),
     check("supplier_ledger_entries_amount_not_zero", sql`${t.amountPaise} <> 0`),
-    // Signs: a purchase adds to what we owe; a payment or credit lowers it.
+    // Signs: a purchase adds to what we owe; a payment, credit or purchase reversal lowers it.
     check(
       "supplier_ledger_entries_sign_valid",
-      sql`(${t.kind} <> 'purchase' or ${t.amountPaise} > 0) and (${t.kind} not in ('payment', 'credit') or ${t.amountPaise} < 0)`,
+      sql`(${t.kind} <> 'purchase' or ${t.amountPaise} > 0) and (${t.kind} not in ('payment', 'credit', 'purchase_reversal') or ${t.amountPaise} < 0)`,
+    ),
+    check(
+      "supplier_ledger_entries_reversal_link",
+      sql`${t.kind} <> 'purchase_reversal' or ${t.stockMovementId} is not null`,
     ),
     check(
       "supplier_ledger_entries_mode_valid",

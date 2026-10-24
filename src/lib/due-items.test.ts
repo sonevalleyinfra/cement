@@ -158,6 +158,85 @@ describe("duesFromLedger", () => {
   });
 });
 
+describe("dispatch reversals cancel their own load (v2 B2)", () => {
+  const reversal = (orderId: string, amount: number, d: number, loadDay: number): LedgerRow => ({
+    ...row("dispatch_reversal", -amount, orderId, d),
+    reversesAt: day(loadDay),
+  });
+  /** One load: bags x rate, dispatched on `d`. */
+  type Load = { orderId: string; d: number; bags: number; rate: number };
+
+  it("reversing the newer load leaves the old overdue item untouched", () => {
+    const rows = [order("old", 30_000, 1), pay(10_000, 5), order("new", 50_000, 40), reversal("new", 50_000, 41, 40)];
+    expect(one(rows).items).toEqual([{ kind: "order", orderId: "old", dueSince: day(1), duePaise: 20_000 }]);
+    // A plain credit of the same amount would have cleared the old item first.
+    const asPayment = one([order("old", 30_000, 1), pay(10_000, 5), order("new", 50_000, 40), pay(50_000, 41)]);
+    expect(asPayment.items).toEqual([{ kind: "order", orderId: "new", dueSince: day(40), duePaise: 20_000 }]);
+  });
+  it("a part return lowers that load only", () => {
+    const rows = [order("o1", 30_000, 1), order("o2", 50_000, 10), reversal("o2", 20_000, 12, 10)];
+    expect(one(rows).items).toEqual([
+      { kind: "order", orderId: "o1", dueSince: day(1), duePaise: 30_000 },
+      { kind: "order", orderId: "o2", dueSince: day(10), duePaise: 30_000 },
+    ]);
+  });
+  it("two loads of one order: only the reversed moment is touched", () => {
+    const rows = [order("o1", 10_000, 1), order("o1", 10_000, 5), reversal("o1", 10_000, 6, 1)];
+    expect(one(rows).items).toEqual([{ kind: "order", orderId: "o1", dueSince: day(5), duePaise: 10_000 }]);
+  });
+  it("no matching load (or no reversesAt): it falls back to a general credit", () => {
+    expect(one([order("o1", 10_000, 1), reversal("zz", 4_000, 2, 1)]).items).toEqual([
+      { kind: "order", orderId: "o1", dueSince: day(1), duePaise: 6_000 },
+    ]);
+    expect(one([order("o1", 10_000, 1), row("dispatch_reversal", -4_000, "o1", 2)]).duePaise).toBe(6_000);
+    // A load already paid: the reversal makes an advance.
+    const f = one([order("o1", 10_000, 1), pay(10_000, 2), reversal("o1", 10_000, 3, 1)]);
+    expect(f).toEqual({ balancePaise: -10_000, duePaise: 0, items: [] });
+  });
+
+  it("property (seeded random): the promise holds, and reversing k bags of load L = L's debit smaller by k x rate", { timeout: 30_000 }, () => {
+    const rand = rng(2026);
+    const pick = (n: number) => Math.floor(rand() * n);
+    for (let n = 0; n < 400; n++) {
+      const loads: Load[] = [];
+      const others: LedgerRow[] = [];
+      const count = pick(10);
+      for (let i = 0; i < count; i++) {
+        const d = pick(60);
+        const k = pick(4);
+        if (k <= 1) loads.push({ orderId: `o${pick(4)}`, d, bags: 1 + pick(200), rate: 1 + pick(50_000) });
+        else if (k === 2) others.push(pay(1 + pick(5_000_000), d));
+        else others.push(row("adjustment", (1 + pick(1_000_000)) * (rand() < 0.5 ? 1 : -1), null, d));
+      }
+      if (rand() < 0.3) others.push(opening(1 + pick(1_000_000), pick(60)));
+      // Random part reversals of some loads, after the load.
+      const reversed = loads.map((l) => (rand() < 0.5 ? pick(l.bags + 1) : 0));
+      const byDate = (a: LedgerRow, b: LedgerRow) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      const withReversals: LedgerRow[] = [
+        ...others,
+        ...loads.map((l) => order(l.orderId, l.bags * l.rate, l.d)),
+        ...loads.flatMap((l, i) => (reversed[i] > 0 ? [reversal(l.orderId, reversed[i] * l.rate, l.d + 1 + pick(30), l.d)] : [])),
+      ].sort(byDate);
+      const smaller: LedgerRow[] = [
+        ...others,
+        ...loads.flatMap((l, i) => (l.bags > reversed[i] ? [order(l.orderId, (l.bags - reversed[i]) * l.rate, l.d)] : [])),
+      ].sort(byDate);
+      const a = duesFromLedger(withReversals);
+      const b = duesFromLedger(smaller);
+      const balance = withReversals.reduce((s, r) => s + r.amountPaise, 0);
+      expect(a.balancePaise).toBe(balance);
+      expect(a.duePaise).toBe(Math.max(0, balance));
+      expect(a.items.reduce((s, i) => s + i.duePaise, 0)).toBe(a.duePaise);
+      expect(bucketsTotal(agingBuckets(a, "2026-04-01"))).toBe(a.duePaise);
+      // Same totals and the same items (two loads of one order on one day may merge differently, so compare per order + day).
+      expect(a.balancePaise).toBe(b.balancePaise);
+      const key = (items: typeof a.items) =>
+        [...items.reduce((m, i) => m.set(`${i.kind}|${i.orderId}|${i.dueSince.getTime()}`, (m.get(`${i.kind}|${i.orderId}|${i.dueSince.getTime()}`) ?? 0) + i.duePaise), new Map<string, number>())].sort();
+      expect(key(a.items)).toEqual(key(b.items));
+    }
+  });
+});
+
 describe("each dispatch is its own item", () => {
   it("two loads of one order age from their own days", () => {
     const f = one([order("o1", 1000, 1), order("o1", 500, 40), pay(1200, 41)]);

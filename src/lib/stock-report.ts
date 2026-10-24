@@ -80,8 +80,9 @@ export function stockFlows(rows: readonly StockMoveRow[], range: { start: Date; 
       f.openingBags += r.bags;
       continue;
     }
-    if (r.type === "purchase") f.purchasedBags += r.bags;
-    else if (r.type === "dispatch") f.dispatchedBags -= r.bags;
+    // A purchase reversal nets out of purchased, a return (bags back from a reversed load) out of dispatched (v2 B2).
+    if (r.type === "purchase" || r.type === "purchase_reversal") f.purchasedBags += r.bags;
+    else if (r.type === "dispatch" || r.type === "return") f.dispatchedBags -= r.bags;
     else if (r.type === "transfer") {
       f.movedBags += r.bags;
       if (r.bags > 0) f.movedInBags += r.bags;
@@ -219,8 +220,8 @@ export function placeFlows(
       p.openingBags += r.bags;
       continue;
     }
-    if (r.type === "purchase" || r.type === "opening") p.inBags += r.bags;
-    else if (r.type === "dispatch") p.outBags -= r.bags;
+    if (r.type === "purchase" || r.type === "opening" || r.type === "purchase_reversal") p.inBags += r.bags;
+    else if (r.type === "dispatch" || r.type === "return") p.outBags -= r.bags;
     else if (r.type === "transfer" || r.type === "adjustment") {
       if (r.bags > 0) p.inBags += r.bags;
       else p.outBags -= r.bags;

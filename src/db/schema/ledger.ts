@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { LEDGER_KINDS } from "../../lib/ledger-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
+import { dispatches } from "./dispatches";
 import { orders } from "./orders";
 import { retailers } from "./retailers";
 
@@ -25,11 +26,14 @@ export const ledgerEntries = pgTable(
     /**
      * opening | order_debit | receipt_credit | adjustment | receipt_reversal (+amount, a payment put
      * back on the bill). Reversals before 0039 are `receipt_credit` rows with a + amount.
+     * dispatch_reversal (v2 B2): minus the bags returned x that load's rate, linked to the reversal dispatch row.
      */
     kind: text("kind").notNull(),
     amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
     orderId: uuid("order_id").references(() => orders.id),
     receiptId: uuid("receipt_id"),
+    /** dispatch_reversal only: the reversal dispatch row (bags < 0) this credit belongs to. */
+    dispatchId: uuid("dispatch_id").references(() => dispatches.id),
     note: text("note").default("").notNull(),
     actorId: text("actor_id")
       .notNull()
@@ -42,11 +46,18 @@ export const ledgerEntries = pgTable(
     uniqueIndex("ledger_entries_one_opening_idx")
       .on(t.retailerId)
       .where(sql`${t.kind} = 'opening'`),
+    uniqueIndex("ledger_entries_one_dispatch_reversal_idx")
+      .on(t.dispatchId)
+      .where(sql`${t.kind} = 'dispatch_reversal'`),
     check("ledger_entries_kind_valid", oneOf(t.kind, LEDGER_KINDS)),
     check("ledger_entries_amount_not_zero", sql`${t.amountPaise} <> 0`),
     check(
       "ledger_entries_reversal_shape",
       sql`${t.kind} <> 'receipt_reversal' or (${t.amountPaise} > 0 and ${t.receiptId} is not null)`,
+    ),
+    check(
+      "ledger_entries_dispatch_reversal_shape",
+      sql`(${t.kind} = 'dispatch_reversal') = (${t.dispatchId} is not null) and (${t.kind} <> 'dispatch_reversal' or (${t.amountPaise} < 0 and ${t.orderId} is not null))`,
     ),
   ],
 );

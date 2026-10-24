@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { dispatches, orders, products, retailers, vehicles } from "@/db/schema";
@@ -45,6 +45,8 @@ export default async function DispatchPage() {
       .select({ truck: vehicles.number, driverName: dispatches.driverName, driverPhone: dispatches.driverPhone })
       .from(dispatches)
       .innerJoin(vehicles, eq(vehicles.id, dispatches.vehicleId))
+      // Loads only (a reversal row copies its load's truck, v2 B2).
+      .where(gt(dispatches.bags, 0))
       .orderBy(desc(dispatches.createdAt))
       .limit(30),
   ]);

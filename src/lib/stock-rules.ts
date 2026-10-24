@@ -3,7 +3,12 @@ import { checkReason, reasonLabel, type StockReasonCode } from "./reason-codes";
 import { isAdmin } from "./roles";
 import { bagsText } from "./words";
 
-export const MOVEMENT_TYPES = ["opening", "purchase", "dispatch", "adjustment", "transfer"] as const;
+/**
+ * `return`: bags of a reversed dispatch back into a place (+, linked to the order and the reversal
+ * dispatch row). `purchase_reversal`: bags of a wrong purchase taken out again (-, linked to the
+ * purchase movement, at its cost per bag). Both are admin-only with a reversal reason (v2 B2, lib/reversals.ts).
+ */
+export const MOVEMENT_TYPES = ["opening", "purchase", "dispatch", "adjustment", "transfer", "return", "purchase_reversal"] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 export type Movement = {

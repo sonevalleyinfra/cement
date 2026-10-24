@@ -14,7 +14,7 @@ import { dispatches, ledgerEntries, orders, receipts, retailers } from "@/db/sch
 import { NOT_SENT_STATUSES, notSentPaise, oldestOverdueDays, type OpenOrder, type ShopCreditFacts } from "@/lib/credit-check-rules";
 import type { LedgerRow } from "@/lib/due-items";
 import { LAST_PAYMENT_SKIPS } from "@/lib/home-rules";
-import { ledgerMomentSql } from "@/lib/ledger-sql";
+import { ledgerMomentSql, ledgerReversesAtSql } from "@/lib/ledger-sql";
 
 /** A database or an open transaction on the app's schema. */
 export type CreditConn = Pick<PostgresJsDatabase<typeof schema>, "select" | "selectDistinctOn">;
@@ -60,6 +60,8 @@ export async function readCreditFacts(
       orderId: ledgerEntries.orderId,
       // A payment counts on the day it was received.
       createdAt: ledgerMomentSql,
+      // A dispatch reversal cancels its own load's debit (due-items.ts).
+      reversesAt: ledgerReversesAtSql,
     })
     .from(ledgerEntries)
     .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))

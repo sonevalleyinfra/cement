@@ -12,6 +12,11 @@
  *   cancel a payment, so they bring the old items back rather than starting a new one), a negative
  *   opening and negative adjustments. Credits are applied to the items oldest first; what is left of
  *   each item is still due. So an advance pays later dispatches by itself.
+ * - A dispatch reversal (`dispatch_reversal`, minus: bags returned or a wrong load undone, v2 B2) is NOT a
+ *   general credit: it cancels the debit of the load it reverses (the `order` item with the same order
+ *   and the same moment, `reversesAt` = the original dispatch's time), so the shop's oldest overdue item
+ *   is not cleared by it. Whatever it cannot cancel there (no such item, or more than is left of it) falls
+ *   back to the general credits, so the promise below still holds.
  *
  * Choices where the spec is silent:
  * - Ties (same moment) keep the order the entries were given in.
@@ -31,6 +36,8 @@ export type LedgerRow = {
   amountPaise: number;
   orderId: string | null;
   createdAt: Date | string;
+  /** `dispatch_reversal` rows: when the reversed load was dispatched (= its order_debit row's moment). */
+  reversesAt?: Date | string | null;
 };
 
 export type DueItem = {
@@ -68,11 +75,14 @@ export function duesFromLedger(rows: readonly LedgerRow[]): RetailerDues {
   let balance = 0;
   let credits = 0;
   let firstLooseDebit: { at: number; seq: number } | null = null;
+  const reversals: { orderId: string | null; at: number; amount: number }[] = [];
 
   rows.forEach((e, seq) => {
     balance += e.amountPaise;
     const at = new Date(e.createdAt).getTime();
-    if (e.amountPaise > 0 && e.kind === "opening") drafts.push({ kind: "opening", orderId: null, at, seq, amount: e.amountPaise });
+    if (e.amountPaise < 0 && e.kind === "dispatch_reversal" && e.reversesAt != null) {
+      reversals.push({ orderId: e.orderId, at: new Date(e.reversesAt).getTime(), amount: -e.amountPaise });
+    } else if (e.amountPaise > 0 && e.kind === "opening") drafts.push({ kind: "opening", orderId: null, at, seq, amount: e.amountPaise });
     else if (e.amountPaise > 0 && e.kind === "order_debit") {
       drafts.push({ kind: "order", orderId: e.orderId, at, seq, amount: e.amountPaise });
     } else if (e.amountPaise > 0 && e.kind === "adjustment") {
@@ -82,6 +92,19 @@ export function duesFromLedger(rows: readonly LedgerRow[]): RetailerDues {
       if (e.amountPaise > 0 && (firstLooseDebit === null || at < firstLooseDebit.at)) firstLooseDebit = { at, seq };
     }
   });
+
+  // Each reversal takes its load's debit down first; the rest is a general credit.
+  for (const r of reversals) {
+    let rest = r.amount;
+    for (const d of drafts) {
+      if (rest === 0) break;
+      if (d.kind !== "order" || d.orderId !== r.orderId || d.at !== r.at) continue;
+      const used = Math.min(rest, d.amount);
+      d.amount -= used;
+      rest -= used;
+    }
+    credits += rest;
+  }
 
   if (credits < 0) {
     const from: { at: number; seq: number } = firstLooseDebit ?? { at: 0, seq: 0 };

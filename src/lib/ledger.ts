@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { dispatches, ledgerEntries, orders, products, receipts } from "@/db/schema";
 import { ledgerBackdatedSql, ledgerMomentSql } from "@/lib/ledger-sql";
@@ -27,7 +27,7 @@ export async function postEntry(
   return row.id;
 }
 
-export { ledgerBackdatedSql, ledgerMomentSql } from "@/lib/ledger-sql";
+export { ledgerBackdatedSql, ledgerMomentSql, ledgerReversesAtSql } from "@/lib/ledger-sql";
 
 /** Net balance per retailer (for the list cards; positive = retailer owes). Server-only. */
 export async function getAllBalances(conn: Pick<typeof db, "select"> = db) {
@@ -52,11 +52,11 @@ export async function getBalance(retailerId: string, conn: Pick<typeof db, "sele
 /**
  * All entries for one retailer, oldest first. A dispatch row also gets its product and bags (its
  * dispatch was saved in the same transaction: same order, same moment), so a retailer can be shown
- * "what came" without the amount. `createdAt` is the ledger moment (`ledgerMomentSql`: a payment
+ * "what came" without the amount; a dispatch_reversal row gets its (minus) bags from its reversal row. `createdAt` is the ledger moment (`ledgerMomentSql`: a payment
  * counts on the day it was received); `backdated` marks such a payment row.
  */
 export async function getEntries(retailerId: string) {
-  return db
+  const rows = await db
     .select({
       id: ledgerEntries.id,
       kind: ledgerEntries.kind,
@@ -74,8 +74,22 @@ export async function getEntries(retailerId: string) {
     .leftJoin(products, eq(products.id, orders.productId))
     .leftJoin(
       dispatches,
-      and(eq(dispatches.orderId, ledgerEntries.orderId), eq(dispatches.createdAt, ledgerEntries.createdAt)),
+      or(
+        // A dispatch_reversal row names its reversal dispatch row (minus bags, v2 B2).
+        eq(dispatches.id, ledgerEntries.dispatchId),
+        and(
+          isNull(ledgerEntries.dispatchId),
+          eq(dispatches.orderId, ledgerEntries.orderId),
+          eq(dispatches.createdAt, ledgerEntries.createdAt),
+          gt(dispatches.bags, 0),
+          // Two loads of one order saved in one transaction (seed data) share the moment: the amount tells them apart.
+          sql`${dispatches.bags}::bigint * ${dispatches.ratePaise} = ${ledgerEntries.amountPaise}`,
+        ),
+      ),
     )
     .where(eq(ledgerEntries.retailerId, retailerId))
     .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id));
+  // Each ledger row once, even when two identical loads still match it (the list is keyed by id).
+  const seen = new Set<string>();
+  return rows.filter((r) => !seen.has(r.id) && !!seen.add(r.id));
 }
