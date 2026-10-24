@@ -17,7 +17,7 @@ export const SHOP_CATEGORY_LABELS: Record<ShopCategory, string> = {
 
 /**
  * A shop's credit status. hold = no new approvals, blocked = no dispatch either.
- * Stored and editable only: it is enforced later (v2 B1), not yet.
+ * Approving an order of a shop on hold or blocked needs an override reason (v2 B1); dispatch is not checked yet.
  */
 export const CREDIT_STATUSES = ["ok", "hold", "blocked"] as const;
 export type CreditStatus = (typeof CREDIT_STATUSES)[number];

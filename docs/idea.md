@@ -54,7 +54,7 @@ Placed → Approved / Rejected → Partly dispatched → Dispatched        (Canc
    Sales only ever fill an **empty** rate (their own new order, or a retailer's order for their shop).
 2. **Approve / reject**: accounts, only when the rate is filled. Screen shows order total, the retailer's dues, the
    last-rate hint, and the **credit check**: exposure (dues + approved bags not yet sent + this order) against the limit,
-   oldest overdue days and the last payment. Over the limit or past credit days = red warning: accounts can approve only
+   oldest overdue days and the last payment. Over the limit, past credit days or the shop on hold / blocked = red warning: accounts can approve only
    with an override reason code, admin is told, and overrides are counted in reports (soft block). No limit set =
    amber "No limit set". Reject needs a reason code (plus an optional note). If the rate changed after the screen was opened, the decision is refused ("check again").
 3. **Dispatch**: any logistics person (or admin), from a godown or truck that holds enough bags. Truck no., driver,
@@ -143,7 +143,7 @@ Cash payment recorded → admin. Online payment recorded → accounts. Cash hand
 - Admin: today / month-to-date bags and ₹ against last month, margin ₹ per bag, collections by mode; risk: outstanding,
   overdue %, DSO, top 10 overdue shops, cash with staff and its age, pending items and their ages, stock value, every
   supplier balance; orders waiting approval / dispatch, online to verify, shops without a sales person, shops with no
-  credit limit set.
+  credit limit set, credit overrides this month.
 - Sales: my orders (rate to fill), collect today, my shops' dues, my collections and bags this month, my cash held.
 - Accounts: approvals, online to verify, cash handovers to confirm, with how long each has waited.
 - Logistics: approved orders to dispatch with their age, truck stock (bags per loaded truck, by product), godown days

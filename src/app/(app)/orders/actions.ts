@@ -26,6 +26,7 @@ import { checkReason, reasonText } from "@/lib/reason-codes";
 import { checkRequestId } from "@/lib/request-rules";
 import { orderSalesRep } from "@/lib/sales-rep-rules";
 import { notify } from "@/lib/notify";
+import { approveOrderInTx } from "@/lib/order-approval";
 import { requireRole } from "@/lib/session";
 
 /** The facts every order row in the activity log carries. */
@@ -34,6 +35,8 @@ function orderFacts(o: { retailerId: string; productId: string; bags: number }) 
 }
 
 export type PlaceOrderResult = { ok: true } | { ok: false; error: string };
+/** `needsOverride`: the credit check is red now (maybe after another approval); pick a reason and try again. */
+export type DecideResult = { ok: true } | { ok: false; error: string; needsOverride?: true };
 
 function refresh(orderId?: string) {
   revalidatePath("/orders");
@@ -259,6 +262,9 @@ export async function changeRate(
 /**
  * Accounts or admin approves or rejects a placed order with a rate (a reason code is needed to reject). Nothing is billed here.
  * `seenRatePaise` is the rate on their screen: if it changed meanwhile, nothing is decided (canDecide).
+ * Approving runs the credit check inside the transaction (lib/order-approval.ts): over the limit, overdue
+ * or a shop on hold / blocked needs `override` (an override reason code + note); without one it is refused
+ * with `needsOverride`. The screen's view of the dues is never trusted. Rejecting has no credit check.
  */
 export async function decideOrder(
   orderId: string,
@@ -266,19 +272,38 @@ export async function decideOrder(
   reasonCode: string | null,
   note: string | null,
   seenRatePaise: number,
-): Promise<PlaceOrderResult> {
+  override: { code: string; note: string } | null = null,
+): Promise<DecideResult> {
   const { user: me } = await requireRole(...rolesFor("decideOrder"));
   // Only these two outcomes: anything else (e.g. "cancelled") must go through cancelOrder.
   if (decision !== "approved" && decision !== "rejected") return { ok: false, error: "Pick approve or reject." };
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
-  let why: { code: string; note: string } | null = null;
-  if (decision === "rejected") {
-    const check = checkReason("reject", reasonCode, note);
-    if (!check.ok) return check;
-    why = { code: check.code, note: check.note };
+  if (decision === "approved") {
+    // Only the shape is checked here; the code and note are checked where the check is red.
+    const why = override && typeof override === "object" ? { code: override.code, note: override.note } : null;
+    const result = await db.transaction(async (tx): Promise<DecideResult> => {
+      const res = await approveOrderInTx(tx, {
+        orderId,
+        actor: { id: me.id, role: me.role },
+        seenRatePaise,
+        override: why,
+        now: new Date(),
+      });
+      if (!res.ok) return res;
+      await notify(tx, orderId, "approved", me.id);
+      return { ok: true };
+    });
+    if (result.ok) {
+      refresh(orderId);
+      revalidatePath("/reports/overrides");
+    }
+    return result;
   }
 
-  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
+  const check = checkReason("reject", reasonCode, note);
+  if (!check.ok) return check;
+  const why = { code: check.code, note: check.note };
+  const result = await db.transaction(async (tx): Promise<DecideResult> => {
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
     if (!o) return { ok: false, error: "Order not found." };
     const allowed = canDecide(me.role, o, decision, seenRatePaise);
@@ -289,18 +314,19 @@ export async function decideOrder(
       fromStatus: o.status,
       toStatus: decision,
       actorId: me.id,
-      reason: why?.note ?? "",
-      reasonCode: why?.code ?? null,
+      reason: why.note,
+      reasonCode: why.code,
     });
     await writeAudit(tx, {
       actorId: me.id,
       entity: "order",
       entityId: orderId,
-      action: decision === "approved" ? "approve" : "reject",
+      action: "reject",
       details: {
         ...orderFacts(o),
         ratePaise: o.ratePaise,
-        ...(why ? { reasonCode: why.code, ...(why.note ? { note: why.note } : {}) } : {}),
+        reasonCode: why.code,
+        ...(why.note ? { note: why.note } : {}),
       },
     });
     await notify(tx, orderId, decision, me.id);

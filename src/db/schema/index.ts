@@ -5,6 +5,7 @@ export * from "./catalogue";
 export * from "./retailers";
 export * from "./vehicles";
 export * from "./orders";
+export * from "./credit-overrides";
 export * from "./notifications";
 export * from "./stock";
 export * from "./dispatches";

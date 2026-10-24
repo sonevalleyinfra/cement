@@ -68,7 +68,7 @@ export const retailers = pgTable(
     creditLimitPaise: bigint("credit_limit_paise", { mode: "number" }),
     /** null = not set (the default of 30 days applies, see effectiveCreditDays). */
     creditDays: integer("credit_days"),
-    /** hold = no new approvals, blocked = no dispatch either. Enforced later (v2 B1), not yet. */
+    /** hold = no new approvals, blocked = no dispatch either. Approval needs an override reason (v2 B1); dispatch is not checked yet. */
     creditStatus: text("credit_status").default("ok").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
