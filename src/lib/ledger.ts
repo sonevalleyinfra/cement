@@ -56,7 +56,7 @@ export async function getBalance(retailerId: string, conn: Pick<typeof db, "sele
  * counts on the day it was received); `backdated` marks such a payment row.
  */
 export async function getEntries(retailerId: string) {
-  return db
+  const rows = await db
     .select({
       id: ledgerEntries.id,
       kind: ledgerEntries.kind,
@@ -82,9 +82,14 @@ export async function getEntries(retailerId: string) {
           eq(dispatches.orderId, ledgerEntries.orderId),
           eq(dispatches.createdAt, ledgerEntries.createdAt),
           gt(dispatches.bags, 0),
+          // Two loads of one order saved in one transaction (seed data) share the moment: the amount tells them apart.
+          sql`${dispatches.bags}::bigint * ${dispatches.ratePaise} = ${ledgerEntries.amountPaise}`,
         ),
       ),
     )
     .where(eq(ledgerEntries.retailerId, retailerId))
     .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id));
+  // Each ledger row once, even when two identical loads still match it (the list is keyed by id).
+  const seen = new Set<string>();
+  return rows.filter((r) => !seen.has(r.id) && !!seen.add(r.id));
 }
