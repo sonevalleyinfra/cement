@@ -65,15 +65,19 @@ export async function readCreditFacts(
     .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
     .where(inArray(ledgerEntries.retailerId, ids))
     .orderBy(asc(ledgerMomentSql), asc(ledgerEntries.id));
+  // A join + group by, not a correlated subquery: inside `(select … from dispatches where … = ${orders.id})`
+  // drizzle may print the outer column unqualified ("id"), which then means dispatches.id and sums nothing.
   const open = await conn
     .select({
       retailerId: orders.retailerId,
       bags: orders.bags,
       ratePaise: orders.ratePaise,
-      dispatchedBags: sql<number>`coalesce((select sum(${dispatches.bags}) from ${dispatches} where ${dispatches.orderId} = ${orders.id}), 0)`.mapWith(Number),
+      dispatchedBags: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number),
     })
     .from(orders)
-    .where(and(inArray(orders.retailerId, ids), inArray(orders.status, [...NOT_SENT_STATUSES])));
+    .leftJoin(dispatches, eq(dispatches.orderId, orders.id))
+    .where(and(inArray(orders.retailerId, ids), inArray(orders.status, [...NOT_SENT_STATUSES])))
+    .groupBy(orders.id);
   // The newest payment per shop that still stands (not rejected or reversed), by the day it was received.
   const payments = await conn
     .selectDistinctOn([receipts.retailerId], {

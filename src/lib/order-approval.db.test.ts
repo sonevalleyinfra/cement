@@ -14,7 +14,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
-import { creditOverrides, ledgerEntries, notifications, orderEvents, orders, products, retailers, user } from "@/db/schema";
+import { creditOverrides, dispatches, ledgerEntries, notifications, orderEvents, orders, products, retailers, user, vehicles } from "@/db/schema";
+import { readCreditFacts } from "@/lib/credit-check-queries";
+import { toISTDateKey } from "@/lib/datetime";
 import { approveOrderInTx, type ApprovalTx, type OverrideInput } from "@/lib/order-approval";
 
 // Test-only DB url, read straight from the environment: src/env.ts would ask for the app's own variables.
@@ -244,5 +246,21 @@ describe.skipIf(!url)("credit check at approval (real database)", () => {
     });
     await db.transaction((tx) => approve(tx, order, { id: acc, role: "accounts" }, { code: "owner_said", note: "" }));
     await expect(db.update(creditOverrides).set({ note: "x" }).where(eq(creditOverrides.orderId, order))).rejects.toThrow();
+  });
+  it("not sent counts only the bags still to go on approved / partly dispatched orders", async () => {
+    const acc = await makeUser();
+    const shop = await makeShop({ creditLimitPaise: 1_00_000_00 });
+    const partly = await placeOrder(shop, acc, 100, "partly_dispatched");
+    await placeOrder(shop, acc, 10, "approved");
+    await placeOrder(shop, acc, 50, "placed"); // not approved: never counts
+    const [truck] = await db.select({ id: vehicles.id }).from(vehicles).limit(1);
+    if (!truck) throw new Error("The test database needs a truck (run seed:demo)");
+    await db.insert(dispatches).values([
+      { orderId: partly, bags: 30, vehicleId: truck.id, driverName: "Test", driverPhone: "9876543210", ratePaise: RATE, fromVehicleId: truck.id, dispatchedBy: acc },
+      { orderId: partly, bags: 10, vehicleId: truck.id, driverName: "Test", driverPhone: "9876543210", ratePaise: RATE, fromVehicleId: truck.id, dispatchedBy: acc },
+    ]);
+    const facts = (await readCreditFacts(db, [shop], toISTDateKey(new Date()))).get(shop);
+    // (100 − 40) + 10 bags at the rate.
+    expect(facts?.notSentPaise).toBe(70 * RATE);
   });
 });
