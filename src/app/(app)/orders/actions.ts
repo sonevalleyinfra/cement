@@ -129,7 +129,8 @@ export async function placeOrder(input: {
 
 /**
  * The order's sales person (or admin) fills the empty rate of a placed order (rate-rules.ts).
- * `rateText` = rupees per bag, paise allowed ("335.50"). The status stays "placed"; accounts can now approve it.
+ * `rateText` = rupees per bag, paise allowed ("335.50"). The status stays "placed"; accounts can now approve it
+ * (no notification: it shows in their "To approve" list).
  * A rate that is set is changed with changeRate (logistics or admin, reason needed).
  */
 export async function fillRate(orderId: string, rateText: string): Promise<PlaceOrderResult> {
@@ -161,7 +162,7 @@ export async function fillRate(orderId: string, rateText: string): Promise<Place
       action: "fill_rate",
       details: { ...orderFacts(o), ratePaise: { before: o.ratePaise, after: rate.paise } },
     });
-    await notify(tx, orderId, "rate_filled", me.id);
+    // Nobody is notified: the order now shows in accounts' "To approve" list.
     return { ok: true };
   });
   if (result.ok) refresh(orderId);

@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { newRequestId } from "@/lib/ids";
 import { nextRequestId } from "@/lib/request-rules";
+import { useOnline } from "@/lib/use-online";
 
 /**
  * For a form button that saves something. `run` ignores every tap after the first until the save
@@ -11,14 +12,16 @@ import { nextRequestId } from "@/lib/request-rules";
  * After every answer (saved, or refused and fully undone on the server) the form gets a fresh id,
  * so fixing the form and saving again is a new save. If no answer came (the network dropped),
  * it keeps the same id, so a retry can never save twice (`nextRequestId`).
+ * While the phone is offline `run` does nothing (nothing is queued); `offline` tells the form.
  */
 export function useSubmit() {
   const [pending, startTransition] = useTransition();
   const busy = useRef(false);
   const [requestId, setRequestId] = useState(newRequestId);
+  const online = useOnline();
 
   function run<T extends { ok: boolean }>(save: (requestId: string) => Promise<T>, after?: (res: T) => void) {
-    if (busy.current) return;
+    if (busy.current || !navigator.onLine) return;
     busy.current = true;
     const id = requestId;
     startTransition(async () => {
@@ -39,5 +42,6 @@ export function useSubmit() {
     setRequestId(newRequestId());
   }
 
-  return { pending, run, renew };
+  // Offline counts as pending, so every save button is disabled until the network is back.
+  return { pending: pending || !online, run, renew, offline: !online };
 }

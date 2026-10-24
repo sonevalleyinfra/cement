@@ -7,6 +7,7 @@ import { dispatches, orderEvents, orders, products, retailers, user as users, ve
 import { formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isUuid } from "@/lib/ids";
+import { getRateHints, getStockAvailable } from "@/lib/order-hints";
 import {
   canSeePrice,
   cancelledNote,
@@ -32,6 +33,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     .select({
       id: orders.id,
       retailerId: orders.retailerId,
+      productId: orders.productId,
       bags: orders.bags,
       ratePaise: orders.ratePaise,
       status: orders.status,
@@ -101,6 +103,14 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   const canCancel = canCancelOrder(user.role, o.status);
   const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o) ? "change" : null;
+  // Staff only (never a retailer): last rate, this week's range and stock under the rate form.
+  const [rateHint, stockBags] =
+    rateMode && showPrice
+      ? await Promise.all([
+          getRateHints({ retailerId: o.retailerId, productId: o.productId, excludeOrderId: o.id }),
+          getStockAvailable(o.productId),
+        ])
+      : [null, null];
 
   return (
     <div className="flex flex-col gap-4">
@@ -158,6 +168,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           billedPaise={billedPaise}
           mode={rateMode}
           hasRate={o.ratePaise !== null}
+          rateHint={rateHint}
+          stockBags={stockBags}
         />
       )}
       {canCancel && <CancelForm orderId={o.id} notSent={notSent} sent={sentBags} />}

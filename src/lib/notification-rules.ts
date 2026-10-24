@@ -10,8 +10,8 @@
  * - Dispatched: retailer, sales person
  * - Rate changed: accounts, sales person, admin
  * Where the spec is silent (simplest choice):
- * - Rate filled (by the sales person or admin on a placed order): accounts and the sales person,
- *   titled "Ready to approve" (the spec has no separate "rate filled" step; this is accounts' go-signal).
+ * - Rate filled: nobody is told (the order shows in accounts' "To approve" list; the history keeps a
+ *   "Rate filled" row). Old rows saved with type "rate_filled" still show their stored title and body.
  * - Cancelled: placer, sales person, the shop's login.
  * Money rows (section 8, plus the simplest choice where it is silent):
  * - Online payment recorded and cash handover request: accounts.
@@ -30,7 +30,6 @@ import { bagsText, isAre } from "@/lib/words";
 
 export const NOTIFICATION_EVENTS = [
   "placed",
-  "rate_filled",
   "rate_edited",
   "approved",
   "rejected",
@@ -108,9 +107,6 @@ export function recipientIds(
         ...(people.shopHasSalesRep ? [] : people.adminIds),
       ];
       break;
-    case "rate_filled":
-      list = [...people.accountsIds, people.salesRepId];
-      break;
     case "rate_edited":
       list = [...people.accountsIds, people.salesRepId, ...people.adminIds];
       break;
@@ -132,7 +128,6 @@ export function recipientIds(
 
 const MESSAGES: Record<NotificationEvent, (what: string, bags: number) => { title: string; body: string }> = {
   placed: (w) => ({ title: "New order", body: `${w} placed.` }),
-  rate_filled: (w) => ({ title: "Ready to approve", body: `${w} waiting for approval.` }),
   rate_edited: (w) => ({ title: "Rate changed", body: `${w}.` }),
   approved: (w) => ({ title: "Order approved", body: `${w} approved.` }),
   rejected: (w) => ({ title: "Order rejected", body: `${w} rejected.` }),

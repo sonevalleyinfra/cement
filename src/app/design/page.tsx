@@ -12,6 +12,8 @@ import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { FilterSelect, RangeForm } from "@/components/app/range-form";
 import { SectionCaption } from "@/components/app/section-caption";
+import { HintLine } from "@/components/app/hint-line";
+import { ShopPicker } from "@/components/app/shop-picker";
 import { ListSkeleton } from "@/components/app/skeleton";
 import { Stat } from "@/components/app/stat";
 import { StatusChip } from "@/components/app/status-chip";
@@ -134,6 +136,15 @@ export default function DesignPage() {
       <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Filters (reports, activity)</h2>
       <RangeForm from="2026-10-01" to="2026-10-10">
         <FilterSelect name="type" label="Type" value="" options={[{ value: "", label: "All" }, { value: "orders", label: "Orders" }]} />
+        <ShopPicker
+          name="retailer"
+          label="Retailer"
+          value=""
+          shops={[
+            { id: "a", name: "Raju Stores", place: "Pune", phone: "9800000001" },
+            { id: "b", name: "Sharma Traders", place: "Nashik", phone: "9800000002" },
+          ]}
+        />
       </RangeForm>
 
       <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Table (reports)</h2>
@@ -179,6 +190,11 @@ export default function DesignPage() {
           Save payment
         </Button>
       </div>
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Hints</h2>
+      <HintLine>Last ₹353 · 12 Oct · Week ₹348–360</HintLine>
+      <HintLine tone="caution">₹18 below last rate</HintLine>
+      <HintLine tone="risk">Couldn&apos;t load</HintLine>
 
       <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Loading</h2>
       <ListSkeleton rows={2} />

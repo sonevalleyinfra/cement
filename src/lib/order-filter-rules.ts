@@ -93,3 +93,53 @@ export function rateFilterOwnShopsOnly(role: string | null | undefined, filter: 
 export function orderFilterValue(filter: OrderFilter, role: string | null | undefined): string {
   return filter === defaultOrderFilter(role) ? "" : filter;
 }
+
+/* ---------- Search and "Load more" (staff) ---------- */
+
+/** Orders shown per page; "Load more" adds another page. */
+export const ORDER_PAGE_SIZE = 50;
+/** Most pages one address may ask for (40 × 50 = 2,000 orders). */
+export const MAX_ORDER_PAGES = 40;
+const MAX_SEARCH_LENGTH = 60;
+
+const first = (raw: unknown) => (Array.isArray(raw) ? raw[0] : raw);
+
+/** The search box text from `?q=`: trimmed, single spaces, at most 60 characters, "" when none. */
+export function parseOrderSearch(raw: unknown): string {
+  const value = first(raw);
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, MAX_SEARCH_LENGTH).trim();
+}
+
+/** The words to search for; every one must match (shop name, place, phone or order number). */
+export function orderSearchTerms(q: string): string[] {
+  return q.toLowerCase().split(" ").filter(Boolean);
+}
+
+/** A word that could be the start of an order number (the first 8 hex characters of its id). */
+export function isOrderIdTerm(term: string): boolean {
+  return /^[0-9a-f]{1,8}$/i.test(term);
+}
+
+/** Makes `%`, `_` and `\` match themselves in a LIKE pattern (Postgres's default escape is `\`). */
+export function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/** How many pages are loaded, from `?n=`: a whole number 1..40, else 1. */
+export function parsePages(raw: unknown): number {
+  const value = first(raw);
+  if (typeof value !== "string" || !/^\d{1,3}$/.test(value)) return 1;
+  const n = Number(value);
+  return n >= 1 && n <= MAX_ORDER_PAGES ? n : 1;
+}
+
+/** "/orders" with the tab, the search and the pages loaded; empty or default parts are left out. */
+export function buildOrdersHref(show: string, q: string, n = 1): string {
+  const params = new URLSearchParams();
+  if (show) params.set("show", show);
+  if (q) params.set("q", q);
+  if (n > 1) params.set("n", String(n));
+  const query = params.toString();
+  return query ? `/orders?${query}` : "/orders";
+}

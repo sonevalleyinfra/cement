@@ -1,7 +1,7 @@
 import { BookOpen } from "lucide-react";
 import { DataTable } from "@/components/app/data-table";
 import { EmptyState } from "@/components/app/empty-state";
-import { FilterSelect } from "@/components/app/range-form";
+import { ShopPicker } from "@/components/app/shop-picker";
 import { formatDate, formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { ledgerEntryLabel } from "@/lib/ledger-view-rules";
@@ -28,12 +28,7 @@ export default async function RetailerStatementPage({ searchParams }: { searchPa
       title="Statement"
       range={range}
       filters={
-        <FilterSelect
-          name="retailer"
-          label="Retailer"
-          value={shop?.id ?? ""}
-          options={[{ value: "", label: "Pick a retailer" }, ...shops.map((r) => ({ value: r.id, label: r.name }))]}
-        />
+        <ShopPicker name="retailer" label="Retailer" value={shop?.id ?? ""} shops={shops} />
       }
     >
       {!shop || !s ? (

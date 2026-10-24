@@ -19,6 +19,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - The app header shows only the app name ("Cement", large, `AppTitle`) and the notification bell. No logo.
 - Brand gradient is used only for: the logo mark (sign-in screens), the one `featured` `ListCard` at the top of Home, and primary buttons' glow.
 - Status colours appear only in `StatusChip` (soft tinted pill + dot).
+- Money risk uses `risk` / `caution` tones (red/amber panels on approval, overdue, cash age). Status colours outside `StatusChip` are only these.
 - Icons: sections and menu rows get an `IconTile` with a fixed `tone` (orders orange, dues rose, stock/dispatch blue,
   cash green, approvals moss (olive), receipts teal, people (users, staff) slate). Keep the same tone for the same thing everywhere.
 - Font: Manrope. Three sizes of text matter: big number (`Stat`, 24px bold), body (16px), caption (12px muted).
@@ -48,12 +49,12 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Save buttons ignore taps after the first until the save answers (`useSubmit` in `src/lib/use-submit.ts`).
 
 ## Motion
-- UI motion is 200ms, ease-out. Nothing loops, pulses or blinks, except the loading shimmer.
+- UI motion is 200ms, ease-out. Nothing loops, pulses or blinks.
 - Allowed: each screen fades up once (`animate-page`, in `(app)/template.tsx`), list cards fade up (`animate-in-up`,
   staggered 30ms × 6 steps by `stagger(index)` from `src/lib/motion.ts`) only when they appear after the screen's first
   paint (tab switch, sheet, filtered list); on first paint the screen's own fade covers them. Badges and tiles pop in once (`animate-pop`), sheet slides up (300ms), button press
   `scale-[0.98]`, cards lift on hover, active tab gets an orange pill and its icon grows slightly.
-- Loading uses `Skeleton` blocks with a soft light sweep (`animate-shimmer`), not spinners.
+- Loading uses static `Skeleton` blocks (no animation), not spinners.
 - Reduced-motion users get no animation (handled globally).
 
 ## Components (`src/components/app/`)
@@ -61,7 +62,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 `RangeForm` / `FilterSelect` (date range and filters as a plain GET form), `DataTable` (compact numbers table that scrolls
 sideways inside its own box, never the page; `stacked` turns each row into a small card for tables with many number
 columns), `FilterTabs` (filter pills that are links, the pick lives in the address: `/orders?show=rate`, so Home can link to it),
-`TextLink`, `chipClass` / `ChipCount` (a count badge set apart inside a chip), `FormHint`, `ConfirmStep`, `RateField`, `SectionCaption` (12px group caption above a list of cards or rows). `ListCard` takes `href` (link) or `onClick` (opens a sheet).
+`TextLink`, `chipClass` / `ChipCount` (a count badge set apart inside a chip), `FormHint`, `ConfirmStep`, `RateField`, `SectionCaption` (12px group caption above a list of cards or rows), `HintLine` (12px line under a field, `tone` muted / caution / risk, keeps its height while empty), `ShopPicker` (shop button + search sheet inside a GET form; picking sends the form). `ListCard` takes `href` (link) or `onClick` (opens a sheet).
 Retailers and other lists with many fields in each row: the row is a `ListCard` with `onClick`; everything about one row is
 edited in one sheet with one Save button; turning off, deactivating or deleting sits in that sheet behind `ConfirmStep`.
 Rows show no "Active" caption; only switched-off rows get a `StatusChip` ("Off") and fade.

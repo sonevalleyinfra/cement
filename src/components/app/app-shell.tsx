@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BottomNav, type NavItem } from "./bottom-nav";
+import { OfflineNotice } from "./offline-notice";
 
 /**
  * The frame every signed-in screen sits in: a header, one scrolling column
@@ -28,6 +29,7 @@ export function AppShell({
         <div className="flex min-w-0 items-center">{headerLeft}</div>
         {headerRight}
       </header>
+      <OfflineNotice />
       <main className="flex flex-1 flex-col px-4 pt-2 pb-[calc(5rem+env(safe-area-inset-bottom))]">
         {children}
       </main>

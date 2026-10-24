@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatINR, parseRupeesToPaise } from "@/lib/money";
@@ -19,7 +19,7 @@ function checkCost(text: string): RateInputCheck {
  * order, changing a rate, and (`allowPaise`) a supplier's cost per bag on a purchase. A 48px decimal
  * field; `value` is the cleaned text (cleanRateInput). `bags` (when given) shows the total under it,
  * after `totalLabel`. With `billedPaise` > 0 (a rate change on a partly sent order) it shows the
- * not-sent bags' amount and the whole order total instead.
+ * not-sent bags' amount and the whole order total instead. `children` (hint lines) go under the total.
  */
 export function RateField({
   value,
@@ -30,6 +30,7 @@ export function RateField({
   totalLabel = "Total",
   allowPaise = false,
   autoFocus,
+  children,
 }: {
   value: string;
   onChange: (text: string) => void;
@@ -41,6 +42,8 @@ export function RateField({
   /** Supplier cost per bag: no rate cap, the total is the purchase amount. */
   allowPaise?: boolean;
   autoFocus?: boolean;
+  /** Hint lines under the total (last rate, warnings). */
+  children?: ReactNode;
 }) {
   const id = useId();
   const check = allowPaise ? checkCost(value) : checkRateInput(value);
@@ -75,6 +78,7 @@ export function RateField({
           {totalLabel} {formatINR(total)}
         </p>
       )}
+      {children}
     </div>
   );
 }
