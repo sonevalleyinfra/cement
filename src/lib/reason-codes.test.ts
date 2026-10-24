@@ -30,7 +30,7 @@ describe("the lists", () => {
     expect(codesOf("rate_change")).toEqual(["rate_dispute", "entry_mistake", "price_revision", "owner_said", "other"]);
     expect(labelsOf("rate_change")).toEqual(["Rate dispute", "Wrong entry", "Market change", "Owner said", "Other"]);
     expect(codesOf("override")).toEqual(["payment_promised", "old_customer", "owner_said", "cash_on_delivery", "other"]);
-    expect(labelsOf("override")).toEqual(["Payment promised", "Old customer", "Owner said yes", "Cash on delivery", "Other"]);
+    expect(labelsOf("override")).toEqual(["Will pay soon", "Old customer", "Owner said yes", "Cash on delivery", "Other"]);
     expect(codesOf("payment")).toEqual(["wrong_shop", "wrong_amount", "duplicate", "not_in_bank", "bounced", "other"]);
     expect(labelsOf("payment")).toEqual(["Wrong shop", "Wrong amount", "Duplicate", "Not received", "Bounced", "Other"]);
     expect(codesOf("stock")).toEqual(["transit_short", "transit_burst", "damage", "entry_mistake", "expired", "other"]);

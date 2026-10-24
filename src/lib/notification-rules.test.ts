@@ -301,7 +301,7 @@ describe("buildCreditOverrideNotifications (v2 B1)", () => {
       userId: "adm1",
       type: "credit_override",
       title: "Approved over limit",
-      body: "Raju Stores · ₹38,000 over limit · Payment promised",
+      body: "Raju Stores · ₹38,000 over limit · Will pay soon",
       link: null,
     });
   });

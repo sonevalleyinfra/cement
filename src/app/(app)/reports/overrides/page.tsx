@@ -41,7 +41,7 @@ export default async function OverridesReportPage({ searchParams }: { searchPara
               <li key={r.id}>
                 <Link
                   href={`/orders/${r.orderId}`}
-                  className="animate-in-up flex flex-col gap-1 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="animate-in-up flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 font-semibold [overflow-wrap:anywhere]">{r.shop}</span>
