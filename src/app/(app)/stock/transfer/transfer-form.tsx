@@ -116,7 +116,7 @@ export function TransferForm({
           { label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] },
         ]}
       />
-      {newTruck && <TruckFields value={truck} onChange={setTruck} />}
+      {newTruck && <TruckFields value={truck} onChange={setTruck} phoneOptional />}
       <div className="tabular text-center text-4xl font-bold" aria-live="polite">
         {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>

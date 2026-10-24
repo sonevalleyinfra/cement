@@ -7,6 +7,7 @@ import {
   orderEvents,
   orders,
   products,
+  purchases,
   receipts,
   retailers,
   stockMovements,
@@ -19,7 +20,16 @@ import { duesAging } from "@/lib/due-items";
 import { lossReport } from "@/lib/loss-report";
 import { nameMaps, toMap } from "@/lib/names";
 import type { ReportRange } from "@/lib/report-range";
-import { averageCostPerBag, profitReport, purchaseCostTotals, salesReport, schemeCreditsPaise, type SaleRow } from "@/lib/sales-report";
+import {
+  averageCostPerBag,
+  landedCostRows,
+  profitReport,
+  purchaseCostTotals,
+  salesReport,
+  schemeCreditsPaise,
+  type PurchaseCostRow,
+  type SaleRow,
+} from "@/lib/sales-report";
 import { cashByPerson, onlineWaiting, paymentsByMode, staffActivity } from "@/lib/staff-report";
 import { buildStatement, byDay, byMoment } from "@/lib/statement-rules";
 import { placeFlows, stockFlows, stockNow, totalFlow, totalPlaceFlow } from "@/lib/stock-report";
@@ -202,10 +212,8 @@ export async function getLossReport(range: ReportRange) {
           lt(stockMovements.createdAt, range.end),
         ),
       ),
-    db
-      .select({ productId: stockMovements.productId, bags: stockMovements.bags, unitCostPaise: stockMovements.unitCostPaise })
-      .from(stockMovements)
-      .where(and(eq(stockMovements.type, "purchase"), lt(stockMovements.createdAt, range.end))),
+    // Lost bags are valued at the average LANDED cost (invoice cost + freight + unloading per good bag).
+    purchaseCostRows(range.end),
     nameMaps(),
   ]);
   const totals = purchaseCostTotals(purchases);
@@ -260,14 +268,31 @@ export async function getCashReport(range: ReportRange, now = new Date()) {
   };
 }
 
+/**
+ * Every purchase before `before`, as cost rows at the LANDED cost: received bags × landed cost per bag
+ * from the purchase header; a purchase saved before headers existed (drizzle/0040) keeps its movement
+ * bags × invoice cost. Also for the stock value screen.
+ */
+export async function purchaseCostRows(before: Date): Promise<PurchaseCostRow[]> {
+  const rows = await db
+    .select({
+      productId: stockMovements.productId,
+      bags: stockMovements.bags,
+      unitCostPaise: stockMovements.unitCostPaise,
+      receivedBags: purchases.receivedBags,
+      landedUnitCostPaise: purchases.landedUnitCostPaise,
+    })
+    .from(stockMovements)
+    .leftJoin(purchases, eq(purchases.stockMovementId, stockMovements.id))
+    .where(and(eq(stockMovements.type, "purchase"), lt(stockMovements.createdAt, before)));
+  return landedCostRows(rows);
+}
+
 /** Profit per product for the range, and supplier scheme credits (all brands) in the range (shown apart). */
 export async function getProfitReport(range: ReportRange) {
   const [sales, purchases, credits] = await Promise.all([
     salesRows(range),
-    db
-      .select({ productId: stockMovements.productId, bags: stockMovements.bags, unitCostPaise: stockMovements.unitCostPaise })
-      .from(stockMovements)
-      .where(and(eq(stockMovements.type, "purchase"), lt(stockMovements.createdAt, range.end))),
+    purchaseCostRows(range.end),
     db
       .select({ kind: supplierLedgerEntries.kind, amountPaise: supplierLedgerEntries.amountPaise })
       .from(supplierLedgerEntries)

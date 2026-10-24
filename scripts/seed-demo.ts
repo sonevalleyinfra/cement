@@ -2,7 +2,10 @@
  * Fills a LOCAL database with demo data: one user per role, retailers, trucks,
  * a godown with opening stock, orders in different statuses (dues come from their dispatches)
  * supplier accounts: Prism (an opening balance, purchases with a cost per bag, a payment and a scheme
- * credit) and a second brand, UltraTech (one product, one purchase and one payment, no opening),
+ * credit) and a second brand, UltraTech (one product, one purchase and one payment, no opening).
+ * Every demo purchase has a header (invoice no + date, truck, driver, freight + unloading, landed cost);
+ * DEMO-INV-13 is a short receipt (3 short, 2 burst, claim open), DEMO-UT-1 is 1 short (claim claimed).
+ * Every demo dispatch has a valid driver phone.
  * and payments: cash by sales and logistics, one handover confirmed and one waiting, online
  * payments waiting / verified / rejected, and one reversed cash payment.
  * Orders carry a source, "needed by" dates, two site deliveries, shop and staff notes, and the rejected,
@@ -27,6 +30,7 @@ import {
   orderEvents,
   orders,
   products,
+  purchases,
   receipts,
   retailers,
   godowns,
@@ -44,6 +48,7 @@ import { postEntry, type DbOrTx } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
 import { productName } from "@/lib/catalogue-rules";
 import { postSupplierEntry } from "@/lib/suppliers";
+import { landedUnitCostPaise } from "@/lib/money";
 import { creditEntry, openingEntry as supplierOpening, paymentEntry, purchaseEntry } from "@/lib/supplier-rules";
 import { addDaysToKey, type OrderSource } from "@/lib/order-delivery-rules";
 import { stockFixText } from "@/lib/stock-rules";
@@ -111,6 +116,148 @@ async function hasSupplierEntries(brandId: string): Promise<boolean> {
   return Boolean(any);
 }
 
+/** The demo trucks (also used for the demo purchases and dispatches). */
+const DEMO_TRUCKS = [
+  { number: "BR01AB1234", driverName: "Ramesh", driverPhone: "9100000001" },
+  { number: "BR02CD5678", driverName: "Suresh", driverPhone: "9100000002" },
+];
+
+/**
+ * One demo purchase like `recordPurchase` makes it: the movement (+billed), the transit short / burst
+ * adjustments, the supplier entry on the invoice date, the purchase header (freight Rs 12 and unloading
+ * Rs 3 a billed bag, landed cost from money.ts) and the activity-log rows. Returns the header id.
+ */
+async function seedPurchase(
+  tx: DbOrTx,
+  adminId: string,
+  b: {
+    product: { id: string; name: string; brandId: string };
+    godownId: string;
+    bags: number;
+    costPaise: number;
+    ago: number;
+    invoice: string;
+    shortBags: number;
+    burstBags: number;
+    truck: (typeof DEMO_TRUCKS)[number];
+  },
+): Promise<string> {
+  const place = `godown:${b.godownId}`;
+  const receivedBags = b.bags - b.shortBags - b.burstBags;
+  const freightPaise = 1_200 * b.bags;
+  const unloadingPaise = 300 * b.bags;
+  const landed = landedUnitCostPaise({ unitCostPaise: b.costPaise, freightPaise, unloadingPaise, receivedBags });
+  const [moved] = await tx
+    .insert(stockMovements)
+    .values({
+      productId: b.product.id,
+      godownId: b.godownId,
+      type: "purchase",
+      bags: b.bags,
+      unitCostPaise: b.costPaise,
+      reason: "Demo purchase",
+      actorId: adminId,
+      createdAt: at(b.ago),
+    })
+    .returning({ id: stockMovements.id });
+  // The short / burst bags leave a moment after they were added (the running stock never dips below 0).
+  const losses = [
+    { bags: b.shortBags, code: "transit_short", reason: `Short on invoice ${b.invoice}` },
+    { bags: b.burstBags, code: "transit_burst", reason: `Burst on invoice ${b.invoice}` },
+  ];
+  const linked: { id: string; bags: number; code: string; reason: string; createdAt: Date }[] = [];
+  for (const [i, loss] of losses.entries()) {
+    if (loss.bags === 0) continue;
+    const createdAt = new Date(at(b.ago).getTime() + 1000 * (i + 1));
+    const [row] = await tx
+      .insert(stockMovements)
+      .values({
+        productId: b.product.id,
+        godownId: b.godownId,
+        type: "adjustment",
+        bags: -loss.bags,
+        reason: loss.reason,
+        reasonCode: loss.code,
+        actorId: adminId,
+        createdAt,
+      })
+      .returning({ id: stockMovements.id });
+    linked.push({ id: row.id, bags: -loss.bags, code: loss.code, reason: loss.reason, createdAt });
+  }
+  const owed = purchaseEntry(b.product, b.bags, b.costPaise, daysAgo(b.ago), {
+    reference: b.invoice,
+    description: `${b.bags} bags ${b.product.name} at Rs ${b.costPaise / 100}`,
+  });
+  await postSupplierEntry(tx, entry(owed), adminId, moved.id, { audit: false });
+  const [header] = await tx
+    .insert(purchases)
+    .values({
+      stockMovementId: moved.id,
+      invoiceNo: b.invoice,
+      invoiceDate: daysAgo(b.ago),
+      truckNumber: b.truck.number,
+      driverName: b.truck.driverName,
+      driverPhone: b.truck.driverPhone,
+      billedBags: b.bags,
+      shortBags: b.shortBags,
+      burstBags: b.burstBags,
+      receivedBags,
+      freightPaise,
+      unloadingPaise,
+      landedUnitCostPaise: landed,
+      shortMovementId: linked.find((l) => l.code === "transit_short")?.id ?? null,
+      burstMovementId: linked.find((l) => l.code === "transit_burst")?.id ?? null,
+      claimStatus: linked.length > 0 ? "open" : "none",
+      actorId: adminId,
+      createdAt: at(b.ago),
+    })
+    .returning({ id: purchases.id });
+  await log(
+    tx,
+    {
+      actorId: adminId,
+      entity: "stock",
+      entityId: moved.id,
+      action: "purchase",
+      details: {
+        productId: b.product.id,
+        bags: b.bags,
+        place,
+        unitCostPaise: b.costPaise,
+        amountPaise: b.bags * b.costPaise,
+        brandId: b.product.brandId,
+        invoiceNo: b.invoice,
+        invoiceDate: daysAgo(b.ago),
+        truck: b.truck.number,
+        driverName: b.truck.driverName,
+        billedBags: b.bags,
+        shortBags: b.shortBags,
+        burstBags: b.burstBags,
+        receivedBags,
+        freightPaise,
+        unloadingPaise,
+        landedUnitCostPaise: landed,
+        purchaseId: header.id,
+      },
+    },
+    at(b.ago),
+  );
+  for (const l of linked) {
+    await log(
+      tx,
+      {
+        actorId: adminId,
+        entity: "stock",
+        entityId: l.id,
+        action: "adjustment",
+        details: { productId: b.product.id, bags: l.bags, place, reasonCode: l.code, reason: l.reason, purchaseId: header.id },
+      },
+      l.createdAt,
+    );
+  }
+  return header.id;
+}
+
 /**
  * The Prism account: we owed Rs 2,00,000 at the start; 200 bags of every Prism product bought at a cost
  * (the product at index i costs Rs 280 + Rs 5 x i a bag, plus a second, dearer buy of the first one);
@@ -126,43 +273,8 @@ async function seedPrism(adminId: string, prismId: string, productRows: { id: st
       { p: productRows[0], bags: 100, costPaise: 29_500, ago: 5, invoice: "DEMO-INV-13" },
     ];
     for (const b of buys) {
-      const [moved] = await tx
-        .insert(stockMovements)
-        .values({
-          productId: b.p.id,
-          godownId,
-          type: "purchase",
-          bags: b.bags,
-          unitCostPaise: b.costPaise,
-          reason: "Demo purchase",
-          actorId: adminId,
-          createdAt: at(b.ago),
-        })
-        .returning({ id: stockMovements.id });
-      const owed = purchaseEntry(b.p, b.bags, b.costPaise, daysAgo(b.ago), {
-        reference: b.invoice,
-        description: `${b.bags} bags ${b.p.name} at Rs ${b.costPaise / 100}`,
-      });
-      await postSupplierEntry(tx, entry(owed), adminId, moved.id, { audit: false });
-      await log(
-        tx,
-        {
-          actorId: adminId,
-          entity: "stock",
-          entityId: moved.id,
-          action: "purchase",
-          details: {
-            productId: b.p.id,
-            bags: b.bags,
-            place: `godown:${godownId}`,
-            unitCostPaise: b.costPaise,
-            amountPaise: b.bags * b.costPaise,
-            brandId: b.p.brandId,
-            invoiceNo: b.invoice,
-          },
-        },
-        at(b.ago),
-      );
+      const loss = b.invoice === "DEMO-INV-13" ? { shortBags: 3, burstBags: 2 } : { shortBags: 0, burstBags: 0 };
+      await seedPurchase(tx, adminId, { product: b.p, godownId, ...b, ...loss, truck: DEMO_TRUCKS[0] });
     }
     await postSupplierEntry(tx, entry(paymentEntry(prismId, 50_000_000, "bank", "DEMOUTRPRISM1", daysAgo(10))), adminId);
     await postSupplierEntry(tx, entry(creditEntry(prismId, 1_500_000, "Demo festival scheme", daysAgo(3))), adminId);
@@ -190,42 +302,32 @@ async function seedUltraTech(adminId: string) {
   const [product] = await db.select().from(products).where(eq(products.name, name));
   const godownId = await mainGodownId();
   await db.transaction(async (tx) => {
-    const [moved] = await tx
-      .insert(stockMovements)
-      .values({
-        productId: product.id,
-        godownId,
-        type: "purchase",
-        bags: 100,
-        unitCostPaise: 39_000,
-        reason: "Demo purchase",
-        actorId: adminId,
-        createdAt: at(6),
-      })
-      .returning({ id: stockMovements.id });
-    const owed = purchaseEntry(product, 100, 39_000, daysAgo(6), {
-      reference: "DEMO-UT-1",
-      description: `100 bags ${product.name} at Rs 390`,
+    const purchaseId = await seedPurchase(tx, adminId, {
+      product,
+      godownId,
+      bags: 100,
+      costPaise: 39_000,
+      ago: 6,
+      invoice: "DEMO-UT-1",
+      shortBags: 1,
+      burstBags: 0,
+      truck: DEMO_TRUCKS[1],
     });
-    await postSupplierEntry(tx, entry(owed), adminId, moved.id, { audit: false });
+    // The short bag has already been claimed from UltraTech (not credited yet).
+    await tx
+      .update(purchases)
+      .set({ claimStatus: "claimed", claimUpdatedAt: at(4), claimUpdatedBy: adminId })
+      .where(eq(purchases.id, purchaseId));
     await log(
       tx,
       {
         actorId: adminId,
         entity: "stock",
-        entityId: moved.id,
-        action: "purchase",
-        details: {
-          productId: product.id,
-          bags: 100,
-          place: `godown:${godownId}`,
-          unitCostPaise: 39_000,
-          amountPaise: 100 * 39_000,
-          brandId: brand.id,
-          invoiceNo: "DEMO-UT-1",
-        },
+        entityId: purchaseId,
+        action: "claim",
+        details: { from: "open", to: "claimed", purchaseId, invoiceNo: "DEMO-UT-1", bags: 1, claimValuePaise: 39_000 },
       },
-      at(6),
+      at(4),
     );
     await postSupplierEntry(tx, entry(paymentEntry(brand.id, 2_000_000, "bank", "DEMOUTRULTRA1", daysAgo(2))), adminId);
   });
@@ -397,10 +499,7 @@ async function main() {
     return;
   }
 
-  const trucks = [
-    { number: "BR01AB1234", driverName: "Ramesh", driverPhone: "9100000001" },
-    { number: "BR02CD5678", driverName: "Suresh", driverPhone: "9100000002" },
-  ];
+  const trucks = DEMO_TRUCKS;
   await db.insert(vehicles).values(trucks).onConflictDoNothing();
   const vehicleRows = await db.select().from(vehicles).where(inArray(vehicles.number, trucks.map((t) => t.number)));
   const truck = { ...vehicleRows.find((v) => v.number === trucks[0].number)!, ...trucks[0] };

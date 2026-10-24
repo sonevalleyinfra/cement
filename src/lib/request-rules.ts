@@ -29,6 +29,7 @@ export const REQUEST_KINDS = [
   "supplier_entry",
   "handover_request",
   "ledger_adjustment",
+  "purchase_claim",
 ] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 

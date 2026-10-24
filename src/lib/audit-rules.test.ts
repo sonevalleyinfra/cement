@@ -153,6 +153,10 @@ describe("activitySentence", () => {
     expect(say(row("stock", "opening", { bags: 500, productId: "p1", place: "godown:g1" }))).toBe(
       "Ramesh set opening stock of 500 bags of Prism Trade OPC 43 at Main Godown",
     );
+    expect(
+      say(row("stock", "claim", { from: "open", to: "claimed", invoiceNo: "INV-77", bags: 12, claimValuePaise: 354_000 })),
+    ).toBe("Ramesh marked the claim on invoice INV-77 as Claimed");
+    expect(say(row("stock", "claim", { to: "credited" }))).toBe("Ramesh marked the claim on a purchase as Credited");
   });
 
   it("payments and cash", () => {

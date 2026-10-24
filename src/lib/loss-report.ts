@@ -5,9 +5,9 @@
  * - A loss is a stock correction (`type === "adjustment"`) with minus bags in the range [start, end).
  *   Plus corrections (a recount that found more bags) are not losses and are ignored here;
  *   they still show in the stock report as "Fixed".
- * - Value = bags × average purchase cost per bag of that product (purchases with a cost before the end of
- *   the range, see sales-report averageCostPerBag), whole paise only. "Landed cost" replaces this average
- *   once freight / invoice cost (L1) exists; until then it is the average purchase cost.
+ * - Value = bags × average LANDED cost per bag of that product (purchases with a cost before the end of
+ *   the range: reports.ts purchaseCostRows + sales-report averageCostPerBag), whole paise only. A purchase
+ *   saved before purchase headers (drizzle/0040) counts at its invoice cost.
  * - A product with no known cost: its bags count in `unvaluedBags` and are left out of `valuePaise`.
  * - Reasons follow the STOCK_REASONS order; old corrections from before reason codes (0039) go in a
  *   last "Not given" group. Reasons with no entries are left out.

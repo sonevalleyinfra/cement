@@ -17,6 +17,7 @@
  *   reason, mode, utr, receiptNo, name, ...     short text / numbers
  */
 import { formatINR } from "./money";
+import { CLAIM_LABELS, isClaimStatus } from "./purchase-rules";
 import { SUPPLIER_KINDS } from "./supplier-rules";
 
 /* ---------- What may be logged ---------- */
@@ -27,7 +28,8 @@ export const AUDIT_ACTIONS = {
   order: ["place", "fill_rate", "change_rate", "approve", "reject", "cancel"],
   dispatch: ["create"],
   // Stock (spec section 4)
-  stock: ["opening", "purchase", "adjustment", "transfer"],
+  // claim: a purchase's short / burst claim moved on (entityId = the purchase id)
+  stock: ["opening", "purchase", "adjustment", "transfer", "claim"],
   // Money (spec sections 5 and 6)
   payment: ["record", "verify", "reject", "reverse"],
   handover: ["request", "confirm", "reject"],
@@ -250,6 +252,10 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
           return say(`corrected ${product} at ${place(d.place)} by ${bags !== null && bags < 0 ? "−" : "+"}${count}${reason}`);
         case "transfer":
           return say(`moved ${count} of ${product} from ${place(d.from)} to ${place(d.to)}`);
+        case "claim": {
+          const to = isClaimStatus(d.to) ? CLAIM_LABELS[d.to] : "changed";
+          return say(`marked the claim on ${s(d.invoiceNo) ? `invoice ${s(d.invoiceNo)}` : "a purchase"} as ${to}`);
+        }
       }
       break;
     }

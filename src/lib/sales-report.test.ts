@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   averageCostPerBag,
+  landedCostRows,
   profitReport,
   purchaseCostTotals,
   saleValuePaise,
@@ -156,5 +157,36 @@ describe("schemeCreditsPaise", () => {
       ]),
     ).toBe(1_500_500);
     expect(schemeCreditsPaise([])).toBe(0);
+  });
+});
+
+describe("landed cost in profit", () => {
+  it("weights each purchase by its received bags at the landed cost", () => {
+    const rows = landedCostRows([
+      // 600 billed, 588 received, landed ₹310.31 a bag.
+      { productId: "p1", bags: 600, unitCostPaise: 29_500, receivedBags: 588, landedUnitCostPaise: 31_031 },
+      // 100 billed, all received, landed ₹300 a bag.
+      { productId: "p1", bags: 100, unitCostPaise: 28_500, receivedBags: 100, landedUnitCostPaise: 30_000 },
+    ]);
+    expect(rows).toEqual([
+      { productId: "p1", bags: 588, unitCostPaise: 31_031 },
+      { productId: "p1", bags: 100, unitCostPaise: 30_000 },
+    ]);
+    // (588 × 31,031 + 100 × 30,000) ÷ 688 = 30,881.15… → 30,881 paise.
+    const r = profitReport([sale({ bags: 10, ratePaise: 35_000 })], rows);
+    expect(r.lines[0].avgCostPaise).toBe(30_881);
+    expect(r.lines[0].costPaise).toBe(308_811);
+  });
+
+  it("an old purchase with no header keeps movement bags × invoice cost", () => {
+    const rows = landedCostRows([
+      { productId: "p1", bags: 200, unitCostPaise: 28_000, receivedBags: null, landedUnitCostPaise: null },
+      { productId: "p2", bags: 50, unitCostPaise: null, receivedBags: null, landedUnitCostPaise: null },
+    ]);
+    expect(rows).toEqual([
+      { productId: "p1", bags: 200, unitCostPaise: 28_000 },
+      { productId: "p2", bags: 50, unitCostPaise: null },
+    ]);
+    expect(profitReport([sale({ bags: 10 })], rows).lines[0].avgCostPaise).toBe(28_000);
   });
 });

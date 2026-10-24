@@ -12,6 +12,9 @@
  * - Cost per bag = weighted average purchase cost of that product: (Σ bags × cost) ÷ Σ bags, over
  *   purchases with a known cost up to the end of the range (older purchases without a cost are
  *   left out). Cost of the bags sold = bags × that average, rounded to the paisa (no floats).
+ * - A purchase counts at its LANDED cost (invoice cost + freight + unloading per good bag) over its
+ *   RECEIVED bags (`landedCostRows`). A purchase saved before purchase headers (drizzle/0040) counts
+ *   its movement bags at the invoice cost.
  * - A product with no known cost shows "cost unknown" and is left out of the profit total.
  * - Scheme / discount credits from suppliers (all brands) are shown on their own, never mixed into product profit.
  */
@@ -95,6 +98,24 @@ export function salesReport(rows: readonly SaleRow[]): SalesReport {
 export type PurchaseCostRow = { productId: string; bags: number; unitCostPaise: number | null };
 
 export type CostTotals = { bags: number; costPaise: number };
+
+/** A purchase movement with its header, if it has one (null columns = saved before drizzle/0040). */
+export type PurchaseWithHeader = {
+  productId: string;
+  bags: number;
+  unitCostPaise: number | null;
+  receivedBags: number | null;
+  landedUnitCostPaise: number | null;
+};
+
+/** Cost rows at the landed cost: received bags × landed cost; without a header, movement bags × invoice cost. */
+export function landedCostRows(rows: readonly PurchaseWithHeader[]): PurchaseCostRow[] {
+  return rows.map((r) => ({
+    productId: r.productId,
+    bags: r.receivedBags ?? r.bags,
+    unitCostPaise: r.landedUnitCostPaise ?? r.unitCostPaise,
+  }));
+}
 
 /** Σ bags and Σ bags × cost per product, from purchases with a known cost (others are skipped). */
 export function purchaseCostTotals(rows: readonly PurchaseCostRow[]): Map<string, CostTotals> {

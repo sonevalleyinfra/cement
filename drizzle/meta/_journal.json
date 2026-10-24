@@ -281,6 +281,13 @@
       "when": 1792833024652,
       "tag": "0039_order_delivery_reasons",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792838564302,
+      "tag": "0040_purchase_details",
+      "breakpoints": true
     }
   ]
 }

@@ -44,5 +44,7 @@ export const dispatches = pgTable(
     check("dispatches_bags_positive", sql`${t.bags} > 0`),
     check("dispatches_rate_positive", sql`${t.ratePaise} > 0`),
     check("dispatches_one_source", sql`num_nonnulls(${t.fromGodownId}, ${t.fromVehicleId}) = 1`),
+    // NOT VALID in drizzle/0040: old dispatches without a phone ('') are skipped.
+    check("dispatches_driver_phone_valid", sql`${t.driverPhone} ~ '^[6-9][0-9]{9}$'`),
   ],
 );
