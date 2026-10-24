@@ -267,6 +267,13 @@
       "when": 1792264247793,
       "tag": "0037_books_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792827410528,
+      "tag": "0038_shop_master_credit",
+      "breakpoints": true
     }
   ]
 }

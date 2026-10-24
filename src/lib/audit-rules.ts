@@ -36,8 +36,9 @@ export const AUDIT_ACTIONS = {
   supplier_entry: SUPPLIER_KINDS,
   // Masters
   user: ["create", "update", "rename", "activate", "deactivate", "delete"],
-  retailer: ["create", "update", "activate", "deactivate", "link", "assign_sales_rep"],
+  retailer: ["create", "update", "activate", "deactivate", "link", "assign_sales_rep", "credit_change"],
   godown: ["create", "update", "activate", "deactivate"],
+  area: ["create", "update", "activate", "deactivate"],
   brand: ["create", "rename", "activate", "deactivate"],
   product: ["create", "activate", "deactivate"],
   cement_type: ["create", "activate", "deactivate", "rename"],
@@ -76,7 +77,7 @@ export const ACTIVITY_GROUPS = {
   stock: ["stock"],
   payments: ["payment", "handover", "ledger"],
   suppliers: ["supplier_entry"],
-  masters: ["user", "retailer", "godown", "brand", "product", "cement_type", "grade", "vehicle"],
+  masters: ["user", "retailer", "godown", "area", "brand", "product", "cement_type", "grade", "vehicle"],
 } as const satisfies Record<string, readonly AuditEntity[]>;
 
 export type ActivityGroup = keyof typeof ACTIVITY_GROUPS;
@@ -339,6 +340,8 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
           const after = d.after && typeof d.after === "object" ? (d.after as Record<string, unknown>).userId : null;
           return say(after ? `linked a login to ${self || "a shop"}` : `unlinked the login of ${self || "a shop"}`);
         }
+        case "credit_change":
+          return say(`changed the credit terms of ${self || "a shop"}${reason}`);
         case "assign_sales_rep": {
           const rep = d.salesRepId && typeof d.salesRepId === "object" ? (d.salesRepId as Record<string, unknown>).after : null;
           return say(
@@ -358,6 +361,7 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
       if (row.action === "activate" || row.action === "deactivate") return switched("brand");
       break;
     case "godown":
+    case "area":
     case "product":
     case "vehicle": {
       const word = row.entity === "vehicle" ? "truck" : row.entity;

@@ -3,24 +3,55 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { orders, retailers, user } from "@/db/schema";
+import { areas, creditLimitChanges, orders, retailers, user } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { changedFields } from "@/lib/audit-rules";
+import type { CreditForm } from "@/lib/credit-rules";
+import { toISTDateKey } from "@/lib/datetime";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { isUuid } from "@/lib/ids";
 import { can, rolesFor } from "@/lib/permissions";
 import { ORDER_STATUSES } from "@/lib/order-rules";
 import { normalizePhone, planShopEdit, type ShopEditForm, validateRetailer } from "@/lib/retailer-rules";
 import { checkSalesRepPick, movesWithSalesRep } from "@/lib/sales-rep-rules";
+import { geoCapturedAt, type ShopMasterForm } from "@/lib/shop-master-rules";
 import { requireRole } from "@/lib/session";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
+/** Server actions are public: anything may arrive. Text fields become strings, numbers stay numbers. */
+const text = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
+const num = (v: unknown) => (typeof v === "number" ? v : null);
+
+function masterInput(m: unknown): ShopMasterForm | undefined {
+  if (!m || typeof m !== "object") return undefined;
+  const r = m as Record<string, unknown>;
+  return {
+    ownerName: text(r.ownerName),
+    altPhone: text(r.altPhone),
+    address: text(r.address),
+    areaId: text(r.areaId),
+    pincode: text(r.pincode),
+    lat: num(r.lat),
+    lng: num(r.lng),
+    category: text(r.category),
+    openedOn: text(r.openedOn),
+    gstin: text(r.gstin),
+  };
+}
+
+function creditInput(c: unknown): CreditForm | undefined {
+  if (!c || typeof c !== "object") return undefined;
+  const r = c as Record<string, unknown>;
+  return { limit: text(r.limit), days: text(r.days), status: text(r.status), note: text(r.note) };
+}
+
 /**
- * Admin saves the shop sheet: name, phone, place, its sales person and its login, all or nothing
- * (rules in planShopEdit). One transaction, with the shop row locked so two saves cannot interleave.
+ * Admin saves the shop sheet: name, phone, place, its sales person, its login, the master fields
+ * and the credit terms, all or nothing (rules in planShopEdit). One transaction, with the shop row locked so two saves cannot interleave.
  * A new sales person also takes over the shop's unfinished orders (sales-rep-rules.ts).
- * Each part that changed writes its own activity row, inside the same transaction.
+ * Each part that changed writes its own activity row, inside the same transaction. Changed credit
+ * terms also add one row to the credit history (credit_limit_changes).
  */
 export async function saveShop(id: string, form: ShopEditForm): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
@@ -32,9 +63,13 @@ export async function saveShop(id: string, form: ShopEditForm): Promise<Retailer
     place: String(form?.place ?? ""),
     salesRepId: typeof form?.salesRepId === "string" ? form.salesRepId : undefined,
     userId: typeof form?.userId === "string" || form?.userId === null ? form.userId : undefined,
+    master: masterInput(form?.master),
+    credit: creditInput(form?.credit),
   };
   if (input.salesRepId !== undefined && !can(me.role, "assignSalesRep")) return { ok: false, error: "Only admin can do this." };
   if (input.userId !== undefined && !can(me.role, "linkRetailerLogin")) return { ok: false, error: "Only admin can do this." };
+  if (input.credit !== undefined && !can(me.role, "editCredit")) return { ok: false, error: "Only admin can do this." };
+  if (input.master?.areaId && !isUuid(input.master.areaId)) return { ok: false, error: "Pick an active area" };
 
   let changedRep = false;
   try {
@@ -64,21 +99,58 @@ export async function saveShop(id: string, form: ShopEditForm): Promise<Retailer
             .from(retailers)
             .where(eq(retailers.userId, input.userId))
         : [];
-      const plan = planShopEdit(before, input, { phoneTaken: clash.length > 0, salesRep, login, loginLinks });
+      const pickedArea = input.master?.areaId || null;
+      const [area] =
+        pickedArea && pickedArea !== before.areaId
+          ? await tx.select({ id: areas.id, active: areas.active }).from(areas).where(eq(areas.id, pickedArea)).for("share")
+          : [];
+      const plan = planShopEdit(before, input, {
+        phoneTaken: clash.length > 0,
+        salesRep,
+        login,
+        loginLinks,
+        area,
+        today: toISTDateKey(new Date()),
+      });
       if (!plan.ok) return plan;
 
       const now = new Date();
+      const credit = plan.credit
+        ? {
+            creditLimitPaise: plan.credit.terms.limitPaise,
+            creditDays: plan.credit.terms.creditDays,
+            creditStatus: plan.credit.terms.status,
+          }
+        : {};
+      const fields = { ...plan.details, ...(plan.master ?? {}), ...credit };
+      const pinnedAt = plan.master ? geoCapturedAt(before, plan.master, now) : undefined;
       await tx
         .update(retailers)
         .set({
-          ...plan.details,
+          ...fields,
+          ...(pinnedAt !== undefined ? { geoCapturedAt: pinnedAt } : {}),
           ...(plan.salesRepId ? { salesRepId: plan.salesRepId } : {}),
           ...(plan.userId !== undefined ? { userId: plan.userId } : {}),
           updatedAt: now,
         })
         .where(eq(retailers.id, id));
-      const diff = changedFields(before, plan.details);
+      const diff = changedFields(before, fields);
       if (diff) await writeAudit(tx, { actorId: me.id, entity: "retailer", entityId: id, action: "update", details: diff });
+      const change = plan.credit?.change;
+      if (change) {
+        await tx.insert(creditLimitChanges).values({ retailerId: id, changedBy: me.id, ...change, createdAt: now });
+        await writeAudit(tx, {
+          actorId: me.id,
+          entity: "retailer",
+          entityId: id,
+          action: "credit_change",
+          details: {
+            before: { limitPaise: change.oldLimitPaise, creditDays: change.oldCreditDays, status: change.oldStatus },
+            after: { limitPaise: change.newLimitPaise, creditDays: change.newCreditDays, status: change.newStatus },
+            ...(change.note ? { note: change.note } : {}),
+          },
+        });
+      }
       if (plan.salesRepId) {
         changedRep = true;
         const moved = await tx

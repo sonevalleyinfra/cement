@@ -50,6 +50,9 @@ describe("allowed entities and actions", () => {
     // The old name is read, never written again.
     expect(isAllowedAudit("prism_entry", "credit")).toBe(false);
     expect(isAllowedAudit("stock", "transfer")).toBe(true);
+    expect(isAllowedAudit("retailer", "credit_change")).toBe(true);
+    for (const action of ["create", "update", "activate", "deactivate"]) expect(isAllowedAudit("area", action)).toBe(true);
+    expect(isAllowedAudit("area", "delete")).toBe(false);
   });
 
   it("refuses unknown pairs", () => {
@@ -68,6 +71,7 @@ describe("allowed entities and actions", () => {
     expect(groupOf("vehicle")).toBe("masters");
     expect(groupOf("unknown")).toBeNull();
     expect(groupOf("brand")).toBe("masters");
+    expect(groupOf("area")).toBe("masters");
     expect(groupOf("supplier_entry")).toBe("suppliers");
     expect(groupOf("prism_entry")).toBe("suppliers");
     expect(isActivityGroup("suppliers")).toBe(true);
@@ -89,6 +93,7 @@ describe("activitySentence", () => {
     ["r2", "Gupta Stores"],
     ["p1", "Prism Trade OPC 43"],
     ["g1", "Main Godown"],
+    ["a1", "Patna City"],
     ["v1", "BR01AB1234"],
     ["b1", "Prism"],
     ["b2", "UltraTech"],
@@ -208,6 +213,14 @@ describe("activitySentence", () => {
       "Ramesh made Suresh the sales person of Sharma Traders",
     );
     expect(say(row("godown", "deactivate", {}, "g1"))).toBe("Ramesh switched off godown Main Godown");
+    expect(say(row("area", "create", { name: "Patna City" }, "a1"))).toBe("Ramesh added area Patna City");
+    expect(say(row("area", "update", {}, "a1"))).toBe("Ramesh edited area Patna City");
+    expect(say(row("area", "deactivate", {}, "a1"))).toBe("Ramesh switched off area Patna City");
+    expect(say(row("area", "activate", {}, "a1"))).toBe("Ramesh switched on area Patna City");
+    expect(say(row("retailer", "credit_change", {}, "r1"))).toBe("Ramesh changed the credit terms of Sharma Traders");
+    expect(say(row("retailer", "credit_change", { note: "late payer" }, "r1"))).toBe(
+      "Ramesh changed the credit terms of Sharma Traders: late payer",
+    );
     expect(say(row("grade", "rename", { from: "43", to: "43S" }))).toBe("Ramesh renamed grade 43 to 43S");
   });
 

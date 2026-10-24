@@ -44,6 +44,11 @@ describe("moreGroups", () => {
     const records = moreGroups("admin").find((g) => g.title === "Records");
     expect(records?.rows.map((r) => r.href)).toEqual(["/reports", "/activity", "/reports/books"]);
   });
+  it("lists Areas under People for admin only", () => {
+    const people = moreGroups("admin").find((g) => g.title === "People");
+    expect(people?.rows).toContainEqual({ href: "/areas", label: "Areas", permission: "editRetailers" });
+    for (const role of ["sales", "accounts", "logistics", "retailer"]) expect(hrefs(role)).not.toContain("/areas");
+  });
   it("shows Books check only to admin", () => {
     expect(hrefs("accounts")).not.toContain("/reports/books");
     expect(hrefs("sales")).not.toContain("/reports/books");

@@ -52,7 +52,13 @@ const MORE_GROUPS: MoreGroup[] = [
       { href: "/catalogue", label: "Catalogue", permission: "manageCatalogue" },
     ],
   },
-  { title: "People", rows: [{ href: "/users", label: "Users", permission: "manageUsers" }] },
+  {
+    title: "People",
+    rows: [
+      { href: "/users", label: "Users", permission: "manageUsers" },
+      { href: "/areas", label: "Areas", permission: "editRetailers" },
+    ],
+  },
   {
     title: "Records",
     rows: [

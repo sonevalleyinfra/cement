@@ -21,6 +21,11 @@ export function daysText(n: number): string {
   return `${formatCount(n)} ${n === 1 ? "day" : "days"}`;
 }
 
+/** "1 shop" / "12 shops". */
+export function shopsText(n: number): string {
+  return `${formatCount(n)} ${n === 1 ? "shop" : "shops"}`;
+}
+
 /** "is" for one bag, "are" for more: "1 bag is on the way", "50 bags are on the way". */
 export function isAre(n: number): "is" | "are" {
   return n === 1 ? "is" : "are";
