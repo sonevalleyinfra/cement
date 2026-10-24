@@ -3,8 +3,8 @@ import {
   BadgeCheck,
   CalendarDays,
   ChartColumn,
+  ChevronRight,
   ClipboardList,
-  Factory,
   History,
   Package,
   Receipt,
@@ -16,13 +16,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { Delta } from "@/components/app/delta";
 import { EmptyState } from "@/components/app/empty-state";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { HintLine } from "@/components/app/hint-line";
+import { KeyValue } from "@/components/app/key-value";
 import { ListCard } from "@/components/app/list-card";
 import { OverdueRow } from "@/components/app/overdue-row";
 import { SectionCaption } from "@/components/app/section-caption";
+import { Skeleton } from "@/components/app/skeleton";
 import { Stat } from "@/components/app/stat";
 import { TextLink } from "@/components/app/text-link";
 import { buttonVariants } from "@/components/ui/button";
@@ -34,16 +37,20 @@ import {
   getRetailerHome,
   getSalesHome,
 } from "@/lib/home-stats";
-import { formatDate, toISTDateKey } from "@/lib/datetime";
-import { NO_REP_FILTER } from "@/lib/home-rules";
-import { formatINR } from "@/lib/money";
+import { formatDate } from "@/lib/datetime";
+import { NO_LIMIT_FILTER, NO_REP_FILTER } from "@/lib/home-rules";
+import { formatINR, formatINRCompact } from "@/lib/money";
+import { getCashWithStaff, getOwnerMonth, getOwnerRisk, getOwnerToday, getTopOverdue } from "@/lib/owner-home";
+import { cashAgePill, deltaPct, homeWindows, perBagDelta, supplierValue, windowsText, type HomeWindows } from "@/lib/owner-home-rules";
 import { ageText, ageTone, coverTone, type Tone as NoteTone } from "@/lib/overdue-rules";
-import { supplierHomeLines } from "@/lib/supplier-rules";
+import { getSuppliers } from "@/lib/suppliers";
 import { cn } from "@/lib/utils";
-import { daysText, formatCount } from "@/lib/words";
+import { bagsText, daysText, formatCount, shopsText } from "@/lib/words";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
+/** Lakh/crore words from ₹1 lakh up ("₹27.05 lakh"), the Home `money` form below it (no ".00" tail). */
+const short = (p: number) => (Math.abs(p) >= 1_00_000_00 ? formatINRCompact(p) : money(p));
 
 function Cards({ children }: { children: ReactNode }) {
   return <div className="flex flex-col gap-3">{children}</div>;
@@ -249,57 +256,318 @@ export async function LogisticsHome() {
   );
 }
 
-export async function AdminHome() {
-  const s = await getAdminHome();
-  const today = toISTDateKey(new Date());
+/* ---------- Owner Home (admin, v2 C1 + C2) ---------- */
+
+const PANEL = "rounded-2xl bg-card shadow-card ring-1 ring-foreground/6";
+
+/** Shown in place of one section's body when its numbers fail to load; the rest of Home still renders. */
+function LoadError() {
+  return (
+    <div className="flex items-center gap-2">
+      <HintLine tone="risk">Couldn&apos;t load</HintLine>
+      <TextLink href="/dashboard">Retry</TextLink>
+    </div>
+  );
+}
+
+/** Runs a section's read; null = it failed (logged), so only that section shows "Couldn't load". */
+async function load<T>(read: Promise<T>): Promise<T | null> {
+  try {
+    return await read;
+  } catch (error) {
+    console.error("Owner Home section failed", error);
+    return null;
+  }
+}
+
+function Section({ caption, children }: { caption?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      {caption}
+      {children}
+    </section>
+  );
+}
+
+async function OwnerToday({ w }: { w: HomeWindows }) {
+  const s = await load(getOwnerToday(w));
+  if (!s) return <LoadError />;
+  return (
+    <ListCard
+      index={0}
+      featured
+      href={`/reports/sales?from=${w.today}&to=${w.today}`}
+      title="Today"
+      icon={
+        <span aria-hidden className="flex size-10 items-center justify-center rounded-xl bg-white/20 text-white">
+          <CalendarDays className="size-5" strokeWidth={2} />
+        </span>
+      }
+      bottom={
+        <div className="flex w-full flex-wrap justify-between gap-x-8 gap-y-2">
+          <div className="flex flex-col gap-1">
+            <Stat label="Sales" value={money(s.salesPaise)} />
+            <span className="tabular text-xs text-white/80">{bagsText(s.bags)}</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Stat label="Collected" value={money(s.collected.totalPaise)} />
+            <span className="tabular text-xs text-white/80">
+              Cash {money(s.collected.cashPaise)} · Online {money(s.collected.onlinePaise)}
+            </span>
+          </div>
+        </div>
+      }
+    />
+  );
+}
+
+/** One "This month" row: [label 96px][value][Delta], then the sub line with its own Delta (or none). */
+function MonthRow({ label, value, delta, sub, subDelta }: { label: string; value: string; delta: ReactNode; sub: string; subDelta?: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[96px_1fr_auto] items-baseline gap-x-2 gap-y-1 py-3 first:pt-0 last:pb-0">
+      <span className="text-sm">{label}</span>
+      <span className="tabular min-w-0 text-xl font-bold wrap-anywhere">{value}</span>
+      {delta}
+      {/* No sub Delta (the Collected split): the sub line takes the Delta column too, so it stays on one line. */}
+      <span className={cn("col-start-2 tabular min-w-0 text-xs text-muted-foreground wrap-anywhere", !subDelta && "col-span-2")}>{sub}</span>
+      {subDelta}
+    </div>
+  );
+}
+
+async function OwnerMonth({ w }: { w: HomeWindows }) {
+  const s = await load(getOwnerMonth(w));
+  if (!s) return <LoadError />;
+  return (
+    <div className={cn(PANEL, "flex flex-col divide-y divide-border p-4")}>
+      <MonthRow
+        label="Sales"
+        value={money(s.sales.paise)}
+        delta={<Delta value={deltaPct(s.sales.paise, s.prevSales.paise)} />}
+        sub={bagsText(s.sales.bags)}
+        subDelta={<Delta value={deltaPct(s.sales.bags, s.prevSales.bags)} />}
+      />
+      <MonthRow
+        label="Margin"
+        value={money(s.margin.paise)}
+        delta={<Delta value={deltaPct(s.margin.paise, s.prevMargin.paise)} />}
+        sub={s.margin.perBagPaise === null ? "— / bag" : `${money(s.margin.perBagPaise)} / bag`}
+        subDelta={<Delta unit="rupees" value={perBagDelta(s.margin.perBagPaise, s.prevMargin.perBagPaise)} />}
+      />
+      <MonthRow
+        label="Collected"
+        value={money(s.collected.totalPaise)}
+        delta={<Delta value={deltaPct(s.collected.totalPaise, s.prevCollected.totalPaise)} />}
+        sub={`Cash\u00a0${short(s.collected.cashPaise)} · Online\u00a0${short(s.collected.onlinePaise)}`}
+      />
+    </div>
+  );
+}
+
+/** A small Risk card: 12px label, 20px value (wraps on a phone), optional 12px caption. */
+function RiskCard({ label, value, href, valueClass, caption }: { label: string; value: string; href?: string; valueClass?: string; caption?: string }) {
+  const body = (
+    <>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={cn("tabular text-xl leading-tight font-bold wrap-anywhere", valueClass)}>{value}</span>
+      {caption && <span className="tabular text-xs text-muted-foreground">{caption}</span>}
+    </>
+  );
+  const classes = cn(PANEL, "flex min-w-0 flex-col gap-1 p-4");
+  return href ? (
+    <Link href={href} className={cn(classes, "outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
+      {body}
+    </Link>
+  ) : (
+    <div className={classes}>{body}</div>
+  );
+}
+
+async function OwnerRisk({ w, now }: { w: HomeWindows; now: Date }) {
+  const s = await load(getOwnerRisk(w, now));
+  if (!s) return <LoadError />;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-3">
+        <RiskCard label="Outstanding" value={money(s.outstandingPaise)} href="/ledger" />
+        <RiskCard
+          label="Overdue"
+          value={`${s.overduePct}%`}
+          href="/ledger?show=overdue"
+          valueClass={s.overduePct > 20 ? "text-risk-foreground" : undefined}
+        />
+        <RiskCard label="DSO" value={s.dso === null ? "—" : daysText(s.dso)} />
+        <RiskCard
+          label="Stock value"
+          value={short(s.stock.valuePaise)}
+          href="/stock"
+          caption={s.stock.unvaluedBags > 0 ? `${formatCount(s.stock.unvaluedBags)} bags no cost` : undefined}
+        />
+      </div>
+      {s.noLimitShops > 0 && (
+        <Link
+          href={`/retailers?filter=${NO_LIMIT_FILTER}`}
+          className="flex min-h-12 items-center gap-2 rounded-xl bg-caution-soft px-3 text-sm font-semibold text-caution-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <TriangleAlert className="size-4 shrink-0" aria-hidden />
+          <span className="flex-1">
+            {shopsText(s.noLimitShops)} {s.noLimitShops === 1 ? "has" : "have"} no limit
+          </span>
+          <ChevronRight className="size-4 shrink-0" aria-hidden />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+async function OwnerTopOverdue({ w }: { w: HomeWindows }) {
+  const rows = await load(getTopOverdue(w));
+  if (!rows) return <LoadError />;
+  return (
+    <div className={cn(PANEL, "divide-y divide-border")}>
+      {rows.length === 0 ? (
+        <p className="flex min-h-14 items-center px-4 text-sm text-muted-foreground">No overdue shops</p>
+      ) : (
+        rows.map((r) => <OverdueRow key={r.retailerId} row={r} density="compact" href={`/ledger/${r.retailerId}`} />)
+      )}
+    </div>
+  );
+}
+
+async function OwnerCash({ now }: { now: Date }) {
+  const rows = await load(getCashWithStaff(now));
+  if (!rows) return <LoadError />;
+  return (
+    <div className={cn(PANEL, "divide-y divide-border")}>
+      {rows.length === 0 ? (
+        <p className="flex min-h-14 items-center px-4 text-sm text-muted-foreground">No cash with staff</p>
+      ) : (
+        rows.map((p) => {
+          const pill = cashAgePill(p.ageDays);
+          return (
+            <Link
+              key={p.personId}
+              href="/wallet"
+              className="flex min-h-12 items-center gap-3 px-4 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="min-w-0 flex-1 text-base font-semibold">{p.name}</span>
+              <span className="tabular text-base font-semibold">{money(p.heldPaise)}</span>
+              <span
+                className={cn(
+                  "tabular inline-flex h-6 shrink-0 items-center rounded-full px-2 text-xs font-semibold",
+                  pill.tone === "risk" ? "bg-risk-soft text-risk-foreground" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {pill.text}
+              </span>
+            </Link>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+async function OwnerTodo({ now }: { now: Date }) {
+  const s = await load(getAdminHome());
+  if (!s) return <LoadError />;
+  return (
+    <Cards>
+      <Card index={1} href="/approvals" title="Approvals" icon={BadgeCheck} tone="moss" stats={[{ label: "Waiting", value: num(s.approvals) }]} note={ageNote(s.oldest.approvals, now)} />
+      <Card index={2} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} note={ageNote(s.oldest.dispatch, now)} />
+      <Card index={3} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} note={ageNote(s.oldest.online, now)} />
+      {s.shopsWithoutSalesRep > 0 && (
+        <Card
+          index={4}
+          href={`/retailers?filter=${NO_REP_FILTER}`}
+          title="Shops"
+          icon={Store}
+          tone="rose"
+          stats={[{ label: "Without sales person", value: num(s.shopsWithoutSalesRep) }]}
+        />
+      )}
+    </Cards>
+  );
+}
+
+/** All suppliers, one KeyValue row each. Nothing at all (not even the caption) when there are none. */
+async function OwnerSuppliers() {
+  const rows = await load(getSuppliers());
+  if (rows?.length === 0) return null;
+  return (
+    <Section caption={<SectionCaption>Suppliers</SectionCaption>}>
+      {rows === null ? (
+        <LoadError />
+      ) : (
+        <Link href="/suppliers" className={cn(PANEL, "flex flex-col gap-1 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
+          {rows.map((r) => (
+            <KeyValue key={r.id} label={r.name} value={supplierValue(r)} />
+          ))}
+        </Link>
+      )}
+    </Section>
+  );
+}
+
+/**
+ * The owner's Home: numbers first (today, this month, risk), then lists and to-dos. Admin only: the
+ * dashboard shows the "admin" section only to admins (`homeSections`). Each section loads and fails on its
+ * own (`Suspense` + `load`), with a static placeholder of its final size.
+ */
+export function AdminHome() {
+  const now = new Date();
+  const w = homeWindows(now);
   return (
     <div className="flex flex-col gap-6">
-      <Card
-        index={0}
-        href={`/reports/sales?from=${today}&to=${today}`}
-        title="Today"
-        icon={CalendarDays}
-        tone="orange"
-        stats={[
-          { label: "Sales", value: money(s.salesTodayPaise) },
-          { label: "Bags sent", value: num(s.bagsDispatched) },
-          { label: "Orders", value: num(s.todayOrders) },
-        ]}
-      />
-      <div className="flex flex-col gap-2">
-        <SectionCaption>To do</SectionCaption>
-        <Cards>
-          <Card index={1} href="/approvals" title="Approvals" icon={BadgeCheck} tone="moss" stats={[{ label: "Waiting", value: num(s.approvals) }]} />
-          <Card index={2} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "To send", value: num(s.toDispatch) }]} />
-          <Card index={3} href="/receipts/review" title="Online" icon={Receipt} tone="teal" stats={[{ label: "To verify", value: num(s.unverifiedOnline) }]} />
-          {s.shopsWithoutSalesRep > 0 && (
-            <Card
-              index={4}
-              href={`/retailers?filter=${NO_REP_FILTER}`}
-              title="Shops"
-              icon={Store}
-              tone="rose"
-              stats={[{ label: "Without sales person", value: num(s.shopsWithoutSalesRep) }]}
-            />
-          )}
-        </Cards>
-      </div>
-      <div className="flex flex-col gap-2">
-        <SectionCaption>Overview</SectionCaption>
-        <Cards>
-          <Card index={5} href="/ledger" title="Dues" icon={Banknote} tone="rose" stats={[{ label: "Outstanding", value: money(s.duesPaise) }]} />
-          <Card index={6} href="/stock" title="Stock" icon={Package} tone="blue" stats={[{ label: "Bags", value: num(s.stockBags) }]} />
-          <Card index={7} href="/wallet" title="Cash" icon={Wallet} tone="green" stats={[{ label: "Held by staff", value: money(s.cashInHandPaise) }]} />
-          <Card
-            index={8}
-            href="/suppliers"
-            title="Suppliers" icon={Factory} tone="amber"
-            stats={supplierHomeLines(s.suppliers).map((l) => ({ label: l.text, value: money(l.amountPaise) }))}
-          />
-          <Card index={9} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
-          <Card index={10} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
-        </Cards>
-      </div>
+      <Suspense fallback={<Skeleton className="h-36 rounded-2xl" />}>
+        <OwnerToday w={w} />
+      </Suspense>
+      <Section
+        caption={
+          <SectionCaption>
+            This month · <span className="font-medium">{windowsText(w)}</span>
+          </SectionCaption>
+        }
+      >
+        <Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
+          <OwnerMonth w={w} />
+        </Suspense>
+      </Section>
+      <Section caption={<SectionCaption>Risk</SectionCaption>}>
+        <Suspense fallback={<Skeleton className="h-44 rounded-2xl" />}>
+          <OwnerRisk w={w} now={now} />
+        </Suspense>
+      </Section>
+      <Section
+        caption={
+          // -my-4 cancels the 48px tap area of "All", so the caption sits 8px above the list.
+          <div className="-my-4 flex items-center justify-between">
+            <SectionCaption>Top overdue</SectionCaption>
+            <TextLink href="/ledger?show=overdue">All</TextLink>
+          </div>
+        }
+      >
+        <Suspense fallback={<Skeleton className="h-42 rounded-2xl" />}>
+          <OwnerTopOverdue w={w} />
+        </Suspense>
+      </Section>
+      <Section caption={<SectionCaption>Cash with staff</SectionCaption>}>
+        <Suspense fallback={<Skeleton className="h-24 rounded-2xl" />}>
+          <OwnerCash now={now} />
+        </Suspense>
+      </Section>
+      <Section caption={<SectionCaption>To do</SectionCaption>}>
+        <Suspense fallback={<Skeleton className="h-72 rounded-2xl" />}>
+          <OwnerTodo now={now} />
+        </Suspense>
+      </Section>
+      <Suspense fallback={<Skeleton className="h-24 rounded-2xl" />}>
+        <OwnerSuppliers />
+      </Suspense>
+      <Cards>
+        <Card index={5} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
+        <Card index={6} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
+      </Cards>
     </div>
   );
 }

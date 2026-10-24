@@ -7,12 +7,10 @@ import {
   products,
   receipts,
   retailers,
-  stockMovements,
   user,
   walletMovements,
 } from "@/db/schema";
 import {
-  cashInHandPaise,
   isOpenOrderStatus,
   istDayStart,
   LAST_PAYMENT_SKIPS,
@@ -26,7 +24,6 @@ import { ORDER_STATUSES } from "@/lib/order-rules";
 import { getOverdueRows } from "@/lib/overdue";
 import { collectToday, daysOfCover, monthStartIST } from "@/lib/overdue-rules";
 import { getBalances } from "@/lib/stock";
-import { getSuppliers } from "@/lib/suppliers";
 import { walletBalance } from "@/lib/wallet-rules";
 
 /** Read-only numbers for the home screens. Server-only. */
@@ -39,7 +36,7 @@ async function countOrders(where: SQL | undefined) {
 }
 
 /** Balance per retailer; `salesRepId` limits it to that sales person's shops. */
-async function dueRows(salesRepId?: string) {
+export async function dueRows(salesRepId?: string) {
   return db
     .select({
       retailerId: ledgerEntries.retailerId,
@@ -130,11 +127,6 @@ async function pendingHandovers() {
 
 const unverifiedOnline = and(eq(receipts.mode, "online"), eq(receipts.status, "unverified"));
 
-async function countUnverifiedOnline() {
-  const [row] = await db.select({ c: count() }).from(receipts).where(unverifiedOnline);
-  return n(row?.c);
-}
-
 export async function getAccountsHome() {
   const [approvals, oldestApproval, online, handovers] = await Promise.all([
     countOrders(waitingApproval),
@@ -162,19 +154,6 @@ export async function getMyCash(userId: string) {
   return { heldPaise: b.balancePaise, pendingPaise: b.pendingPaise };
 }
 
-export async function stockByProduct() {
-  return db
-    .select({
-      productId: stockMovements.productId,
-      name: products.name,
-      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
-    })
-    .from(stockMovements)
-    .innerJoin(products, eq(products.id, stockMovements.productId))
-    .groupBy(stockMovements.productId, products.name)
-    .orderBy(products.name);
-}
-
 /** Orders waiting for logistics (the same ones the dispatch list shows) and the bags on each truck now. */
 export async function getLogisticsHome(now = new Date()) {
   const [open, oldestToDispatch, balances, names, dispatched14] = await Promise.all([
@@ -191,53 +170,29 @@ export async function getLogisticsHome(now = new Date()) {
   return { ...logisticsCounts(open), oldestToDispatch, trucks, godown: { bags, coverDays: daysOfCover(bags, dispatched14) } };
 }
 
-export async function getAdminHome(now = new Date()) {
-  const start = istDayStart(now);
-  const [todayOrders, bagsRow, dues, stock, collected, confirmed, reversed, approvals, dispatchable, unverifiedOnline, suppliers, shops, activePeople] = await Promise.all([
-    countOrders(gte(orders.createdAt, start)),
-    db
-      .select({
-        b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number),
-        // Today's sales = dispatched bags x the rate stored on each dispatch (bigint, so no overflow).
-        v: sql<number>`coalesce(sum(${dispatches.bags}::bigint * ${dispatches.ratePaise}), 0)`.mapWith(Number),
-      })
-      .from(dispatches)
-      .where(gte(dispatches.createdAt, start)),
-    dueRows(),
-    stockByProduct(),
-    walletSum("collected"),
-    walletSum("handover_confirmed"),
-    walletSum("reversed"),
+/**
+ * Admin home "To do": what waits on someone, and when the oldest of each arrived. The other Owner Home
+ * numbers are in `owner-home.ts`; each section loads on its own.
+ */
+export async function getAdminHome() {
+  const [approvals, oldestApproval, dispatchable, oldestDispatch, online, shops, activePeople] = await Promise.all([
     countOrders(waitingApproval),
+    oldestOrder(waitingApproval),
     countOrders(toDispatch),
-    countUnverifiedOnline(),
-    getSuppliers(),
+    oldestOrder(toDispatch),
+    db.select({ c: count(), oldest: min(receipts.createdAt) }).from(receipts).where(unverifiedOnline),
     db.select({ active: retailers.active, salesRepId: retailers.salesRepId }).from(retailers),
     db.select({ id: user.id }).from(user).where(and(or(isNull(user.banned), eq(user.banned, false)), isNull(user.deletedAt))),
   ]);
   return {
-    todayOrders,
-    bagsDispatched: n(bagsRow[0]?.b),
-    salesTodayPaise: n(bagsRow[0]?.v),
-    duesPaise: totalDuesPaise(dues),
-    stockBags: stock.reduce((s, p) => s + p.bags, 0),
-    cashInHandPaise: cashInHandPaise(collected, confirmed, reversed),
     approvals,
     toDispatch: dispatchable,
-    unverifiedOnline,
-    /** Each supplier (one per brand) with what we owe it. */
-    suppliers,
+    unverifiedOnline: n(online[0]?.c),
+    /** When the oldest waiting item of each card arrived (null when nothing waits). */
+    oldest: { approvals: oldestApproval, dispatch: oldestDispatch, online: online[0]?.oldest ?? null },
     /** Switched-on shops with no sales person (admin should give them one). */
     shopsWithoutSalesRep: shopsWithoutSalesRep(shops, new Set(activePeople.map((u) => u.id))),
   };
-}
-
-async function walletSum(kind: string) {
-  const [row] = await db
-    .select({ p: sql<number>`coalesce(sum(${walletMovements.amountPaise}), 0)`.mapWith(Number) })
-    .from(walletMovements)
-    .where(eq(walletMovements.kind, kind));
-  return n(row?.p);
 }
 
 /** A retailer login's own open orders and balance. Null if the login has no shop. */

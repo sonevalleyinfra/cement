@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import type { NavItem } from "@/components/app/bottom-nav";
 import { AppShell, AppTitle } from "@/components/app/app-shell";
 import { DataTable } from "@/components/app/data-table";
+import { Delta } from "@/components/app/delta";
 import { ChipCount, chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
 import { IconTile } from "@/components/app/icon-tile";
+import { KeyValue } from "@/components/app/key-value";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -195,6 +197,20 @@ export default function DesignPage() {
       <HintLine>Last ₹353 · 12 Oct · Week ₹348–360</HintLine>
       <HintLine tone="caution">₹18 below last rate</HintLine>
       <HintLine tone="risk">Couldn&apos;t load</HintLine>
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Change on last month</h2>
+      <div className="flex flex-wrap items-center gap-4">
+        <Delta value={12} />
+        <Delta value={-4} />
+        <Delta value={null} />
+        <Delta value={-120} unit="rupees" />
+      </div>
+
+      <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Facts</h2>
+      <div className="flex flex-col gap-1 rounded-2xl bg-card px-4 py-3 shadow-card ring-1 ring-foreground/6">
+        <KeyValue label="Prism" value="₹12,40,000 payable" />
+        <KeyValue label="Ramco" value="₹5,000 advance" />
+      </div>
 
       <h2 className="mt-8 mb-3 text-sm font-medium text-muted-foreground">Loading</h2>
       <ListSkeleton rows={2} />
