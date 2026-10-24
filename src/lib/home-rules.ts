@@ -132,5 +132,13 @@ export function shopsWithoutSalesRep(
 /** The Retailers page filter in the address that shows only the shops counted above. */
 export const NO_REP_FILTER = "no-rep";
 
+/** A switched-on shop with no credit limit set (admin Home "N shops have no limit"). */
+export function hasNoLimit(shop: { active: boolean; creditLimitPaise: number | null }): boolean {
+  return shop.active && shop.creditLimitPaise === null;
+}
+
+/** The Retailers page filter in the address that lists only the shops counted by `hasNoLimit`. */
+export const NO_LIMIT_FILTER = "no-limit";
+
 /** Payments that still stand: a rejected or reversed one is not a payment the shop made. */
 export const LAST_PAYMENT_SKIPS = ["rejected", "reversed"] as const;

@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { areas, creditLimitChanges, retailers, user as users } from "@/db/schema";
 import { creditChangeParts } from "@/lib/credit-rules";
 import { formatDateTime } from "@/lib/datetime";
-import { NO_REP_FILTER, needsSalesRep } from "@/lib/home-rules";
+import { hasNoLimit, NO_LIMIT_FILTER, NO_REP_FILTER, needsSalesRep } from "@/lib/home-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { pickableRetailerLogins } from "@/lib/retailer-rules";
 import { pickableSalesReps } from "@/lib/sales-rep-rules";
@@ -19,10 +19,13 @@ export default async function RetailersPage({
   // Retailer phones are internal: staff only (a retailer would see every other shop).
   const { user } = await requireRole(...rolesFor("viewRetailers"));
   // `?filter=no-rep` (from Home): only the switched-on shops that still need a sales person.
-  const onlyNoRep = (await searchParams).filter === NO_REP_FILTER;
+  const filter = (await searchParams).filter;
+  const onlyNoRep = filter === NO_REP_FILTER;
   // Only admin edits; sales, accounts and admin see the credit terms (not logistics).
   const canEdit = can(user.role, "editRetailers");
   const canSeeCredit = can(user.role, "viewLedger");
+  // `?filter=no-limit` (from Home): switched-on shops with no credit limit. Ignored for roles that may not see credit.
+  const onlyNoLimit = canSeeCredit && filter === NO_LIMIT_FILTER;
   // The last 5 credit changes of each shop, for admin's shop sheet.
   const ranked = db
     .select({
@@ -91,6 +94,7 @@ export default async function RetailersPage({
   const activeRepIds = new Set(people.filter((u) => !u.banned && !u.deletedAt).map((u) => u.id));
   const shown = rows
     .filter((r) => !onlyNoRep || needsSalesRep(r, activeRepIds))
+    .filter((r) => !onlyNoLimit || hasNoLimit(r))
     .map(({ creditLimitPaise, creditDays, creditStatus, ...r }) => ({
       ...r,
       salesRepName: r.salesRepId ? (names.get(r.salesRepId) ?? "") : "",
@@ -129,6 +133,7 @@ export default async function RetailersPage({
       salesReps={salesReps}
       areas={pickableAreas}
       onlyNoRep={onlyNoRep}
+      onlyNoLimit={onlyNoLimit}
       canRecordPayment={can(user.role, "recordReceipt")}
       canOrder={can(user.role, "placeOrder")}
     />

@@ -93,6 +93,7 @@ export function RetailersView({
   salesReps,
   areas = null,
   onlyNoRep = false,
+  onlyNoLimit = false,
   canRecordPayment = false,
   canOrder = false,
 }: {
@@ -107,6 +108,8 @@ export function RetailersView({
   areas?: Login[] | null;
   /** Only the shops that need a sales person are listed (`?filter=no-rep`, from Home). */
   onlyNoRep?: boolean;
+  /** Only switched-on shops with no credit limit are listed (`?filter=no-limit`, from Home). */
+  onlyNoLimit?: boolean;
   /** Shortcuts in the shop sheet: record a payment / place an order with this shop filled in. */
   canRecordPayment?: boolean;
   canOrder?: boolean;
@@ -116,10 +119,12 @@ export function RetailersView({
   const [adding, setAdding] = useState(false);
   const detail = rows.find((r) => r.id === detailId) ?? null;
   const shown = rows.filter((r) => matchesRetailerSearch(r, query));
+  // Opened from a Home shortcut: back goes to the full list, and an empty list reads "None left".
+  const fromHome = onlyNoRep || onlyNoLimit;
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Retailers" back={onlyNoRep ? "/retailers" : undefined} />
+      <PageHeader title="Retailers" back={fromHome ? "/retailers" : undefined} />
       {rows.length > 0 && (
         <Input
           type="search"
@@ -131,7 +136,7 @@ export function RetailersView({
         />
       )}
       {rows.length === 0 ? (
-        <EmptyState title={onlyNoRep ? "None left" : "No retailers"} />
+        <EmptyState title={fromHome ? "None left" : "No retailers"} />
       ) : shown.length === 0 ? (
         <EmptyState title="No match" />
       ) : (
