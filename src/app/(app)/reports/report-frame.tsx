@@ -4,9 +4,10 @@ import { PageHeader } from "@/components/app/page-header";
 import { RangeForm } from "@/components/app/range-form";
 import { Stat } from "@/components/app/stat";
 import { buttonVariants } from "@/components/ui/button";
+import { formatDate } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { deltaLabel, previousRange } from "@/lib/report-compare";
-import { daysBetween, rangeQuery, type ReportRange } from "@/lib/report-range";
+import { daysBetween, istStartOf, rangeQuery, type ReportRange } from "@/lib/report-range";
 import { cn } from "@/lib/utils";
 
 /** Money in reports and statements: exact, always with paise, so every row and total adds up on screen. */
@@ -65,7 +66,8 @@ export function CompareNote({ range }: { range: Pick<ReportRange, "from" | "to">
   const p = previousRange(range);
   return (
     <p className="text-xs text-muted-foreground">
-      vs previous {daysBetween(p.from, p.to) + 1} {daysBetween(p.from, p.to) === 0 ? "day" : "days"} ({p.from} – {p.to})
+      vs previous {daysBetween(p.from, p.to) + 1} {daysBetween(p.from, p.to) === 0 ? "day" : "days"} ({formatDate(istStartOf(p.from))} –{" "}
+      {formatDate(istStartOf(p.to))})
     </p>
   );
 }

@@ -81,7 +81,10 @@ function PresetLinks({ from, to, keep }: { from: string; to: string; keep?: Reco
   const now = new Date();
   const current = matchPreset({ from, to }, now);
   return (
-    <nav aria-label="Date presets" className="flex flex-wrap gap-2">
+    <nav
+      aria-label="Date presets"
+      className="-mx-3 -my-2 flex snap-x scroll-px-3 gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
       {PRESETS.map((id) => {
         const r = presetRange(id, now);
         const href = `?${new URLSearchParams({ from: r.from, to: r.to, ...keep })}`;
@@ -90,7 +93,7 @@ function PresetLinks({ from, to, keep }: { from: string; to: string; keep?: Reco
             key={id}
             href={href}
             aria-current={id === current ? "true" : undefined}
-            className={chipClass(id === current)}
+            className={chipClass(id === current, "snap-start")}
           >
             {PRESET_LABELS[id]}
           </a>
