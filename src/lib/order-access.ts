@@ -7,7 +7,9 @@
  * shop's orders, if any. A retailer cannot also hold a staff role (checkRoles in user-admin-rules).
  * Choices where the spec is silent:
  * - A non-staff viewer sees the order history without rate rows (filled / edited), and a staff
- *   reason that talks about money (rate, price, ₹, rs, discount...) is hidden.
+ *   reason that talks about money (rate, price, ₹, rs, discount...) is hidden. A reason code's label
+ *   shows only when it is shop-visible (reason-codes isShopVisibleReason; "Over limit" never does).
+ * - The staff note of an order is never sent to a non-staff viewer (order-delivery-rules notesForViewer).
  * - Dispatch loads (bags, vehicle, driver, phone, date) are shown to everyone who may see the
  *   order; the load's rate only to staff.
  */
@@ -15,6 +17,7 @@ import { formatINR } from "./money";
 import { isOrderStatus, isValidBags, orderTotalPaise, orderValuePaise, remainingBags } from "./order-rules";
 import { isStaff } from "./permissions";
 import { isRateEvent, rateEventLabel, rateMoveText } from "./rate-rules";
+import { isShopVisibleReason, reasonLabel } from "./reason-codes";
 import { hasAnyRole, isRetailerOnly } from "./roles";
 import { bagsText } from "./words";
 
@@ -122,16 +125,22 @@ export function mentionsMoney(text: string | null | undefined): boolean {
 
 /**
  * The order history this person may read. Staff see everything. Anyone else does not
- * see rate rows, nor staff reasons that mention money.
+ * see rate rows, nor reason codes meant for staff (the code becomes null), nor notes that mention money.
  */
-export function historyForViewer<T extends { reason: string }>(
+export function historyForViewer<T extends { reason: string; reasonCode?: string | null }>(
   role: string | null | undefined,
   events: readonly T[],
 ): T[] {
   if (isStaff(role)) return [...events];
   return events
     .filter((e) => !isRateEvent(e.reason))
-    .map((e) => (mentionsMoney(e.reason) ? { ...e, reason: "" } : e));
+    .map((e) => {
+      let shown = e;
+      // A staff-only code hides its note too (it was typed for staff, e.g. "Over limit · 2 lakh due").
+      if (shown.reasonCode && !isShopVisibleReason(shown.reasonCode)) shown = { ...shown, reasonCode: null, reason: "" };
+      if (mentionsMoney(shown.reason)) shown = { ...shown, reason: "" };
+      return shown;
+    });
 }
 
 /** The rate line under a rate row of the history ("₹350 → ₹360"), for staff only. Null otherwise. */
@@ -155,8 +164,14 @@ export function historyStepLabel(event: { toStatus: string; reason: string }): s
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** The reason line under a history row (a rate row already says it in its label). */
-export function historyReason(reason: string): string {
-  if (reason.startsWith("Rate edited: ")) return reason.slice("Rate edited: ".length);
-  return isRateEvent(reason) ? "" : reason;
+/**
+ * The reason line under a history row: the code's label, then " · note" (a rate row already says
+ * "Rate edited" in its label, so only its note is kept). Old rows without a code show their text.
+ */
+export function historyReason(event: { reason: string; reasonCode?: string | null }): string {
+  const { reason } = event;
+  let note = reason;
+  if (reason.startsWith("Rate edited: ")) note = reason.slice("Rate edited: ".length);
+  else if (isRateEvent(reason)) note = "";
+  return [reasonLabel(event.reasonCode), note.trim()].filter(Boolean).join(" · ");
 }

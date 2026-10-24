@@ -139,14 +139,21 @@ describe("planVerify", () => {
 
 describe("planReject", () => {
   const online = { mode: "online", status: "unverified" };
-  it("needs a reason", () => {
-    expect(planReject("accounts", online, "Not in statement")).toEqual({ ok: true, reason: "Not in statement" });
-    expect(planReject("accounts", online, " ").ok).toBe(false);
+  it("needs a reason code from the payment list", () => {
+    expect(planReject("accounts", online, "not_in_bank", " Not in  statement ")).toEqual({
+      ok: true,
+      code: "not_in_bank",
+      note: "Not in statement",
+    });
+    expect(planReject("accounts", online, "wrong_amount", "")).toEqual({ ok: true, code: "wrong_amount", note: "" });
+    expect(planReject("accounts", online, null, "Not in statement")).toEqual({ ok: false, error: "Pick a reason" });
+    expect(planReject("accounts", online, "rate_dispute", "")).toEqual({ ok: false, error: "Pick a reason" });
+    expect(planReject("accounts", online, "other", " ")).toEqual({ ok: false, error: "Add a note" });
   });
   it("only accounts or admin, only unverified online", () => {
-    expect(planReject("sales", online, "x").ok).toBe(false);
-    expect(planReject("accounts", { ...online, status: "verified" }, "x").ok).toBe(false);
-    expect(planReject("accounts", { mode: "cash", status: "received" }, "x").ok).toBe(false);
+    expect(planReject("sales", online, "bounced", "").ok).toBe(false);
+    expect(planReject("accounts", { ...online, status: "verified" }, "bounced", "").ok).toBe(false);
+    expect(planReject("accounts", { mode: "cash", status: "received" }, "bounced", "").ok).toBe(false);
   });
 });
 

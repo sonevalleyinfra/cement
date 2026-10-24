@@ -20,6 +20,8 @@ export default async function ApprovalsPage() {
         productId: orders.productId,
         bags: orders.bags,
         ratePaise: orders.ratePaise,
+        // Staff only: this page is for accounts and admin.
+        staffNote: orders.staffNote,
         retailer: retailers.name,
         product: products.name,
       })
@@ -55,6 +57,7 @@ export default async function ApprovalsPage() {
                   product: r.product,
                   bags: r.bags,
                   ratePaise: r.ratePaise ?? 0,
+                  staffNote: r.staffNote,
                 }}
                 duesPaise={duesFrom(balanceOf.get(r.retailerId) ?? 0)}
                 hint={hints[i]}

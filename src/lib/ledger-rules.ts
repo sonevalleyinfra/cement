@@ -9,8 +9,11 @@
  *   bags that were never billed, and needs no correcting entry.
  * - Entries are never edited; only new rows are added.
  * - One ledger per retailer. One opening balance per retailer. It may be negative (retailer has advance).
- * - Payments post a credit ("receipt_credit", minus the amount); a reversed payment posts the
- *   same kind with plus the amount. See receipt-rules.ts.
+ * - Payments post a credit ("receipt_credit", minus the amount); a reversed payment posts a
+ *   "receipt_reversal" row with plus the amount and the payment's id (receipt-reversal.ts).
+ *   Reversals from before that kind existed are "receipt_credit" rows with plus the amount, and
+ *   stay so (append-only): every reader treats both alike. The books check I7 sums every row of a
+ *   payment by receipt_id, whatever its kind, so it covers both.
  * - Admin may add an adjustment (+ the retailer owes more, - owes less) with a reason, to fix
  *   anything else.
  * - Retailers can see their own ledger: their total dues, what came (no dispatch amounts) and their
@@ -18,7 +21,7 @@
  */
 import { checkReason } from "./receipt-rules";
 
-export const LEDGER_KINDS = ["opening", "order_debit", "receipt_credit", "adjustment"] as const;
+export const LEDGER_KINDS = ["opening", "order_debit", "receipt_credit", "adjustment", "receipt_reversal"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
 export type LedgerEntry = {

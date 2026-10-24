@@ -6,13 +6,14 @@
  *
  * - Approve / reject: accounts, only once the order has a rate (rate rules in rate-rules.ts).
  * - Dispatch: any logistics person. The status after a dispatch comes from the bags sent so far.
- * - Cancel: admin only, with a reason, while placed, approved or partly dispatched. Only the bags
+ * - Cancel: admin only, with a reason code (reason-codes.ts) and an optional note, while placed, approved or partly dispatched. Only the bags
  *   not sent yet are cancelled; bags already sent stay at the shop and stay billed.
  * - Each dispatch bills its own bags x the rate at that moment (see ledger-rules.ts), so nothing
  *   is billed before a dispatch and a cancel or rate change never needs a correction.
  * - Admin passes every role check (same as hasAnyRole in roles.ts).
  * - Money is integer paise only.
  */
+import { checkReason, type ReasonCode } from "./reason-codes";
 import { hasAnyRole, type Role } from "./roles";
 import { bagsText, isAre } from "./words";
 
@@ -97,7 +98,7 @@ export function canCancelOrder(role: string | null | undefined, status: string):
 }
 
 export type CancelPlan =
-  | { ok: true; reason: string; cancelledBags: number }
+  | { ok: true; code: ReasonCode<"cancel">; note: string; cancelledBags: number }
   | { ok: false; error: string };
 
 /**
@@ -109,16 +110,18 @@ export function planCancel(input: {
   status: string;
   orderedBags: number;
   dispatchedBags: number;
-  reason: string | null | undefined;
+  reasonCode: unknown;
+  note: unknown;
 }): CancelPlan {
   if (!isOrderStatus(input.status) || !canTransition(input.status, "cancelled")) {
     return { ok: false, error: `An order that is ${input.status.replace("_", " ")} cannot be cancelled.` };
   }
   if (!canCancelOrder(input.role, input.status)) return { ok: false, error: "Only admin can cancel an order." };
-  if (!isValidReason(input.reason)) return { ok: false, error: "Enter a reason for cancelling." };
+  const why = checkReason("cancel", input.reasonCode, input.note);
+  if (!why.ok) return why;
   const cancelledBags = remainingBags(input.orderedBags, input.dispatchedBags);
   if (cancelledBags === 0) return { ok: false, error: "Every bag is already dispatched." };
-  return { ok: true, reason: cleanReason(input.reason), cancelledBags };
+  return { ok: true, code: why.code, note: why.note, cancelledBags };
 }
 
 /* ---------- Quantity rules ---------- */

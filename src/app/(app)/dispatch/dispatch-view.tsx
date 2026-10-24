@@ -13,9 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { placesWithEnough, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
+import { stagger } from "@/lib/motion";
 import { isOrderStatus, remainingBags } from "@/lib/order-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
+import { cn } from "@/lib/utils";
 import { bagsText } from "@/lib/words";
 import { dispatchOrder } from "./actions";
 
@@ -27,6 +29,14 @@ type OrderRow = {
   bags: number;
   sent: number;
   status: string;
+  deliverTo: string;
+  siteAddress: string | null;
+  receiverName: string | null;
+  receiverPhone: string | null;
+  /** "Needed by" as shown ("30 Oct 2026"), and whether it is before today. */
+  requiredByText: string | null;
+  late: boolean;
+  staffNote: string;
 };
 /** A stock place (`key` is "godown:<id>" or "vehicle:<id>"); `truck` is its number when the bags are on a truck. */
 type Place = { key: string; name: string; truck: string | null };
@@ -135,19 +145,52 @@ export function DispatchView({
           {orders.map((o, i) => {
             const left = remainingBags(o.bags, o.sent);
             return (
-              <li key={o.id}>
+              <li
+                key={o.id}
+                className={cn(
+                  o.receiverPhone &&
+                    "animate-in-up overflow-hidden rounded-2xl bg-card shadow-card ring-1 ring-foreground/6",
+                )}
+                style={o.receiverPhone ? stagger(i) : undefined}
+              >
                 <ListCard
                   index={i}
+                  className={cn(
+                    o.receiverPhone &&
+                      "animate-none rounded-none shadow-none ring-0 hover:translate-y-0 hover:shadow-none",
+                  )}
                   {...(places.length === 0 || left === 0 ? { href: `/orders/${o.id}` } : { onClick: () => openSheet(o) })}
                   title={o.retailer}
                   top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
                   bottom={
-                    <div className="text-xs text-muted-foreground">
-                      {o.product} · <span className="tabular">{o.sent}</span> of{" "}
-                      <span className="tabular">{o.bags}</span> {o.bags === 1 ? "bag" : "bags"} sent
+                    <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+                      <span>
+                        {o.product} · <span className="tabular">{o.sent}</span> of{" "}
+                        <span className="tabular">{o.bags}</span> {o.bags === 1 ? "bag" : "bags"} sent
+                      </span>
+                      {o.deliverTo === "site" && o.siteAddress && (
+                        <span className="text-sm text-foreground">Site · {o.siteAddress}</span>
+                      )}
+                      {o.requiredByText && (
+                        <span className={o.late ? "font-semibold text-caution-foreground" : undefined}>
+                          Needed by {o.requiredByText}
+                        </span>
+                      )}
+                      {o.staffNote && <span>Staff note · {o.staffNote}</span>}
                     </div>
                   }
                 />
+                {o.receiverPhone && (
+                  <a
+                    href={`tel:${o.receiverPhone}`}
+                    className="flex min-h-12 items-center gap-1 border-t border-border px-4 text-sm text-muted-foreground"
+                  >
+                    {o.receiverName ? `${o.receiverName} · ` : "Receiver · "}
+                    <span className="tabular font-semibold text-foreground underline underline-offset-2">
+                      {o.receiverPhone}
+                    </span>
+                  </a>
+                )}
               </li>
             );
           })}

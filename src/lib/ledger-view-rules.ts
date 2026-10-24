@@ -5,12 +5,17 @@ const KIND_LABELS: Record<string, string> = {
   order_debit: "Dispatch",
   receipt_credit: "Payment",
   adjustment: "Adjustment",
+  receipt_reversal: "Payment reversed",
 };
+
+/** Rows about the shop's own payments (a payment, or a payment put back): a shop sees their amounts. */
+const PAYMENT_KINDS: readonly string[] = ["receipt_credit", "receipt_reversal"];
 
 /**
  * The word shown for one ledger row. A payment is a credit (negative). A positive
  * `receipt_credit` row puts a payment back on the bill (the payment was reversed),
- * so it reads "Payment reversed", not "Payment".
+ * so it reads "Payment reversed", not "Payment". Reversals are now their own kind,
+ * "receipt_reversal"; the older + receipt_credit rows stay in the books and read the same.
  */
 export function ledgerEntryLabel(kind: string, amountPaise: number): string {
   if (kind === "receipt_credit" && amountPaise > 0) return "Payment reversed";
@@ -67,7 +72,7 @@ export function ledgerRowsForViewer(role: string | null | undefined, rows: reado
     id: r.id,
     label: ledgerEntryLabel(r.kind, r.amountPaise),
     createdAt: r.createdAt,
-    amountPaise: staff || r.kind === "receipt_credit" ? r.amountPaise : null,
+    amountPaise: staff || PAYMENT_KINDS.includes(r.kind) ? r.amountPaise : null,
     balancePaise: staff ? r.balancePaise : null,
     what: r.kind === "order_debit" ? [r.product, r.bags !== null ? `${r.bags} bags` : null].filter(Boolean).join(" · ") : "",
     note: staff && r.note ? r.note : null,

@@ -112,19 +112,22 @@ describe("canCancelOrder", () => {
 });
 
 describe("planCancel", () => {
-  const base = { role: "admin", orderedBags: 100, dispatchedBags: 0, reason: "wrong product" };
+  const base = { role: "admin", orderedBags: 100, dispatchedBags: 0, reasonCode: "entry_mistake" as unknown, note: "wrong product" as unknown };
 
   it("nothing sent: the whole order is cancelled", () => {
     for (const status of ["placed", "approved"]) {
-      expect(planCancel({ ...base, status })).toEqual({ ok: true, reason: "wrong product", cancelledBags: 100 });
+      expect(planCancel({ ...base, status })).toEqual({ ok: true, code: "entry_mistake", note: "wrong product", cancelledBags: 100 });
     }
   });
   it("partly dispatched: only the bags not sent are cancelled", () => {
-    expect(planCancel({ ...base, status: "partly_dispatched", dispatchedBags: 40, reason: "  shop closed  " })).toEqual({
-      ok: true,
-      reason: "shop closed",
-      cancelledBags: 60,
-    });
+    expect(
+      planCancel({ ...base, status: "partly_dispatched", dispatchedBags: 40, reasonCode: "shop_asked", note: "  shop   closed  " }),
+    ).toEqual({ ok: true, code: "shop_asked", note: "shop closed", cancelledBags: 60 });
+  });
+  it("the note is optional, except for Other", () => {
+    expect(planCancel({ ...base, status: "placed", reasonCode: "truck_issue", note: "" })).toMatchObject({ ok: true, note: "" });
+    expect(planCancel({ ...base, status: "placed", reasonCode: "other", note: " " })).toEqual({ ok: false, error: "Add a note" });
+    expect(planCancel({ ...base, status: "placed", reasonCode: "other", note: "moved town" })).toMatchObject({ ok: true, code: "other" });
   });
   it("refuses when every bag is already sent", () => {
     expect(planCancel({ ...base, status: "partly_dispatched", dispatchedBags: 100 })).toEqual({
@@ -142,13 +145,15 @@ describe("planCancel", () => {
       expect(planCancel({ ...base, role, status: "approved" })).toEqual({ ok: false, error: "Only admin can cancel an order." });
     }
   });
-  it("needs a reason", () => {
-    expect(planCancel({ ...base, status: "approved", reason: "  " }).ok).toBe(false);
-    expect(planCancel({ ...base, status: "approved", reason: null }).ok).toBe(false);
+  it("needs a reason code from the cancel list", () => {
+    expect(planCancel({ ...base, status: "approved", reasonCode: null })).toEqual({ ok: false, error: "Pick a reason" });
+    expect(planCancel({ ...base, status: "approved", reasonCode: "rate_dispute" })).toEqual({ ok: false, error: "Pick a reason" });
   });
-  it("cuts a long reason", () => {
-    const p = planCancel({ ...base, status: "placed", reason: "x".repeat(500) });
-    expect(p.ok && p.reason.length).toBe(300);
+  it("refuses a long note", () => {
+    expect(planCancel({ ...base, status: "placed", note: "x".repeat(201) })).toEqual({
+      ok: false,
+      error: "Keep the note under 200 characters",
+    });
   });
 });
 

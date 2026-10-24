@@ -8,6 +8,10 @@ describe("ledgerEntryLabel", () => {
   it("calls a re-debit (positive) receipt row a reversed payment ", () => {
     expect(ledgerEntryLabel("receipt_credit", 50_000)).toBe("Payment reversed");
   });
+  it("calls the receipt_reversal kind a reversed payment, like the older + receipt_credit rows", () => {
+    expect(ledgerEntryLabel("receipt_reversal", 50_000)).toBe("Payment reversed");
+    expect(ledgerEntryLabel("receipt_reversal", 50_000)).toBe(ledgerEntryLabel("receipt_credit", 50_000));
+  });
   it("labels the other kinds by kind, whatever the sign", () => {
     expect(ledgerEntryLabel("opening", 10_000)).toBe("Opening balance");
     expect(ledgerEntryLabel("opening", -10_000)).toBe("Opening balance");
@@ -38,6 +42,8 @@ describe("ledgerRowsForViewer", () => {
     { ...base, id: "p", kind: "receipt_credit", amountPaise: -500_000, balancePaise: 1_020_000, note: "Payment #3" },
     { ...base, id: "r", kind: "receipt_credit", amountPaise: 500_000, balancePaise: 1_520_000 },
     { ...base, id: "a", kind: "adjustment", amountPaise: -20_000, balancePaise: 1_500_000, note: "Rate difference" },
+    { ...base, id: "p2", kind: "receipt_credit", amountPaise: -300_000, balancePaise: 1_200_000 },
+    { ...base, id: "v", kind: "receipt_reversal", amountPaise: 300_000, balancePaise: 1_500_000, note: "Payment #4 reversed: Bounced" },
   ];
 
   it("staff see every amount, balance, note and who posted it", () => {
@@ -64,7 +70,8 @@ describe("ledgerRowsForViewer", () => {
       });
       for (const r of v) expect(r.balancePaise).toBeNull();
       // No amount anywhere except their own payments (and a payment put back).
-      expect(v.filter((r) => r.amountPaise !== null).map((r) => r.id)).toEqual(["p", "r"]);
+      expect(v.filter((r) => r.amountPaise !== null).map((r) => r.id)).toEqual(["p", "r", "p2", "v"]);
+      expect(v.find((r) => r.id === "v")).toMatchObject({ label: "Payment reversed", amountPaise: 300_000, note: null });
       expect(JSON.stringify(v)).not.toMatch(/1420000|1520000|Rate difference|BR01/);
     }
   });

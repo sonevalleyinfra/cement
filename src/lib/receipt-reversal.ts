@@ -7,9 +7,11 @@
  * - Who: accounts or admin (permissions.ts "reverseReceipt").
  * - Which: a "received" cash payment or a "verified" online payment. An unverified online
  *   payment is rejected instead (receipt-rules planReject); rejected and reversed are final.
- * - A reason is required (trimmed, at most 300 characters). It goes into the ledger note.
- * - Ledger: one compensating row of +amount (kind "receipt_credit"), so the retailer owes
- *   that money again. Nothing posted before is edited.
+ * - A reason code is required (payment list in reason-codes.ts; a note is optional, needed for
+ *   "other"). Label and note go into the ledger note.
+ * - Ledger: one compensating row of +amount (kind "receipt_reversal", with the payment's id), so the
+ *   retailer owes that money again. Nothing posted before is edited. Reversals saved before this
+ *   kind existed are "receipt_credit" rows with a + amount.
  * - Cash: accounts / admin say where that cash is now (owner's rule):
  *   - "Cash is still with <name>" ("holder"): it leaves that person's cash-held balance (one
  *     "reversed" wallet row). They must hold at least that much, and none of it may be promised in
@@ -19,7 +21,7 @@
  */
 import { can } from "./permissions";
 import { formatINR } from "./money";
-import { checkReason } from "./receipt-rules";
+import { checkReason, reasonText, type PaymentReasonCode } from "./reason-codes";
 
 export const REVERSIBLE_STATUSES = ["received", "verified"] as const;
 
@@ -43,7 +45,10 @@ export function isCashPlace(value: unknown): value is CashPlace {
 export type ReversalPlan =
   | {
       ok: true;
+      code: PaymentReasonCode;
+      /** The typed note ("" when none), kept in reversal_reason. */
       reason: string;
+      ledgerKind: "receipt_reversal";
       /** Signed ledger amount to post (+ = the retailer owes again). */
       ledgerPaise: number;
       /** Cash to take out of the recorder's cash-held balance (0 for online). */
@@ -60,7 +65,8 @@ export type ReversalPlan =
 export function planReversal(
   role: string | null | undefined,
   receipt: { mode: string; status: string; receiptNo: number; totalPaise: number },
-  reason: unknown,
+  reasonCode: unknown,
+  note: unknown,
   cashPlace: unknown = null,
   holder: { balancePaise: number; availablePaise: number } = { balancePaise: 0, availablePaise: 0 },
 ): ReversalPlan {
@@ -69,7 +75,7 @@ export function planReversal(
     if (receipt.status === "unverified") return { ok: false, error: "Reject it instead: it is not verified yet." };
     return { ok: false, error: `A ${receipt.status} payment cannot be reversed.` };
   }
-  const r = checkReason(reason);
+  const r = checkReason("payment", reasonCode, note);
   if (!r.ok) return r;
   if (!Number.isSafeInteger(receipt.totalPaise) || receipt.totalPaise <= 0) {
     return { ok: false, error: "This payment has nothing to reverse." };
@@ -88,9 +94,11 @@ export function planReversal(
   }
   return {
     ok: true,
-    reason: r.reason,
+    code: r.code,
+    reason: r.note,
+    ledgerKind: "receipt_reversal",
     ledgerPaise: receipt.totalPaise,
     walletPaise: fromHolder ? receipt.totalPaise : 0,
-    note: `Payment #${receipt.receiptNo} reversed: ${r.reason}`,
+    note: `Payment #${receipt.receiptNo} reversed: ${reasonText(r.code, r.note, "payment")}`,
   };
 }

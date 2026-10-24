@@ -7,7 +7,6 @@ import {
   canLinkRetailerUser,
   checkRateChange,
   checkRateInput,
-  checkRejectReason,
   cleanRateInput,
   isRateEvent,
   isWaitingApproval,
@@ -177,18 +176,31 @@ describe("canChangeRate (logistics and admin alter a set rate)", () => {
 });
 
 describe("checkRateChange", () => {
-  it("needs a valid new rate and a reason", () => {
-    expect(checkRateChange(35000, "360", " freight up ")).toEqual({ ok: true, ratePaise: 36000, reason: "freight up" });
-    expect(checkRateChange(35000, "360", " ")).toEqual({ ok: false, error: "Enter a reason for changing the rate." });
-    expect(checkRateChange(35000, "", "x")).toEqual({ ok: false, error: "Enter a rate per bag." });
-    expect(checkRateChange(35000, "5000", "x").ok).toBe(false);
+  it("needs a valid new rate and a reason code", () => {
+    expect(checkRateChange(35000, "360", "price_revision", " freight up ")).toEqual({
+      ok: true,
+      ratePaise: 36000,
+      code: "price_revision",
+      note: "freight up",
+    });
+    expect(checkRateChange(35000, "360", "owner_said", "")).toEqual({ ok: true, ratePaise: 36000, code: "owner_said", note: "" });
+    expect(checkRateChange(35000, "360", null, "freight up")).toEqual({ ok: false, error: "Pick a reason" });
+    expect(checkRateChange(35000, "360", "no_stock", "")).toEqual({ ok: false, error: "Pick a reason" });
+    expect(checkRateChange(35000, "360", "other", " ")).toEqual({ ok: false, error: "Add a note" });
+    expect(checkRateChange(35000, "", "owner_said", "")).toEqual({ ok: false, error: "Enter a rate per bag." });
+    expect(checkRateChange(35000, "5000", "owner_said", "").ok).toBe(false);
   });
   it("the same rate is not a change", () => {
-    expect(checkRateChange(35000, "350", "x")).toEqual({ ok: false, error: "That is the rate already." });
-    expect(checkRateChange(33500, "335.00", "x")).toEqual({ ok: false, error: "That is the rate already." });
+    expect(checkRateChange(35000, "350", "owner_said", "")).toEqual({ ok: false, error: "That is the rate already." });
+    expect(checkRateChange(33500, "335.00", "owner_said", "")).toEqual({ ok: false, error: "That is the rate already." });
   });
   it("takes a paise rate", () => {
-    expect(checkRateChange(33500, "335.50", "x")).toEqual({ ok: true, ratePaise: 33550, reason: "x" });
+    expect(checkRateChange(33500, "335.50", "entry_mistake", "x")).toEqual({
+      ok: true,
+      ratePaise: 33550,
+      code: "entry_mistake",
+      note: "x",
+    });
   });
 });
 
@@ -239,14 +251,6 @@ describe("isWaitingApproval", () => {
   });
 });
 
-describe("checkRejectReason", () => {
-  it("needs a reason", () => {
-    expect(checkRejectReason("  ").ok).toBe(false);
-    expect(checkRejectReason(null).ok).toBe(false);
-  });
-  it("trims", () => expect(checkRejectReason(" high dues ")).toEqual({ ok: true, reason: "high dues" }));
-});
-
 describe("rate history rows", () => {
   it("never contain the price and are recognisable", () => {
     expect(rateEditReason("market fell")).toBe("Rate edited: market fell");
@@ -259,6 +263,12 @@ describe("rate history rows", () => {
     expect(rateEventLabel(RATE_FILLED)).toBe("Rate filled");
     expect(rateEventLabel(rateEditReason("x"))).toBe("Rate edited");
     expect(rateEventLabel("wrong product")).toBeNull();
+  });
+  it("a change without a note is exactly the prefix, and still a rate row", () => {
+    expect(rateEditReason("")).toBe("Rate edited:");
+    expect(rateEditReason("  ")).toBe("Rate edited:");
+    expect(isRateEvent(rateEditReason(""))).toBe(true);
+    expect(rateEventLabel(rateEditReason(""))).toBe("Rate edited");
   });
 });
 

@@ -5,6 +5,7 @@ import {
   canViewLedger,
   dispatchEntry,
   duesFrom,
+  LEDGER_KINDS,
   MAX_OPENING_PAISE,
   newestFirstWithBalance,
   openingEntry,
@@ -17,6 +18,12 @@ const e = (retailerId: string, amountPaise: number, orderId?: string) => ({
   retailerId,
   amountPaise,
   orderId,
+});
+
+describe("LEDGER_KINDS", () => {
+  it("has its own kind for a payment put back (receipt_reversal); the database CHECK is built from this list", () => {
+    expect(LEDGER_KINDS).toEqual(["opening", "order_debit", "receipt_credit", "adjustment", "receipt_reversal"]);
+  });
 });
 
 describe("running balance", () => {

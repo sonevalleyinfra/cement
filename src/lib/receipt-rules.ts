@@ -20,6 +20,7 @@
  * - UTRs are stored without spaces and in capitals, so "abc 123" and "ABC123" are the same.
  */
 import type { LedgerEntry } from "./ledger-rules";
+import { checkReason as checkReasonCode, type PaymentReasonCode } from "./reason-codes";
 import { hasAnyRole } from "./roles";
 
 export const PAYMENT_MODES = ["cash", "online"] as const;
@@ -182,13 +183,14 @@ export function planVerify(
   return { ok: true, ledger: { retailerId: receipt.retailerId, kind: "receipt_credit", amountPaise: -receipt.totalPaise } };
 }
 
-/** "Reject" (the money never arrived): status rejected, reason required, nothing posted. */
+/** "Reject" (the money never arrived): status rejected, a reason code required (note optional), nothing posted. */
 export function planReject(
   role: string | null | undefined,
   receipt: { mode: string; status: string },
-  reason: unknown,
-): { ok: true; reason: string } | { ok: false; error: string } {
+  reasonCode: unknown,
+  note: unknown,
+): { ok: true; code: PaymentReasonCode; note: string } | { ok: false; error: string } {
   const check = checkUnverifiedOnline(role, receipt);
   if (!check.ok) return check;
-  return checkReason(reason);
+  return checkReasonCode("payment", reasonCode, note);
 }

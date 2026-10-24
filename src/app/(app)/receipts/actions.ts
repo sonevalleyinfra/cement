@@ -12,6 +12,7 @@ import { getBalance, postEntry, type DbOrTx } from "@/lib/ledger";
 import { duesFrom } from "@/lib/ledger-rules";
 import { notifyMoney } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
+import { reasonText } from "@/lib/reason-codes";
 import { planReversal } from "@/lib/receipt-reversal";
 import {
   isUtrTaken,
@@ -210,8 +211,8 @@ export async function verifyOnline(receiptId: string): Promise<PaymentResult> {
   return res;
 }
 
-/** Accounts / admin reject an online payment that never arrived (reason required). Dues unchanged. */
-export async function rejectOnline(receiptId: string, reason: string): Promise<PaymentResult> {
+/** Accounts / admin reject an online payment that never arrived (reason code required, note optional). Dues unchanged. */
+export async function rejectOnline(receiptId: string, reasonCode: string, note: string): Promise<PaymentResult> {
   const session = await requireRole(...rolesFor("verifyPayments"));
   if (!isUuid(receiptId)) return { ok: false, error: "Payment not found." };
   let retailerId = "";
@@ -219,19 +220,26 @@ export async function rejectOnline(receiptId: string, reason: string): Promise<P
     const [receipt] = await tx.select().from(receipts).where(eq(receipts.id, receiptId)).for("no key update");
     if (!receipt) return { ok: false, error: "Payment not found." };
     retailerId = receipt.retailerId;
-    const plan = planReject(session.user.role, receipt, reason);
+    const plan = planReject(session.user.role, receipt, reasonCode, note);
     if (!plan.ok) return plan;
     const now = new Date();
     await tx
       .update(receipts)
-      .set({ status: "rejected", checkedBy: session.user.id, checkedAt: now, rejectReason: plan.reason, updatedAt: now })
+      .set({
+        status: "rejected",
+        checkedBy: session.user.id,
+        checkedAt: now,
+        reasonCode: plan.code,
+        rejectReason: plan.note,
+        updatedAt: now,
+      })
       .where(eq(receipts.id, receiptId));
     await writeAudit(tx, {
       actorId: session.user.id,
       entity: "payment",
       entityId: receipt.id,
       action: "reject",
-      details: { ...paymentFacts(receipt), reason: plan.reason },
+      details: { ...paymentFacts(receipt), reasonCode: plan.code, ...(plan.note ? { note: plan.note } : {}) },
     });
     const [shop] = await tx.select({ name: retailers.name }).from(retailers).where(eq(retailers.id, receipt.retailerId));
     await notifyMoney(tx, {
@@ -241,7 +249,7 @@ export async function rejectOnline(receiptId: string, reason: string): Promise<P
       actorId: session.user.id,
       collectorId: receipt.receivedBy,
       link: `/receipts/${receipt.id}`,
-      reason: plan.reason,
+      reason: reasonText(plan.code, plan.note, "payment"),
     });
     return { ok: true };
   });
@@ -250,13 +258,18 @@ export async function rejectOnline(receiptId: string, reason: string): Promise<P
 }
 
 /**
- * Reverses a received cash or verified online payment. Accounts / admin only, reason required.
+ * Reverses a received cash or verified online payment. Accounts / admin only, reason code required.
  * For cash, `cashPlace` says where the cash is now: "holder" (still with the person who recorded it:
  * it leaves their cash held) or "office" (already handed over: nobody's cash held changes).
  * Locks the payment, then the retailer, then (cash) the recorder, so it cannot race a new
  * payment, a verification or a handover request.
  */
-export async function reverseReceipt(receiptId: string, reason: string, cashPlace?: string): Promise<PaymentResult> {
+export async function reverseReceipt(
+  receiptId: string,
+  reasonCode: string,
+  note: string,
+  cashPlace?: string,
+): Promise<PaymentResult> {
   const session = await requireRole(...rolesFor("reverseReceipt"));
   if (!isUuid(receiptId)) return { ok: false, error: "Payment not found." };
   let retailerId = "";
@@ -275,11 +288,11 @@ export async function reverseReceipt(receiptId: string, reason: string, cashPlac
       holder = walletBalance(moves);
     }
 
-    const plan = planReversal(session.user.role, receipt, reason, cashPlace ?? null, holder);
+    const plan = planReversal(session.user.role, receipt, reasonCode, note, cashPlace ?? null, holder);
     if (!plan.ok) return plan;
     await postEntry(
       tx,
-      { retailerId: receipt.retailerId, kind: "receipt_credit", amountPaise: plan.ledgerPaise },
+      { retailerId: receipt.retailerId, kind: plan.ledgerKind, amountPaise: plan.ledgerPaise },
       session.user.id,
       plan.note,
       receipt.id,
@@ -296,7 +309,14 @@ export async function reverseReceipt(receiptId: string, reason: string, cashPlac
     const now = new Date();
     await tx
       .update(receipts)
-      .set({ status: "reversed", reversedAt: now, reversedBy: session.user.id, reversalReason: plan.reason, updatedAt: now })
+      .set({
+        status: "reversed",
+        reversedAt: now,
+        reversedBy: session.user.id,
+        reasonCode: plan.code,
+        reversalReason: plan.reason,
+        updatedAt: now,
+      })
       .where(eq(receipts.id, receipt.id));
     await writeAudit(tx, {
       actorId: session.user.id,
@@ -305,7 +325,8 @@ export async function reverseReceipt(receiptId: string, reason: string, cashPlac
       action: "reverse",
       details: {
         ...paymentFacts(receipt),
-        reason: plan.reason,
+        reasonCode: plan.code,
+        ...(plan.reason ? { note: plan.reason } : {}),
         ...(receipt.mode === "cash" ? { cashWith: plan.walletPaise > 0 ? "holder" : "office" } : {}),
       },
     });
@@ -316,7 +337,7 @@ export async function reverseReceipt(receiptId: string, reason: string, cashPlac
       actorId: session.user.id,
       collectorId: receipt.receivedBy,
       link: `/receipts/${receipt.id}`,
-      reason: plan.reason,
+      reason: reasonText(plan.code, plan.reason, "payment"),
     });
     return { ok: true };
   });

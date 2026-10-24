@@ -49,7 +49,7 @@ export type StockInput = {
   bags: number;
   /** Supplier / note for a purchase, or the optional note with an adjustment. */
   note: string;
-  /** Adjustment only: why (damage, burst, shortage, count; STOCK_FIX_REASONS). */
+  /** Adjustment only: the reason code (stock list in reason-codes.ts). */
   reason?: string;
   /** Purchase only (required): what one bag cost, in paise. */
   costPerBagPaise?: number;
@@ -132,6 +132,7 @@ function toRow(m: Movement, actorId: string) {
     bags: m.bags,
     orderId: m.orderId ?? null,
     reason: m.reason ?? "",
+    reasonCode: m.reasonCode ?? null,
     actorId,
   };
 }
@@ -246,7 +247,7 @@ export async function recordOpening(input: StockInput): Promise<StockResult> {
   return res.ok ? done() : res;
 }
 
-/** A stock correction. `bags` is signed here: negative removes bags. `reason` from the list, `note` optional. */
+/** A stock correction. `bags` is signed here: negative removes bags. `reason` = a stock reason code, `note` optional ("other" needs one). */
 export async function recordAdjustment(input: StockInput): Promise<StockResult> {
   const p = await prepare(input);
   if (p.error !== null) return { ok: false, error: p.error };
@@ -276,7 +277,7 @@ export async function recordAdjustment(input: StockInput): Promise<StockResult> 
       entity: "stock",
       entityId: row.id,
       action: "adjustment",
-      details: { ...movementFacts(m.movement), reason: m.movement.reason ?? "" },
+      details: { ...movementFacts(m.movement), reasonCode: m.movement.reasonCode, reason: m.movement.reason ?? "" },
     });
     return { ok: true, resultId: row.id };
   });

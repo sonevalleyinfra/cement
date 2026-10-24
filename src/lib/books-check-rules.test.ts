@@ -135,3 +135,14 @@ describe("no write queries", () => {
     expect(source).not.toMatch(/\b(insert|update|delete|truncate|alter|drop|set\s+local)\b/i);
   });
 });
+
+describe("I7 covers payment reversals of both kinds", () => {
+  it("sums every ledger row of a payment by receipt_id, with no filter on the kind", () => {
+    const source = readFileSync(path.resolve(import.meta.dirname, "books-check.ts"), "utf8");
+    const i7 = source.slice(source.indexOf("I7: sql`"), source.indexOf("I8: sql`"));
+    expect(i7).toMatch(/sum\(l\.amount_paise\).*from ledger_entries l where l\.receipt_id = r\.id\)/);
+    // receipt_reversal (+) and the older + receipt_credit rows both count: no kind filter here.
+    expect(i7).not.toMatch(/l\.kind/);
+    expect(CHECKS).toHaveLength(11);
+  });
+});

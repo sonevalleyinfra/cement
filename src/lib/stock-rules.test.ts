@@ -15,7 +15,6 @@ import {
   transferMovements,
   checkTransferPlaces,
   NEW_TRUCK_PLACE,
-  STOCK_FIX_REASONS,
   stockFixText,
   type Movement,
   type StockKey,
@@ -62,31 +61,52 @@ describe("adjustmentMovement", () => {
     expect(adjustmentMovement(list, A, -1, "damage", "", "logistics").ok).toBe(false);
     expect(adjustmentMovement(list, A, -1, "damage", "", null).ok).toBe(false);
   });
-  it("needs a reason from the list: damage, burst, shortage, count", () => {
-    expect(STOCK_FIX_REASONS).toEqual(["damage", "burst", "shortage", "count"]);
-    expect(adjustmentMovement(list, A, -1, "", "rain", "admin")).toEqual({ ok: false, error: "Pick a reason." });
-    expect(adjustmentMovement(list, A, -1, "found", "", "admin").ok).toBe(false);
+  it("needs a reason code from the stock list (old codes like burst / count are gone)", () => {
+    expect(adjustmentMovement(list, A, -1, "", "rain", "admin")).toEqual({ ok: false, error: "Pick a reason" });
+    for (const old of ["found", "burst", "shortage", "count"]) {
+      expect(adjustmentMovement(list, A, -1, old, "", "admin")).toEqual({ ok: false, error: "Pick a reason" });
+    }
+    for (const code of ["transit_short", "transit_burst", "damage", "entry_mistake", "expired"]) {
+      expect(adjustmentMovement(list, A, -1, code, "", "admin")).toMatchObject({ ok: true, movement: { reasonCode: code } });
+    }
+  });
+  it("Other needs a note; a note over 200 characters is refused", () => {
+    expect(adjustmentMovement(list, A, -1, "other", " ", "admin")).toEqual({ ok: false, error: "Add a note" });
+    expect(adjustmentMovement(list, A, -1, "other", "rats", "admin")).toMatchObject({
+      ok: true,
+      movement: { reasonCode: "other", reason: "Other: rats" },
+    });
+    expect(adjustmentMovement(list, A, -1, "damage", "x".repeat(201), "admin")).toEqual({
+      ok: false,
+      error: "Keep the note under 200 characters",
+    });
   });
   it("rejects zero and fractions", () => {
-    expect(adjustmentMovement(list, A, 0, "count", "", "admin").ok).toBe(false);
-    expect(adjustmentMovement(list, A, 1.5, "count", "", "admin").ok).toBe(false);
+    expect(adjustmentMovement(list, A, 0, "entry_mistake", "", "admin").ok).toBe(false);
+    expect(adjustmentMovement(list, A, 1.5, "entry_mistake", "", "admin").ok).toBe(false);
   });
   it("refuses more than the per-entry limit", () => {
-    expect(adjustmentMovement(list, A, MAX_STOCK_ENTRY_BAGS + 1, "count", "", "admin").ok).toBe(false);
+    expect(adjustmentMovement(list, A, MAX_STOCK_ENTRY_BAGS + 1, "entry_mistake", "", "admin").ok).toBe(false);
   });
   it("cannot take stock below zero", () => {
-    expect(adjustmentMovement(list, A, -21, "count", "", "admin").ok).toBe(false);
-    expect(adjustmentMovement(list, A, -20, "count", "", "admin").ok).toBe(true);
+    expect(adjustmentMovement(list, A, -21, "entry_mistake", "", "admin").ok).toBe(false);
+    expect(adjustmentMovement(list, A, -20, "entry_mistake", "", "admin").ok).toBe(true);
   });
-  it("keeps the reason and the optional note together", () => {
-    const r = adjustmentMovement(list, A, -2, "burst", "  torn  while unloading ", "sales,admin");
-    expect(r.ok && r.movement).toMatchObject({ type: "adjustment", bags: -2, reason: "Burst bags: torn while unloading" });
-    const g = adjustmentMovement(list, A, 5, "count", "", "admin");
-    expect(g.ok && g.movement.reason).toBe("Count");
+  it("keeps the code, and the label with the optional note as text", () => {
+    const r = adjustmentMovement(list, A, -2, "transit_burst", "  torn  while unloading ", "sales,admin");
+    expect(r.ok && r.movement).toMatchObject({
+      type: "adjustment",
+      bags: -2,
+      reasonCode: "transit_burst",
+      reason: "Transit burst: torn while unloading",
+    });
+    const g = adjustmentMovement(list, A, 5, "entry_mistake", "", "admin");
+    expect(g.ok && g.movement.reason).toBe("Wrong entry");
   });
-  it("stockFixText caps the note", () => {
+  it("stockFixText caps the text", () => {
     expect(stockFixText("damage", "x".repeat(500))).toHaveLength(200);
-    expect(stockFixText("shortage", null)).toBe("Shortage");
+    expect(stockFixText("transit_short", null)).toBe("Transit short");
+    expect(stockFixText("damage", "rain")).toBe("Damaged: rain");
   });
 });
 

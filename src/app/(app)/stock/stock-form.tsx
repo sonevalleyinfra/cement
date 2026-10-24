@@ -2,11 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
-import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { RateField } from "@/components/app/rate-field";
+import { ReasonPicker } from "@/components/app/reason-picker";
 import { SelectField } from "@/components/app/select-field";
 import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,8 @@ import { Label } from "@/components/ui/label";
 import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { parseRupeesToPaise } from "@/lib/money";
-import {
-  NEW_TRUCK_PLACE,
-  placeGroups,
-  STOCK_FIX_LABELS,
-  STOCK_FIX_REASONS,
-  type StockFixReason,
-} from "@/lib/stock-rules";
+import { reasonHint } from "@/lib/reason-codes";
+import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { bagsText } from "@/lib/words";
@@ -81,7 +76,7 @@ export function StockForm({
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
-  const [reason, setReason] = useState<StockFixReason | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
   // Purchase only: what one bag cost (typed in rupees) and the optional supplier invoice number.
   const [costText, setCostText] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
@@ -101,14 +96,14 @@ export function StockForm({
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
   const costPaise = parseRupeesToPaise(costText);
-  const reasonId = useId();
 
+  const why = mode === "adjust" ? reasonHint("stock", reason, note) : null;
   const hint = firstMissing([
     [!product, "Pick a product"],
     [!place, "Pick a place"],
     [newTruck && (!truck.number.trim() || !truck.driverName.trim()), "Enter the truck number and driver"],
     [bags === 0, "Enter the bags"],
-    [mode === "adjust" && reason === null, "Pick a reason"],
+    [why !== null, why ?? ""],
     [mode === "purchase" && (costPaise === null || costPaise < 1), "Enter the cost per bag"],
   ]);
 
@@ -244,23 +239,18 @@ export function StockForm({
       {mode === "adjust" && (
         <>
           <div className="flex flex-col gap-1.5">
-            <Label id={reasonId}>Reason</Label>
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-labelledby={reasonId}>
-              {STOCK_FIX_REASONS.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  role="radio"
-                  aria-checked={reason === r}
-                  className={chipClass(reason === r, "w-full")}
-                  onClick={() => setReason(r)}
-                >
-                  {STOCK_FIX_LABELS[r]}
-                </button>
-              ))}
-            </div>
+            <Label>Reason</Label>
+            <ReasonPicker
+              action="stock"
+              label="Reason"
+              code={reason}
+              onCodeChange={setReason}
+              note={note}
+              onNoteChange={setNote}
+              disabled={pending}
+              showHint={false}
+            />
           </div>
-          <NoteField label={copy.adjust.note} value={note} onChange={setNote} />
         </>
       )}
       {error && (

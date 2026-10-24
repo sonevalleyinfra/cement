@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { retailers } from "@/db/schema";
 import { getProducts } from "@/lib/catalogue";
+import { toISTDateKey } from "@/lib/datetime";
+import { defaultOrderSource } from "@/lib/order-delivery-rules";
 import { pickPrefillRetailerId } from "@/lib/retailer-rules";
 import { isStaff, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
@@ -51,6 +53,8 @@ export default async function NewOrderPage({
       fixedRetailerId={retailerOnly ? retailerRows[0].id : null}
       initialRetailerId={retailerOnly ? null : pickPrefillRetailerId((await searchParams).retailer, retailerRows)}
       askRate={!retailerOnly}
+      defaultSource={retailerOnly ? null : defaultOrderSource(user.role)}
+      todayKey={toISTDateKey(new Date())}
     />
   );
 }

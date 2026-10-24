@@ -22,7 +22,10 @@ export const ledgerEntries = pgTable(
     retailerId: uuid("retailer_id")
       .notNull()
       .references(() => retailers.id),
-    /** opening | order_debit | receipt_credit | adjustment */
+    /**
+     * opening | order_debit | receipt_credit | adjustment | receipt_reversal (+amount, a payment put
+     * back on the bill). Reversals before 0039 are `receipt_credit` rows with a + amount.
+     */
     kind: text("kind").notNull(),
     amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
     orderId: uuid("order_id").references(() => orders.id),
@@ -41,5 +44,9 @@ export const ledgerEntries = pgTable(
       .where(sql`${t.kind} = 'opening'`),
     check("ledger_entries_kind_valid", oneOf(t.kind, LEDGER_KINDS)),
     check("ledger_entries_amount_not_zero", sql`${t.amountPaise} <> 0`),
+    check(
+      "ledger_entries_reversal_shape",
+      sql`${t.kind} <> 'receipt_reversal' or (${t.amountPaise} > 0 and ${t.receiptId} is not null)`,
+    ),
   ],
 );

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { STOCK_REASON_CODES } from "../../lib/reason-codes";
 import { MOVEMENT_TYPES } from "../../lib/stock-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
@@ -45,6 +46,8 @@ export const stockMovements = pgTable(
     bags: integer("bags").notNull(),
     orderId: uuid("order_id").references(() => orders.id),
     reason: text("reason").default("").notNull(),
+    /** Adjustments: the picked "why" (lib/reason-codes.ts, stock list); `reason` keeps the text. Null before 0039. */
+    reasonCode: text("reason_code"),
     /** Purchases only: what one bag cost, in paise (used for the average purchase cost per product). */
     unitCostPaise: integer("unit_cost_paise"),
     actorId: text("actor_id").references(() => user.id),
@@ -58,5 +61,8 @@ export const stockMovements = pgTable(
     check("stock_movements_one_place", sql`num_nonnulls(${t.godownId}, ${t.vehicleId}) = 1`),
     check("stock_movements_type_valid", oneOf(t.type, MOVEMENT_TYPES)),
     check("stock_movements_actor_required", sql`${t.actorId} is not null`),
+    check("stock_movements_reason_code_valid", sql`${t.reasonCode} is null or ${oneOf(t.reasonCode, STOCK_REASON_CODES)}`),
+    // NOT VALID in drizzle/0039: old adjustments (append-only) are skipped.
+    check("stock_movements_reason_code_required", sql`${t.type} <> 'adjustment' or ${t.reasonCode} is not null`),
   ],
 );
