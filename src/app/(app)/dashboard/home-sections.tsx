@@ -49,6 +49,8 @@ import { bagsText, daysText, formatCount, shopsText } from "@/lib/words";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
+/** Lakh/crore words from ₹1 lakh up ("₹27.05 lakh"), the Home `money` form below it (no ".00" tail). */
+const short = (p: number) => (Math.abs(p) >= 1_00_000_00 ? formatINRCompact(p) : money(p));
 
 function Cards({ children }: { children: ReactNode }) {
   return <div className="flex flex-col gap-3">{children}</div>;
@@ -326,8 +328,9 @@ function MonthRow({ label, value, delta, sub, subDelta }: { label: string; value
       <span className="text-sm">{label}</span>
       <span className="tabular min-w-0 text-xl font-bold wrap-anywhere">{value}</span>
       {delta}
-      <span className="col-start-2 tabular min-w-0 text-xs text-muted-foreground wrap-anywhere">{sub}</span>
-      {subDelta ?? <span />}
+      {/* No sub Delta (the Collected split): the sub line takes the Delta column too, so it stays on one line. */}
+      <span className={cn("col-start-2 tabular min-w-0 text-xs text-muted-foreground wrap-anywhere", !subDelta && "col-span-2")}>{sub}</span>
+      {subDelta}
     </div>
   );
 }
@@ -355,7 +358,7 @@ async function OwnerMonth({ w }: { w: HomeWindows }) {
         label="Collected"
         value={money(s.collected.totalPaise)}
         delta={<Delta value={deltaPct(s.collected.totalPaise, s.prevCollected.totalPaise)} />}
-        sub={`Cash ${formatINRCompact(s.collected.cashPaise)} · Online ${formatINRCompact(s.collected.onlinePaise)}`}
+        sub={`Cash\u00a0${short(s.collected.cashPaise)} · Online\u00a0${short(s.collected.onlinePaise)}`}
       />
     </div>
   );
@@ -396,7 +399,7 @@ async function OwnerRisk({ w, now }: { w: HomeWindows; now: Date }) {
         <RiskCard label="DSO" value={s.dso === null ? "—" : daysText(s.dso)} />
         <RiskCard
           label="Stock value"
-          value={money(s.stock.valuePaise)}
+          value={short(s.stock.valuePaise)}
           href="/stock"
           caption={s.stock.unvaluedBags > 0 ? `${formatCount(s.stock.unvaluedBags)} bags no cost` : undefined}
         />
