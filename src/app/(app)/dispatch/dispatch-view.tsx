@@ -13,9 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { placesWithEnough, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
+import { stagger } from "@/lib/motion";
 import { isOrderStatus, remainingBags } from "@/lib/order-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
+import { cn } from "@/lib/utils";
 import { bagsText } from "@/lib/words";
 import { dispatchOrder } from "./actions";
 
@@ -143,9 +145,20 @@ export function DispatchView({
           {orders.map((o, i) => {
             const left = remainingBags(o.bags, o.sent);
             return (
-              <li key={o.id}>
+              <li
+                key={o.id}
+                className={cn(
+                  o.receiverPhone &&
+                    "animate-in-up overflow-hidden rounded-2xl bg-card shadow-card ring-1 ring-foreground/6",
+                )}
+                style={o.receiverPhone ? stagger(i) : undefined}
+              >
                 <ListCard
                   index={i}
+                  className={cn(
+                    o.receiverPhone &&
+                      "animate-none rounded-none shadow-none ring-0 hover:translate-y-0 hover:shadow-none",
+                  )}
                   {...(places.length === 0 || left === 0 ? { href: `/orders/${o.id}` } : { onClick: () => openSheet(o) })}
                   title={o.retailer}
                   top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
@@ -170,7 +183,7 @@ export function DispatchView({
                 {o.receiverPhone && (
                   <a
                     href={`tel:${o.receiverPhone}`}
-                    className="flex min-h-12 items-center justify-end gap-1 px-4 text-sm text-muted-foreground"
+                    className="flex min-h-12 items-center gap-1 border-t border-border px-4 text-sm text-muted-foreground"
                   >
                     {o.receiverName ? `${o.receiverName} · ` : "Receiver · "}
                     <span className="tabular font-semibold text-foreground underline underline-offset-2">

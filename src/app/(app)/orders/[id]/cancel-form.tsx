@@ -43,7 +43,7 @@ export function CancelForm({ orderId, notSent, sent }: { orderId: string; notSen
       />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <FormHint>{hint}</FormHint>
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Button
           variant="outline"
           onClick={() => {

@@ -37,7 +37,7 @@ import { getOrderHints, type OrderHints } from "../hints-actions";
 type Retailer = { id: string; name: string; place: string };
 type Product = { id: string; name: string; channel: string; brand: string };
 
-/** One row of chips where exactly one is picked (Source, Deliver to). */
+/** Equal-width chips, 2 per row, where exactly one is picked (Source, Deliver to). */
 function ChipChoice<T extends string>({
   label,
   options,
@@ -53,14 +53,14 @@ function ChipChoice<T extends string>({
   return (
     <div className="flex flex-col gap-1.5">
       <Label id={id}>{label}</Label>
-      <div role="radiogroup" aria-labelledby={id} className="flex flex-wrap gap-2">
+      <div role="radiogroup" aria-labelledby={id} className="grid grid-cols-2 gap-2">
         {options.map((o) => (
           <button
             key={o.value}
             type="button"
             role="radio"
             aria-checked={o.value === value}
-            className={chipClass(o.value === value)}
+            className={chipClass(o.value === value, "w-full")}
             onClick={() => onChange(o.value)}
           >
             {o.label}
@@ -252,7 +252,7 @@ export function NewOrderForm({
               />
             )}
           </Field>
-          <Field label="Receiver name">
+          <Field label="Receiver name (optional)">
             {(id) => (
               <Input
                 id={id}
