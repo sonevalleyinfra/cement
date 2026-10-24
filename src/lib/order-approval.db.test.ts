@@ -18,6 +18,8 @@ import { creditOverrides, dispatches, ledgerEntries, notifications, orderEvents,
 import { readCreditFacts } from "@/lib/credit-check-queries";
 import { toISTDateKey } from "@/lib/datetime";
 import { approveOrderInTx, type ApprovalTx, type OverrideInput } from "@/lib/order-approval";
+import { ORDER_STATUSES } from "@/lib/order-rules";
+import { movesWithSalesRep } from "@/lib/sales-rep-rules";
 
 // Test-only DB url, read straight from the environment: src/env.ts would ask for the app's own variables.
 const url = process.env.TEST_DATABASE_URL;
@@ -61,6 +63,8 @@ describe.skipIf(!url)("credit check at approval (real database)", () => {
   const statusOf = async (id: string) => (await db.select({ s: orders.status }).from(orders).where(eq(orders.id, id)))[0].s;
   const eventsOf = (id: string) =>
     db.select().from(orderEvents).where(and(eq(orderEvents.orderId, id), eq(orderEvents.toStatus, "approved")));
+  const repOf = async (id: string) =>
+    (await db.select({ r: orders.salesRepId }).from(orders).where(eq(orders.id, id)))[0].r;
   const overridesOf = (id: string) => db.select().from(creditOverrides).where(eq(creditOverrides.orderId, id));
 
   function gate() {
@@ -262,5 +266,68 @@ describe.skipIf(!url)("credit check at approval (real database)", () => {
     const facts = (await readCreditFacts(db, [shop], toISTDateKey(new Date()))).get(shop);
     // (100 − 40) + 10 bags at the rate.
     expect(facts?.notSentPaise).toBe(70 * RATE);
+  });
+
+  it("approval and the sales-person move on one shop at once both finish (lock order retailer → order)", async () => {
+    /** saveShop's SQL for a new sales person (retailers/actions.ts): shop row, then its open orders. */
+    async function moveSalesRep(tx: ApprovalTx, shopId: string, repId: string, afterShopLock?: () => Promise<void>) {
+      await tx.select({ id: retailers.id }).from(retailers).where(eq(retailers.id, shopId)).for("no key update");
+      await afterShopLock?.();
+      const now = new Date();
+      await tx.update(retailers).set({ salesRepId: repId, updatedAt: now }).where(eq(retailers.id, shopId));
+      await tx
+        .update(orders)
+        .set({ salesRepId: repId, updatedAt: now })
+        .where(and(eq(orders.retailerId, shopId), inArray(orders.status, ORDER_STATUSES.filter(movesWithSalesRep))));
+    }
+    const acc = await makeUser();
+
+    // 1. The move holds the shop first; the approval waits, then finishes after the move commits.
+    {
+      const rep = await makeUser("sales");
+      const shop = await makeShop({ creditLimitPaise: 10_00_000_00 });
+      const order = await placeOrder(shop, acc, 10);
+      const bLocked = gate();
+      const bGo = gate();
+      const b = db.transaction(async (tx) => {
+        await moveSalesRep(tx, shop, rep, () => {
+          bLocked.open();
+          return bGo.done; // still holding the shop's lock
+        });
+      });
+      await bLocked.done;
+      const a = db.transaction((tx) => approve(tx, order, { id: acc, role: "accounts" }));
+      await waitForLockWait();
+      bGo.open();
+      const [ra, rb] = await Promise.allSettled([a, b]);
+      expect(rb.status).toBe("fulfilled");
+      expect(ra).toEqual({ status: "fulfilled", value: { ok: true, override: false } });
+      expect(await statusOf(order)).toBe("approved");
+      expect(await repOf(order)).toBe(rep);
+    }
+
+    // 2. The approval holds its locks first; the move waits, then moves the approved order.
+    {
+      const rep = await makeUser("sales");
+      const shop = await makeShop({ creditLimitPaise: 10_00_000_00 });
+      const order = await placeOrder(shop, acc, 10);
+      const aDone = gate();
+      const aGo = gate();
+      const a = db.transaction(async (tx) => {
+        const res = await approve(tx, order, { id: acc, role: "accounts" });
+        aDone.open();
+        await aGo.done;
+        return res;
+      });
+      await aDone.done;
+      const b = db.transaction((tx) => moveSalesRep(tx, shop, rep));
+      await waitForLockWait();
+      aGo.open();
+      const [ra, rb] = await Promise.allSettled([a, b]);
+      expect(rb.status).toBe("fulfilled");
+      expect(ra).toEqual({ status: "fulfilled", value: { ok: true, override: false } });
+      expect(await statusOf(order)).toBe("approved");
+      expect(await repOf(order)).toBe(rep);
+    }
   });
 });

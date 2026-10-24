@@ -9,16 +9,18 @@
  * read committed, each statement after the lock sees what the other approval committed, so the
  * second one counts the first one's order as "not sent".
  *
- * Lock order: order row → retailer row. Nothing locks a retailer and then an order: dispatch locks the
- * order then a stock place; payments lock the payment, then the retailer, then the staff member; shop
- * saves and ledger entries lock only the retailer (then a staff member). Inserting rows that point at
- * an order or a shop only takes a key-share lock, which never waits on `for no key update`.
+ * Lock order: retailer row → order row. A shop save (saveShop in retailers/actions.ts) locks the
+ * retailer and then moves the shop's open orders to the new sales person, so approval also takes the
+ * shop first and then the order (the other way round deadlocked). Dispatch locks the order, then a stock
+ * place, and only key-share-locks the retailer (ledger inserts), so it never conflicts; payments lock
+ * the payment, then the retailer, then the staff member. Inserting rows that point at an order or a
+ * shop only takes a key-share lock, which never waits on `for no key update`.
  *
  * Takes the open transaction and never imports `@/db` or `@/env`, so the race test
  * (order-approval.db.test.ts) can run it on its own pool. The order's usual "approved" notifications
  * (lib/notify.ts) are added by the caller in the same transaction.
  */
-import { eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
 import { creditOverrides, notifications, orderEvents, orders, retailers, user } from "@/db/schema";
@@ -54,18 +56,21 @@ export async function approveOrderInTx(
   },
 ): Promise<ApproveResult> {
   const { orderId, actor } = input;
-  const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
-  if (!o) return { ok: false, error: "Order not found." };
-  const allowed = canDecide(actor.role, o, "approved", input.seenRatePaise);
-  if (!allowed.ok) return allowed;
-
-  // Lock order: order, then retailer (see the header).
+  // Lock order: retailer, then order (see the header). The shop id is read first without a lock.
+  const [ref] = await tx.select({ retailerId: orders.retailerId }).from(orders).where(eq(orders.id, orderId));
+  if (!ref) return { ok: false, error: "Order not found." };
   const [shop] = await tx
     .select({ id: retailers.id, name: retailers.name })
     .from(retailers)
-    .where(eq(retailers.id, o.retailerId))
+    .where(eq(retailers.id, ref.retailerId))
     .for("no key update");
   if (!shop) return { ok: false, error: "Retailer not available." };
+  const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
+  if (!o) return { ok: false, error: "Order not found." };
+  if (o.retailerId !== shop.id) return { ok: false, error: "Order changed. Reload and try again." };
+  const allowed = canDecide(actor.role, o, "approved", input.seenRatePaise);
+  if (!allowed.ok) return allowed;
+
   const facts = (await readCreditFacts(tx, [shop.id], toISTDateKey(input.now))).get(shop.id);
   if (!facts) return { ok: false, error: "Retailer not available." };
   const credit = assessCredit(facts, orderTotalPaise(o.bags, o.ratePaise as number));
@@ -130,7 +135,7 @@ export async function approveOrderInTx(
     const people = await tx
       .select({ id: user.id, role: user.role })
       .from(user)
-      .where(or(isNull(user.banned), eq(user.banned, false)));
+      .where(and(isNull(user.deletedAt), or(isNull(user.banned), eq(user.banned, false))));
     const drafts = buildCreditOverrideNotifications({
       retailerName: shop.name,
       flags: credit.flags,
