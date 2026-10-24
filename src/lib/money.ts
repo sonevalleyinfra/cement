@@ -1,4 +1,4 @@
-import { CURRENCY, LOCALE } from "@/lib/locale";
+import { CURRENCY, LOCALE } from "./locale";
 
 /**
  * Money is ALWAYS stored and calculated as an integer number of paise
@@ -131,4 +131,31 @@ export function mulDivRound(a: number, b: number, c: number): number {
   const result = Number(negative ? -q : q);
   if (!Number.isSafeInteger(result)) throw new RangeError("mulDivRound result is too large");
   return result === 0 ? 0 : result;
+}
+
+/**
+ * Landed cost of one good bag of a purchase: the invoice cost per bag plus the freight and
+ * unloading we paid, spread over the RECEIVED (good) bags, rounded half up to the paisa:
+ *   unitCostPaise + round((freightPaise + unloadingPaise) ÷ receivedBags)
+ * Why received bags: freight and unloading are paid per truck whatever arrives, so only the good
+ * bags can carry them. The short / burst bags' invoice value is the claim against the supplier,
+ * so it is not folded into the cost (that would count it twice once the claim is credited).
+ * One rounding, per bag: the error is at most 0.5 paise per bag (at most received ÷ 2 paise per purchase).
+ * Throws on amounts that are not whole paise, negative extras, or fewer than 1 received bag.
+ */
+export function landedUnitCostPaise(input: {
+  unitCostPaise: Paise;
+  freightPaise: Paise;
+  unloadingPaise: Paise;
+  receivedBags: number;
+}): Paise {
+  const { unitCostPaise, freightPaise, unloadingPaise, receivedBags } = input;
+  for (const v of [unitCostPaise, freightPaise, unloadingPaise]) assertPaise(v);
+  if (!Number.isSafeInteger(receivedBags) || receivedBags < 1) throw new RangeError("receivedBags must be at least 1");
+  if (unitCostPaise < 1 || freightPaise < 0 || unloadingPaise < 0) throw new RangeError("Costs cannot be negative");
+  const extras = freightPaise + unloadingPaise;
+  assertPaise(extras);
+  const landed = unitCostPaise + mulDivRound(1, extras, receivedBags);
+  assertPaise(landed);
+  return landed;
 }

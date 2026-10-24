@@ -3,6 +3,7 @@ import {
   formatINR,
   mulDivRound,
   formatINRCompact,
+  landedUnitCostPaise,
   parseRupeesToPaise,
   percentOf,
   rupeesToPaise,
@@ -147,5 +148,37 @@ describe("mulDivRound", () => {
   it("refuses fractions and divide by zero", () => {
     expect(() => mulDivRound(1.5, 2, 3)).toThrow();
     expect(() => mulDivRound(1, 2, 0)).toThrow();
+  });
+});
+
+describe("landedUnitCostPaise", () => {
+  const landed = (unitCostPaise: number, freightPaise: number, unloadingPaise: number, receivedBags: number) =>
+    landedUnitCostPaise({ unitCostPaise, freightPaise, unloadingPaise, receivedBags });
+  it("is the unit cost when nothing extra was paid", () => {
+    expect(landed(29_500, 0, 0, 600)).toBe(29_500);
+  });
+  it("spreads freight + unloading over the received bags (600 billed, 588 received)", () => {
+    // ₹7,200 freight + ₹1,800 unloading = 9,00,000 paise ÷ 588 = 1530.61… → 1531 paise a bag.
+    expect(landed(29_500, 720_000, 180_000, 588)).toBe(29_500 + 1531);
+  });
+  it("divides exactly when it can", () => {
+    expect(landed(29_500, 720_000, 180_000, 600)).toBe(29_500 + 1500);
+  });
+  it("rounds .5 up", () => {
+    expect(landed(100, 1, 0, 2)).toBe(101);
+    expect(landed(100, 0, 1, 3)).toBe(100);
+  });
+  it("puts everything on the good bags of a short receipt", () => {
+    expect(landed(30_000, 600_000, 0, 1)).toBe(630_000);
+  });
+  it("stays a safe integer with large values", () => {
+    expect(landed(1_000_000, 50_000_000, 50_000_000, 100_000)).toBe(1_001_000);
+    expect(Number.isSafeInteger(landed(1_000_000, 50_000_000, 50_000_000, 7))).toBe(true);
+  });
+  it("refuses fractions, negatives and no received bags", () => {
+    expect(() => landed(100.5, 0, 0, 1)).toThrow();
+    expect(() => landed(100, -1, 0, 1)).toThrow();
+    expect(() => landed(100, 0, 0, 0)).toThrow();
+    expect(() => landed(100, 0, 0, 1.5)).toThrow();
   });
 });

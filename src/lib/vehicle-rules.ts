@@ -24,19 +24,36 @@ export function checkTruckNumber(raw: string | null | undefined): { ok: true; nu
 
 export type Truck = { number: string; driverName: string; driverPhone: string };
 
-/** The quick truck form: number and driver name needed, phone optional (10-digit mobile when given). */
-export function checkTruck(raw: {
-  number?: string | null;
-  driverName?: string | null;
-  driverPhone?: string | null;
-}): { ok: true; value: Truck } | { ok: false; error: string } {
+/**
+ * The quick truck form: number, driver name and a 10-digit driver mobile (purchase and dispatch).
+ * `phoneRequired: false` (moving bags onto a hired truck) leaves the phone optional, still checked when given.
+ */
+export function checkTruck(
+  raw: {
+    number?: string | null;
+    driverName?: string | null;
+    driverPhone?: string | null;
+  },
+  { phoneRequired = true }: { phoneRequired?: boolean } = {},
+): { ok: true; value: Truck } | { ok: false; error: string } {
   const number = checkTruckNumber(raw.number);
   if (!number.ok) return number;
+  const driver = checkDriver(raw, { phoneRequired });
+  if (!driver.ok) return driver;
+  return { ok: true, value: { number: number.number, ...driver.value } };
+}
+
+/** Just the driver: name needed, and the 10-digit mobile (unless `phoneRequired: false`, then only checked when given). */
+export function checkDriver(
+  raw: { driverName?: string | null; driverPhone?: string | null },
+  { phoneRequired = true }: { phoneRequired?: boolean } = {},
+): { ok: true; value: { driverName: string; driverPhone: string } } | { ok: false; error: string } {
   const driverName = (raw.driverName ?? "").trim().replace(/\s+/g, " ").slice(0, 80);
   if (!driverName) return { ok: false, error: "Enter the driver name." };
   const driverPhone = normalizePhone(raw.driverPhone ?? "");
+  if (!driverPhone && phoneRequired) return { ok: false, error: "Enter the driver mobile." };
   if (driverPhone && !isValidIndianMobile(driverPhone)) return { ok: false, error: "Enter a 10-digit driver mobile." };
-  return { ok: true, value: { number: number.number, driverName, driverPhone } };
+  return { ok: true, value: { driverName, driverPhone } };
 }
 
 /** The text kept with a purchase into a truck: "Supplier X · Truck BR01AB1234 · Ravi 9876543210" (200 characters at most). */

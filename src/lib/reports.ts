@@ -7,6 +7,7 @@ import {
   orderEvents,
   orders,
   products,
+  purchases,
   receipts,
   retailers,
   stockMovements,
@@ -18,7 +19,14 @@ import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
 import { duesAging } from "@/lib/due-items";
 import { nameMaps, toMap } from "@/lib/names";
 import type { ReportRange } from "@/lib/report-range";
-import { profitReport, salesReport, schemeCreditsPaise, type SaleRow } from "@/lib/sales-report";
+import {
+  landedCostRows,
+  profitReport,
+  salesReport,
+  schemeCreditsPaise,
+  type PurchaseCostRow,
+  type SaleRow,
+} from "@/lib/sales-report";
 import { cashByPerson, onlineWaiting, paymentsByMode, staffActivity } from "@/lib/staff-report";
 import { buildStatement, byDay, byMoment } from "@/lib/statement-rules";
 import { stockFlows, stockNow, totalFlow } from "@/lib/stock-report";
@@ -224,14 +232,31 @@ export async function getCashReport(range: ReportRange, now = new Date()) {
   };
 }
 
+/**
+ * Every purchase before `before`, as cost rows at the LANDED cost: received bags × landed cost per bag
+ * from the purchase header; a purchase saved before headers existed (drizzle/0040) keeps its movement
+ * bags × invoice cost. Also for the stock value screen.
+ */
+export async function purchaseCostRows(before: Date): Promise<PurchaseCostRow[]> {
+  const rows = await db
+    .select({
+      productId: stockMovements.productId,
+      bags: stockMovements.bags,
+      unitCostPaise: stockMovements.unitCostPaise,
+      receivedBags: purchases.receivedBags,
+      landedUnitCostPaise: purchases.landedUnitCostPaise,
+    })
+    .from(stockMovements)
+    .leftJoin(purchases, eq(purchases.stockMovementId, stockMovements.id))
+    .where(and(eq(stockMovements.type, "purchase"), lt(stockMovements.createdAt, before)));
+  return landedCostRows(rows);
+}
+
 /** Profit per product for the range, and supplier scheme credits (all brands) in the range (shown apart). */
 export async function getProfitReport(range: ReportRange) {
   const [sales, purchases, credits] = await Promise.all([
     salesRows(range),
-    db
-      .select({ productId: stockMovements.productId, bags: stockMovements.bags, unitCostPaise: stockMovements.unitCostPaise })
-      .from(stockMovements)
-      .where(and(eq(stockMovements.type, "purchase"), lt(stockMovements.createdAt, range.end))),
+    purchaseCostRows(range.end),
     db
       .select({ kind: supplierLedgerEntries.kind, amountPaise: supplierLedgerEntries.amountPaise })
       .from(supplierLedgerEntries)

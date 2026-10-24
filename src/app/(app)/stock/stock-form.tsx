@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { type ComponentProps, useId, useState } from "react";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -13,8 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
+import { toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
-import { parseRupeesToPaise } from "@/lib/money";
+import { formatINR, landedUnitCostPaise, parseRupeesToPaise } from "@/lib/money";
+import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
 import { reasonHint } from "@/lib/reason-codes";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -39,6 +41,34 @@ const copy = {
 } as const;
 
 const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
+
+/** Whole bags typed in a small field: digits only, at most 6. */
+const bagDigits = (text: string) => text.replace(/\D/g, "").slice(0, 6);
+/** Optional rupees (freight, unloading): empty = 0, null when not valid rupees. */
+const optionalPaise = (text: string) => {
+  if (!text.trim()) return 0;
+  const paise = parseRupeesToPaise(text);
+  return paise !== null && paise >= 0 ? paise : null;
+};
+
+function SmallField({
+  label,
+  value,
+  onChange,
+  inputMode,
+  ...rest
+}: { label: string; value: string; onChange: (v: string) => void } & Omit<
+  ComponentProps<typeof Input>,
+  "value" | "onChange" | "id"
+>) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} inputMode={inputMode} autoComplete="off" {...rest} />
+    </div>
+  );
+}
 
 function NoteField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   const id = useId();
@@ -77,15 +107,39 @@ export function StockForm({
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
   const [reason, setReason] = useState<string | null>(null);
-  // Purchase only: what one bag cost (typed in rupees) and the optional supplier invoice number.
+  // Purchase only: what one bag cost (typed in rupees), the supplier invoice, short / burst bags and extras paid.
   const [costText, setCostText] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
-  // The quick truck form (purchase into a hired truck): nothing about the truck is saved for next time.
+  const [today] = useState(() => toISTDateKey(new Date()));
+  const [invoiceDate, setInvoiceDate] = useState(today);
+  const [shortText, setShortText] = useState("");
+  const [burstText, setBurstText] = useState("");
+  const [freightText, setFreightText] = useState("");
+  const [unloadingText, setUnloadingText] = useState("");
+  // The truck and driver of a purchase: nothing about the driver is saved for next time.
   const [truck, setTruck] = useState(NO_TRUCK);
-  const newTruck = mode === "purchase" && place === NEW_TRUCK_PLACE;
+  const purchase = mode === "purchase";
+  const newTruck = purchase && place === NEW_TRUCK_PLACE;
+  // A purchase into a truck already in the list keeps that truck's number.
+  const placeTruck = purchase && place.startsWith("vehicle:") ? places.find((p) => p.key === place)?.name : undefined;
   // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
   const [done, setDone] = useState("");
-  const { error, setError, clearError } = useFormError([pick, place, digits, minus, note, reason, costText, invoiceNo, truck]);
+  const { error, setError, clearError } = useFormError([
+    pick,
+    place,
+    digits,
+    minus,
+    note,
+    reason,
+    costText,
+    invoiceNo,
+    invoiceDate,
+    shortText,
+    burstText,
+    freightText,
+    unloadingText,
+    truck,
+  ]);
 
   // Brand first. With one brand there is no Brand drop-down: that brand is used.
   const brandId = startBrand(lists.brands, pick.brandId);
@@ -96,15 +150,30 @@ export function StockForm({
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
   const costPaise = parseRupeesToPaise(costText);
+  const received = bags - Number(shortText || 0) - Number(burstText || 0);
+  const freightPaise = optionalPaise(freightText);
+  const unloadingPaise = optionalPaise(unloadingText);
+  const costOk = costPaise !== null && costPaise >= 1;
+  const landed =
+    purchase && costOk && received >= 1 && freightPaise !== null && unloadingPaise !== null
+      ? landedUnitCostPaise({ unitCostPaise: costPaise, freightPaise, unloadingPaise, receivedBags: received })
+      : null;
 
   const why = mode === "adjust" ? reasonHint("stock", reason, note) : null;
   const hint = firstMissing([
     [!product, "Pick a product"],
     [!place, "Pick a place"],
-    [newTruck && (!truck.number.trim() || !truck.driverName.trim()), "Enter the truck number and driver"],
-    [bags === 0, "Enter the bags"],
+    [purchase && !placeTruck && !truck.number.trim(), "Enter the truck number"],
+    [purchase && !truck.driverName.trim(), "Enter the driver name"],
+    [purchase && !isValidIndianMobile(normalizePhone(truck.driverPhone)), "Enter the driver mobile (10 digits)"],
+    [purchase && !invoiceNo.trim(), "Enter the invoice no."],
+    [purchase && !invoiceDate, "Pick the invoice date"],
+    [bags === 0, purchase ? "Enter the billed bags" : "Enter the bags"],
+    [purchase && received < 1, "Received bags must be more than 0"],
     [why !== null, why ?? ""],
-    [mode === "purchase" && (costPaise === null || costPaise < 1), "Enter the cost per bag"],
+    [purchase && !costOk, "Enter the cost per bag"],
+    [purchase && freightPaise === null, "Enter the freight in rupees"],
+    [purchase && unloadingPaise === null, "Enter the unloading in rupees"],
   ]);
 
   function submit() {
@@ -116,11 +185,21 @@ export function StockForm({
       typeId: parts.typeId,
       gradeId: parts.gradeId,
       place,
-      truck: newTruck ? truck : undefined,
+      truck: purchase ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
       note,
       ...(mode === "adjust" ? { reason: reason ?? "" } : {}),
-      ...(mode === "purchase" ? { costPerBagPaise: costPaise ?? undefined, invoiceNo } : {}),
+      ...(purchase
+        ? {
+            costPerBagPaise: costPaise ?? undefined,
+            invoiceNo,
+            invoiceDate,
+            shortBags: Number(shortText || 0),
+            burstBags: Number(burstText || 0),
+            freightPaise: freightPaise ?? undefined,
+            unloadingPaise: unloadingPaise ?? undefined,
+          }
+        : {}),
     };
     const action = mode === "purchase" ? recordPurchase : mode === "opening" ? recordOpening : recordAdjustment;
     run(
@@ -135,6 +214,11 @@ export function StockForm({
           setReason(null);
           setCostText("");
           setInvoiceNo("");
+          setInvoiceDate(today);
+          setShortText("");
+          setBurstText("");
+          setFreightText("");
+          setUnloadingText("");
           setTruck(NO_TRUCK);
           router.refresh();
         } else setError(res.error);
@@ -193,13 +277,14 @@ export function StockForm({
           ...(mode === "purchase" ? [{ label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] }] : []),
         ]}
       />
-      {newTruck ? (
-        <TruckFields value={truck} onChange={setTruck} />
-      ) : (
-        <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>
-      )}
-      {mode === "purchase" && (
+      {!newTruck && <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>}
+      {purchase && (
         <>
+          <TruckFields value={truck} onChange={setTruck} fixedNumber={placeTruck} />
+          <div className="grid grid-cols-2 gap-3">
+            <SmallField label="Invoice no." value={invoiceNo} onChange={setInvoiceNo} maxLength={60} />
+            <SmallField label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} max={today} />
+          </div>
           <RateField
             label="Cost per bag (₹)"
             value={costText}
@@ -208,17 +293,6 @@ export function StockForm({
             allowPaise
             totalLabel={`Owed to ${brandName}`}
           />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="stock-invoice">Invoice no. (optional)</Label>
-            <Input
-              id="stock-invoice"
-              value={invoiceNo}
-              onChange={(e) => setInvoiceNo(e.target.value)}
-              autoComplete="off"
-              maxLength={60}
-            />
-          </div>
-          <NoteField label={copy.purchase.note} value={note} onChange={setNote} />
         </>
       )}
       {mode === "adjust" && (
@@ -233,9 +307,24 @@ export function StockForm({
       )}
       <div className="tabular text-center text-4xl font-bold" aria-live="polite">
         {mode === "adjust" && minus ? "−" : ""}
-        {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
+        {bags} <span className="text-base font-medium text-muted-foreground">{purchase ? "bags billed" : "bags"}</span>
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
+      {purchase && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <SmallField label="Short" value={shortText} onChange={(v) => setShortText(bagDigits(v))} inputMode="numeric" />
+            <SmallField label="Burst" value={burstText} onChange={(v) => setBurstText(bagDigits(v))} inputMode="numeric" />
+          </div>
+          <p className="tabular text-sm text-muted-foreground">Received {bagsText(Math.max(received, 0))}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <SmallField label="Freight (₹)" value={freightText} onChange={setFreightText} inputMode="decimal" maxLength={12} />
+            <SmallField label="Unloading (₹)" value={unloadingText} onChange={setUnloadingText} inputMode="decimal" maxLength={12} />
+          </div>
+          {landed !== null && <p className="tabular text-sm text-muted-foreground">Landed {formatINR(landed)} per bag</p>}
+          <NoteField label={copy.purchase.note} value={note} onChange={setNote} />
+        </>
+      )}
       {mode === "adjust" && (
         <>
           <div className="flex flex-col gap-1.5">

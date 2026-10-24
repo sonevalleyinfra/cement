@@ -13,14 +13,14 @@ describe("isDispatchable", () => {
 
 describe("checkDispatchFields", () => {
   const godown = "godown:0b9c7f2e-1d4a-4c3b-9a8e-123456789abc";
-  const base = { vehicleNumber: "br01 ab 1234", fromPlace: godown, driverName: " Ram  Singh ", driverPhone: "" };
+  const base = { vehicleNumber: "br01 ab 1234", fromPlace: godown, driverName: " Ram  Singh ", driverPhone: "98765 43210" };
   it("accepts and tidies", () => {
     expect(checkDispatchFields(base)).toEqual({
       ok: true,
       from: { kind: "godown", id: "0b9c7f2e-1d4a-4c3b-9a8e-123456789abc" },
       vehicleNumber: "BR01AB1234",
       driverName: "Ram Singh",
-      driverPhone: "",
+      driverPhone: "9876543210",
     });
   });
   it("needs a valid truck number, place and driver name", () => {
@@ -30,7 +30,8 @@ describe("checkDispatchFields", () => {
     expect(checkDispatchFields({ ...base, fromPlace: "shop:1" }).ok).toBe(false);
     expect(checkDispatchFields({ ...base, driverName: " " }).ok).toBe(false);
   });
-  it("checks the phone only when given", () => {
+  it("needs a valid driver phone", () => {
+    expect(checkDispatchFields({ ...base, driverPhone: "" })).toEqual({ ok: false, error: "Enter the driver mobile." });
     expect(checkDispatchFields({ ...base, driverPhone: "12345" }).ok).toBe(false);
     expect(checkDispatchFields({ ...base, driverPhone: "9876543210" }).ok).toBe(true);
   });

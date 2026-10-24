@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkTruck, checkTruckNumber, isValidVehicleNumber, normalizeVehicleNumber, truckNote } from "./vehicle-rules";
+import { checkDriver, checkTruck, checkTruckNumber, isValidVehicleNumber, normalizeVehicleNumber, truckNote } from "./vehicle-rules";
 
 describe("normalizeVehicleNumber", () => {
   it("uppercases and removes spaces and dashes", () => {
@@ -30,19 +30,43 @@ describe("checkTruck", () => {
       value: { number: "BR01AB1234", driverName: "Ravi Kumar", driverPhone: "9876543210" },
     });
   });
-  it("allows an empty driver phone", () => {
-    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi" })).toEqual({
+  it("needs the driver phone by default", () => {
+    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi" })).toEqual({ ok: false, error: "Enter the driver mobile." });
+    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi", driverPhone: " " })).toEqual({
+      ok: false,
+      error: "Enter the driver mobile.",
+    });
+  });
+  it("allows an empty driver phone when it is optional", () => {
+    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi" }, { phoneRequired: false })).toEqual({
       ok: true,
       value: { number: "BR01AB1234", driverName: "Ravi", driverPhone: "" },
     });
   });
   it("needs a valid number, a driver name and a valid phone when given", () => {
-    expect(checkTruck({ number: "123", driverName: "Ravi" }).ok).toBe(false);
-    expect(checkTruck({ number: "BR01AB1234", driverName: " " })).toEqual({ ok: false, error: "Enter the driver name." });
+    expect(checkTruck({ number: "123", driverName: "Ravi", driverPhone: "9876543210" }).ok).toBe(false);
+    expect(checkTruck({ number: "BR01AB1234", driverName: " ", driverPhone: "9876543210" })).toEqual({
+      ok: false,
+      error: "Enter the driver name.",
+    });
+    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi", driverPhone: "5876543210" }).ok).toBe(false);
+    expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi", driverPhone: "12345" }, { phoneRequired: false }).ok).toBe(false);
     expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi", driverPhone: "12345" })).toEqual({
       ok: false,
       error: "Enter a 10-digit driver mobile.",
     });
+  });
+});
+
+describe("checkDriver", () => {
+  it("needs the name and a valid mobile", () => {
+    expect(checkDriver({ driverName: " Ravi ", driverPhone: "98765-43210" })).toEqual({
+      ok: true,
+      value: { driverName: "Ravi", driverPhone: "9876543210" },
+    });
+    expect(checkDriver({ driverName: "Ravi" })).toEqual({ ok: false, error: "Enter the driver mobile." });
+    expect(checkDriver({ driverName: "", driverPhone: "9876543210" })).toEqual({ ok: false, error: "Enter the driver name." });
+    expect(checkDriver({ driverName: "Ravi" }, { phoneRequired: false }).ok).toBe(true);
   });
 });
 

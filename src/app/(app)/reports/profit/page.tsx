@@ -31,7 +31,7 @@ export default async function ProfitReportPage({ searchParams }: { searchParams:
             { label: "Product" },
             { label: "Bags" },
             { label: "Sales" },
-            { label: "Avg cost" },
+            { label: "Landed cost" },
             { label: "Cost" },
             { label: "Profit" },
             { label: "Per bag" },

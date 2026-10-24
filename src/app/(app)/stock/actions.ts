@@ -1,8 +1,8 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { grades, products, stockMovements } from "@/db/schema";
+import { grades, products, purchases, stockMovements, vehicles } from "@/db/schema";
 import { toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { postSupplierEntry } from "@/lib/suppliers";
@@ -29,7 +29,8 @@ import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { atPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
-import { checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
+import { checkClaimChange, checkPurchaseDetails, claimValuePaise } from "@/lib/purchase-rules";
+import { checkDriver, checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
 
 export type StockResult = { ok: true } | { ok: false; error: string };
 
@@ -44,8 +45,12 @@ export type StockInput = {
    * or `NEW_TRUCK_PLACE` for a purchase into a truck typed in `truck`.
    */
   place: string;
-  /** The quick truck form, used when `place` is `NEW_TRUCK_PLACE`. */
+  /**
+   * Purchase only (required): the truck and driver. A new truck or a godown uses the typed number;
+   * an existing truck place keeps its own number (the typed one is ignored).
+   */
   truck?: { number: string; driverName: string; driverPhone: string };
+  /** Signed for an adjustment; the BILLED bags for a purchase. */
   bags: number;
   /** Supplier / note for a purchase, or the optional note with an adjustment. */
   note: string;
@@ -53,8 +58,15 @@ export type StockInput = {
   reason?: string;
   /** Purchase only (required): what one bag cost, in paise. */
   costPerBagPaise?: number;
-  /** Purchase only (optional): the supplier's invoice number. */
+  /** Purchase only (required): the supplier's invoice number and date ("YYYY-MM-DD"). */
   invoiceNo?: string;
+  invoiceDate?: string;
+  /** Purchase only: billed bags that never arrived / arrived burst (empty = 0). */
+  shortBags?: number;
+  burstBags?: number;
+  /** Purchase only: freight and unloading we paid, in paise (empty = 0). */
+  freightPaise?: number;
+  unloadingPaise?: number;
   /** The form's one-time id: a second tap saves nothing more (request-rules.ts). */
   requestId: string;
 };
@@ -150,54 +162,117 @@ function done(): StockResult {
 }
 
 /**
- * A purchase adds the bags AND what we now owe the supplier of the product's brand (bags x cost per bag),
- * in one transaction: either both are saved or neither. The cost per bag is also kept on the stock movement.
+ * A purchase adds the BILLED bags AND what we now owe the supplier of the product's brand (billed x cost per bag,
+ * dated on the invoice date), in one transaction: either all is saved or nothing. Short and burst bags are taken
+ * out again by linked adjustments (transit_short / transit_burst), so the stock is what was received. The header
+ * row (`purchases`) keeps the invoice, truck, driver, bags, freight + unloading and the landed cost per good bag.
  */
 export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const p = await prepare(input, true);
   if (p.error !== null) return { ok: false, error: p.error };
   const cost = checkCostPerBag(input.costPerBagPaise);
   if (!cost.ok) return cost;
-  let note = String(input.note ?? "").trim().slice(0, 200);
-  let truck: Truck | null = null;
-  if (p.place === NEW_TRUCK_PLACE) {
-    const check = checkTruck(input.truck ?? {});
+  const chosen = p.place;
+  // The truck: an existing truck place keeps its own number (read below), else the typed one is needed.
+  const typed = input.truck ?? {};
+  let truck: Truck;
+  if (chosen !== NEW_TRUCK_PLACE && chosen.kind === "vehicle") {
+    const driver = checkDriver(typed);
+    if (!driver.ok) return driver;
+    truck = { number: "", ...driver.value };
+  } else {
+    const check = checkTruck(typed);
     if (!check.ok) return check;
     truck = check.value;
-    note = truckNote(note, truck);
   }
-  const chosen = p.place;
-  const requestId = p.requestId;
-  const res = await saveOnce({ id: requestId, kind: "purchase", actorId: p.session.user.id }, async (tx) => {
+  const details = checkPurchaseDetails(
+    {
+      invoiceNo: input.invoiceNo,
+      invoiceDate: input.invoiceDate,
+      billedBags: input.bags,
+      shortBags: input.shortBags,
+      burstBags: input.burstBags,
+      freightPaise: input.freightPaise,
+      unloadingPaise: input.unloadingPaise,
+      costPerBagPaise: cost.costPaise,
+    },
+    toISTDateKey(new Date()),
+  );
+  if (!details.ok) return details;
+  const d = details.value;
+  const note = String(input.note ?? "").trim().slice(0, 200);
+  const actorId = p.session.user.id;
+  const res = await saveOnce({ id: p.requestId, kind: "purchase", actorId }, async (tx) => {
     const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     // A typed-in truck is found (or made) by its number, so the same truck always has the same stock.
-    const place: PlaceRef =
-      chosen === NEW_TRUCK_PLACE
-        ? { kind: "vehicle", id: await truckByNumber(tx, truck?.number ?? "", p.session.user.id) }
-        : chosen;
+    const place: PlaceRef = chosen === NEW_TRUCK_PLACE ? { kind: "vehicle", id: await truckByNumber(tx, truck.number, actorId) } : chosen;
     const loc = await locate(tx, picked.productId, place);
     if (!loc.ok) return loc;
-    const m = inMovement("purchase", loc.key, input.bags, note);
+    if (chosen !== NEW_TRUCK_PLACE && chosen.kind === "vehicle") {
+      const [v] = await tx.select({ number: vehicles.number }).from(vehicles).where(eq(vehicles.id, chosen.id));
+      if (!v) return { ok: false, error: "Pick an active place." };
+      truck = { ...truck, number: v.number };
+    }
+    const m = inMovement("purchase", loc.key, d.billedBags, note);
     if (!m.ok) return m;
     const [product] = await tx
       .select({ name: products.name, brandId: products.brandId })
       .from(products)
       .where(eq(products.id, picked.productId));
     if (!product) return { ok: false, error: "Pick an active product." };
-    // The amount is owed to the supplier of this product's brand.
-    const owed = purchaseEntry(product, m.movement.bags, cost.costPaise, toISTDateKey(new Date()), {
-      reference: input.invoiceNo,
-      description: `${m.movement.bags} bags ${product.name} at ${formatINR(cost.costPaise)}`.replace(/\s+/g, " "),
+    // The amount is owed to the supplier of this product's brand, on the invoice date.
+    const owed = purchaseEntry(product, d.billedBags, cost.costPaise, d.invoiceDate, {
+      reference: d.invoiceNo,
+      description: `${d.billedBags} bags ${product.name} at ${formatINR(cost.costPaise)}`.replace(/\s+/g, " "),
     });
     if (!owed.ok) return owed;
     const [moved] = await tx
       .insert(stockMovements)
-      .values({ ...toRow(m.movement, p.session.user.id), unitCostPaise: cost.costPaise })
+      .values({ ...toRow(m.movement, actorId), unitCostPaise: cost.costPaise })
       .returning({ id: stockMovements.id });
-    await postSupplierEntry(tx, owed.entry, p.session.user.id, moved.id, { audit: false });
+    // Short and burst bags leave again right after (a moment later, so the running stock never dips below 0).
+    const linked: { movement: Movement; id: string }[] = [];
+    const losses = [
+      { bags: d.shortBags, code: "transit_short", reason: `Short on invoice ${d.invoiceNo}` },
+      { bags: d.burstBags, code: "transit_burst", reason: `Burst on invoice ${d.invoiceNo}` },
+    ] as const;
+    for (const [i, loss] of losses.entries()) {
+      if (loss.bags === 0) continue;
+      const movement: Movement = { ...loc.key, type: "adjustment", bags: -loss.bags, reason: loss.reason, reasonCode: loss.code };
+      const [row] = await tx
+        .insert(stockMovements)
+        .values({ ...toRow(movement, actorId), createdAt: sql`now() + make_interval(secs => ${(i + 1) / 1000})` })
+        .returning({ id: stockMovements.id });
+      linked.push({ movement, id: row.id });
+    }
+    const shortId = linked.find((l) => l.movement.reasonCode === "transit_short")?.id ?? null;
+    const burstId = linked.find((l) => l.movement.reasonCode === "transit_burst")?.id ?? null;
+    await postSupplierEntry(tx, owed.entry, actorId, moved.id, { audit: false });
+    const [header] = await tx
+      .insert(purchases)
+      .values({
+        stockMovementId: moved.id,
+        invoiceNo: d.invoiceNo,
+        invoiceDate: d.invoiceDate,
+        truckNumber: truck.number,
+        driverName: truck.driverName,
+        driverPhone: truck.driverPhone,
+        billedBags: d.billedBags,
+        shortBags: d.shortBags,
+        burstBags: d.burstBags,
+        receivedBags: d.receivedBags,
+        freightPaise: d.freightPaise,
+        unloadingPaise: d.unloadingPaise,
+        landedUnitCostPaise: d.landedUnitCostPaise,
+        shortMovementId: shortId,
+        burstMovementId: burstId,
+        claimStatus: d.claimStatus,
+        actorId,
+      })
+      .returning({ id: purchases.id });
     await writeAudit(tx, {
-      actorId: p.session.user.id,
+      actorId,
       entity: "stock",
       entityId: moved.id,
       action: "purchase",
@@ -206,14 +281,88 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
         unitCostPaise: cost.costPaise,
         amountPaise: owed.entry.amountPaise,
         brandId: owed.entry.brandId,
-        ...(owed.entry.reference ? { invoiceNo: owed.entry.reference } : {}),
+        invoiceNo: d.invoiceNo,
+        invoiceDate: d.invoiceDate,
+        truck: truck.number,
+        driverName: truck.driverName,
+        billedBags: d.billedBags,
+        shortBags: d.shortBags,
+        burstBags: d.burstBags,
+        receivedBags: d.receivedBags,
+        freightPaise: d.freightPaise,
+        unloadingPaise: d.unloadingPaise,
+        landedUnitCostPaise: d.landedUnitCostPaise,
+        purchaseId: header.id,
       },
     });
+    // Every adjustment movement has its own log row (Books check I12).
+    for (const l of linked) {
+      await writeAudit(tx, {
+        actorId,
+        entity: "stock",
+        entityId: l.id,
+        action: "adjustment",
+        details: { ...movementFacts(l.movement), reasonCode: l.movement.reasonCode, reason: l.movement.reason ?? "", purchaseId: header.id },
+      });
+    }
     return { ok: true, resultId: moved.id };
   });
   if (!res.ok) return res;
   revalidatePath("/suppliers", "layout");
+  revalidatePath("/stock/purchases");
   return done();
+}
+
+/**
+ * Moves the claim on a purchase's short / burst bags forward (open → claimed → credited). Admin only.
+ * It posts no supplier credit: the money is recorded with a supplier Credit entry.
+ */
+export async function setPurchaseClaim(input: { purchaseId: string; status: string; requestId: string }): Promise<StockResult> {
+  const session = await requireRole(...rolesFor("manageStock"));
+  const request = checkRequestId(input.requestId);
+  if (!request.ok) return request;
+  if (!isUuid(input.purchaseId)) return { ok: false, error: "That purchase was not found." };
+  const res = await saveOnce({ id: request.id, kind: "purchase_claim", actorId: session.user.id }, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: purchases.id,
+        claimStatus: purchases.claimStatus,
+        invoiceNo: purchases.invoiceNo,
+        shortBags: purchases.shortBags,
+        burstBags: purchases.burstBags,
+        unitCostPaise: stockMovements.unitCostPaise,
+      })
+      .from(purchases)
+      .innerJoin(stockMovements, eq(stockMovements.id, purchases.stockMovementId))
+      .where(eq(purchases.id, input.purchaseId))
+      .for("update", { of: purchases });
+    if (!row) return { ok: false, error: "That purchase was not found." };
+    const change = checkClaimChange(row.claimStatus, input.status);
+    if (!change.ok) return change;
+    await tx
+      .update(purchases)
+      .set({ claimStatus: change.status, claimUpdatedAt: new Date(), claimUpdatedBy: session.user.id })
+      .where(eq(purchases.id, row.id));
+    const bags = row.shortBags + row.burstBags;
+    await writeAudit(tx, {
+      actorId: session.user.id,
+      entity: "stock",
+      entityId: row.id,
+      action: "claim",
+      details: {
+        from: row.claimStatus,
+        to: change.status,
+        purchaseId: row.id,
+        invoiceNo: row.invoiceNo,
+        bags,
+        claimValuePaise: claimValuePaise(bags, row.unitCostPaise ?? 0),
+      },
+    });
+    return { ok: true, resultId: row.id };
+  });
+  if (!res.ok) return res;
+  revalidatePath("/stock/purchases");
+  return { ok: true };
 }
 
 export async function recordOpening(input: StockInput): Promise<StockResult> {
@@ -311,7 +460,8 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
   let note = String(input.note ?? "").trim().slice(0, 200);
   let truck: Truck | null = null;
   if (places.to === NEW_TRUCK_PLACE) {
-    const check = checkTruck(input.truck ?? {});
+    // Out of scope for the A6 rule: the phone stays optional when moving bags onto a hired truck.
+    const check = checkTruck(input.truck ?? {}, { phoneRequired: false });
     if (!check.ok) return check;
     truck = check.value;
     note = truckNote(note, truck);

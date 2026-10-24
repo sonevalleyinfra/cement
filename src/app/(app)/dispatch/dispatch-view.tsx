@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { placesWithEnough, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
+import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
 import { stagger } from "@/lib/motion";
 import { isOrderStatus, remainingBags } from "@/lib/order-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -64,6 +65,7 @@ export function DispatchView({
   const [fromPlace, setFromPlace] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
+  const phoneOk = isValidIndianMobile(normalizePhone(driverPhone));
   // Goes away when any field is changed, after a save and when the sheet opens again.
   const { error, setError, clearError } = useFormError([open?.id, bags, truck, fromPlace, driverName, driverPhone]);
   const { pending, run, renew } = useSubmit();
@@ -254,9 +256,12 @@ export function DispatchView({
               <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} />
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold">
-              Driver phone (optional)
+              Driver phone
               <Input
-                inputMode="tel"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={14}
                 value={driverPhone}
                 onChange={(e) => setDriverPhone(e.target.value)}
               />
@@ -267,9 +272,10 @@ export function DispatchView({
                 {firstMissing([
                   [Number(bags || 0) < 1, "Enter the bags"],
                   [chosenPlace === "" && options.length > 0, "Pick where the bags come from"],
+                  [!phoneOk, "Enter the driver mobile"],
                 ])}
               </FormHint>
-              <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1 || chosenPlace === ""}>
+              <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1 || chosenPlace === "" || !phoneOk}>
                 Dispatch {bagsText(Number(bags || 0))}
               </Button>
             </div>

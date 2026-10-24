@@ -74,7 +74,40 @@ const QUERIES: Record<Exclude<CheckId, "I12">, SQL> = {
     from supplier_ledger_entries s
     where s.kind = 'purchase'
     group by s.stock_movement_id
-    having count(*) <> 1 or s.stock_movement_id is null`,
+    having count(*) <> 1 or s.stock_movement_id is null
+    union all
+    select 'supplier', p.brand_id::text, 'Purchase header · ' || p.name || ' · billed', 'bags', m.bags::bigint, h.billed_bags::bigint
+    from purchases h
+    join stock_movements m on m.id = h.stock_movement_id
+    join products p on p.id = m.product_id
+    where m.type <> 'purchase' or m.bags <> h.billed_bags
+    union all
+    select 'supplier', p.brand_id::text, 'Purchase header · ' || p.name || ' · received', 'bags', h.received_bags::bigint,
+      (h.billed_bags - h.short_bags - h.burst_bags)::bigint
+    from purchases h
+    join stock_movements m on m.id = h.stock_movement_id
+    join products p on p.id = m.product_id
+    where h.received_bags <> h.billed_bags - h.short_bags - h.burst_bags
+    union all
+    select 'supplier', s.brand_id::text, 'Purchase header · ' || p.name || ' · supplier date ' || s.entry_date || ' not invoice date ' || h.invoice_date,
+      null, null, null
+    from purchases h
+    join stock_movements m on m.id = h.stock_movement_id
+    join products p on p.id = m.product_id
+    join supplier_ledger_entries s on s.stock_movement_id = m.id and s.kind = 'purchase'
+    where s.entry_date <> h.invoice_date
+    union all
+    select 'supplier', p.brand_id::text, 'Purchase header · ' || p.name || ' · ' || l.word || ' bags', 'bags', (-x.bags)::bigint, l.bags::bigint
+    from purchases h
+    join stock_movements m on m.id = h.stock_movement_id
+    join products p on p.id = m.product_id
+    cross join lateral (
+      values ('short', h.short_movement_id, h.short_bags, 'transit_short'), ('burst', h.burst_movement_id, h.burst_bags, 'transit_burst')
+    ) l(word, movement_id, bags, code)
+    left join stock_movements x on x.id = l.movement_id
+    where (l.bags = 0 and l.movement_id is not null)
+      or (l.bags > 0 and (x.id is null or x.bags <> -l.bags or x.type <> 'adjustment' or x.reason_code is distinct from l.code
+        or x.product_id <> m.product_id or x.godown_id is distinct from m.godown_id or x.vehicle_id is distinct from m.vehicle_id))`,
   // I7 sums every ledger row of a payment by receipt_id, whatever its kind: the payment credit and
   // its reversal (receipt_reversal, or a + receipt_credit row from before 0039) net to 0 once reversed.
   I7: sql`
