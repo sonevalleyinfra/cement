@@ -7,7 +7,7 @@ import { StatusChip } from "@/components/app/status-chip";
 import { TextLink } from "@/components/app/text-link";
 import { db } from "@/db";
 import { receipts, retailers } from "@/db/schema";
-import { formatDate, formatDateTime, toISTDateKey } from "@/lib/datetime";
+import { formatDateTime, formatDayMonth, toISTDateKey } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
 import { can, isStaff } from "@/lib/permissions";
@@ -100,7 +100,9 @@ export default async function ReceiptsPage() {
                     <>
                       <span className="text-xs text-muted-foreground">
                         #{r.no} · {formatDateTime(r.createdAt)}
-                        {r.receivedOn !== toISTDateKey(r.createdAt) && ` · Received ${formatDate(istStartOf(r.receivedOn))}`}
+                        {r.receivedOn !== toISTDateKey(r.createdAt) && (
+                          <span className="whitespace-nowrap"> · Received {formatDayMonth(istStartOf(r.receivedOn))}</span>
+                        )}
                       </span>
                       <span className="tabular text-lg font-bold">{formatINR(r.totalPaise, { hidePaise: true })}</span>
                     </>
