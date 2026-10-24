@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { dispatches, orders, stockMovements } from "@/db/schema";
 import { pickLastRate, type RateHint, weekRange } from "@/lib/rate-hint-rules";
@@ -30,7 +30,8 @@ export async function getRateHints(input: {
           .select({ ratePaise: dispatches.ratePaise, at: dispatches.createdAt })
           .from(dispatches)
           .innerJoin(orders, eq(dispatches.orderId, orders.id))
-          .where(and(eq(orders.retailerId, shop), eq(orders.productId, input.productId), notThis(orders.id)))
+          // Loads only: a reversal row (minus bags, v2 B2) repeats its load's rate.
+          .where(and(eq(orders.retailerId, shop), eq(orders.productId, input.productId), notThis(orders.id), gt(dispatches.bags, 0)))
           .orderBy(desc(dispatches.createdAt))
           .limit(1)
       : [],
@@ -56,7 +57,7 @@ export async function getRateHints(input: {
       })
       .from(dispatches)
       .innerJoin(orders, eq(dispatches.orderId, orders.id))
-      .where(and(eq(orders.productId, input.productId), gte(dispatches.createdAt, since), notThis(orders.id))),
+      .where(and(eq(orders.productId, input.productId), gte(dispatches.createdAt, since), notThis(orders.id), gt(dispatches.bags, 0))),
     db
       .select({
         min: sql<number | null>`min(${orders.ratePaise})`,

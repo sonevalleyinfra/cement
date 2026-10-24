@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lt, lte, sql, type Column } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, lt, lte, sql, type Column } from "drizzle-orm";
 import { db } from "@/db";
 import {
   brands,
@@ -17,7 +17,7 @@ import {
 } from "@/db/schema";
 import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
 import { duesAging } from "@/lib/due-items";
-import { ledgerBackdatedSql, ledgerMomentSql } from "@/lib/ledger";
+import { ledgerBackdatedSql, ledgerMomentSql, ledgerReversesAtSql } from "@/lib/ledger";
 import { lossReport } from "@/lib/loss-report";
 import { nameMaps, toMap } from "@/lib/names";
 import type { ReportRange } from "@/lib/report-range";
@@ -98,6 +98,8 @@ export async function getDuesAging(range: ReportRange) {
         amountPaise: ledgerEntries.amountPaise,
         orderId: ledgerEntries.orderId,
         createdAt: ledgerMomentSql,
+        // A dispatch reversal cancels its own load's debit (due-items.ts).
+        reversesAt: ledgerReversesAtSql,
       })
       .from(ledgerEntries)
       .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
@@ -286,11 +288,13 @@ export async function getCashReport(range: ReportRange, now = new Date()) {
 /**
  * Every purchase before `before`, as cost rows at the LANDED cost: received bags × landed cost per bag
  * from the purchase header; a purchase saved before headers existed (drizzle/0040) keeps its movement
- * bags × invoice cost. Also for the stock value screen.
+ * bags × invoice cost. Also for the stock value screen. A purchase reversal (v2 B2) is minus bags at the
+ * landed cost of the purchase it reverses (one join: the header of `reverses_movement_id`, else its own id).
  */
 export async function purchaseCostRows(before: Date): Promise<PurchaseCostRow[]> {
   const rows = await db
     .select({
+      type: stockMovements.type,
       productId: stockMovements.productId,
       bags: stockMovements.bags,
       unitCostPaise: stockMovements.unitCostPaise,
@@ -298,8 +302,8 @@ export async function purchaseCostRows(before: Date): Promise<PurchaseCostRow[]>
       landedUnitCostPaise: purchases.landedUnitCostPaise,
     })
     .from(stockMovements)
-    .leftJoin(purchases, eq(purchases.stockMovementId, stockMovements.id))
-    .where(and(eq(stockMovements.type, "purchase"), lt(stockMovements.createdAt, before)));
+    .leftJoin(purchases, eq(purchases.stockMovementId, sql`coalesce(${stockMovements.reversesMovementId}, ${stockMovements.id})`))
+    .where(and(inArray(stockMovements.type, ["purchase", "purchase_reversal"]), lt(stockMovements.createdAt, before)));
   return landedCostRows(rows);
 }
 
@@ -336,9 +340,15 @@ export async function getStaffReport(range: ReportRange) {
           inArray(orderEvents.toStatus, ["approved", "rejected"]),
           // Only real status changes (a rate edit keeps the status).
           sql`${orderEvents.fromStatus} is distinct from ${orderEvents.toStatus}`,
+          // A reversed load sends an order back to approved (v2 B2): that is not a decision.
+          sql`(${orderEvents.fromStatus} is null or ${orderEvents.fromStatus} not in ('partly_dispatched', 'dispatched', 'cancelled'))`,
         ),
       ),
-    db.select({ dispatchedBy: dispatches.dispatchedBy, bags: dispatches.bags }).from(dispatches).where(inside(dispatches.createdAt)),
+    // Loads only: a reversal row (minus bags, v2 B2) is not a load.
+    db
+      .select({ dispatchedBy: dispatches.dispatchedBy, bags: dispatches.bags })
+      .from(dispatches)
+      .where(and(inside(dispatches.createdAt), gt(dispatches.bags, 0))),
     db
       .select({ receivedBy: receipts.receivedBy, status: receipts.status, totalPaise: receipts.totalPaise })
       .from(receipts)

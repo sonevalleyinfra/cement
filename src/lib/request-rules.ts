@@ -30,6 +30,8 @@ export const REQUEST_KINDS = [
   "handover_request",
   "ledger_adjustment",
   "purchase_claim",
+  "dispatch_reversal",
+  "purchase_reversal",
 ] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 

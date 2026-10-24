@@ -33,6 +33,26 @@ describe("balanceLine", () => {
   });
 });
 
+describe("bags returned (v2 B2)", () => {
+  it("reads 'Bags returned' with the product and bags; a shop sees no amount or note", () => {
+    const row: LedgerSourceRow = {
+      id: "x",
+      kind: "dispatch_reversal",
+      amountPaise: -900_000,
+      balancePaise: 0,
+      note: "Returned 30 bags: Wrong shop",
+      actorId: "u1",
+      createdAt: new Date("2026-10-01T06:00:00Z"),
+      product: "Prism Trade OPC 53",
+      bags: -30,
+    };
+    expect(ledgerEntryLabel("dispatch_reversal", -900_000)).toBe("Bags returned");
+    const [shop] = ledgerRowsForViewer("retailer", [row]);
+    expect(shop).toMatchObject({ label: "Bags returned", what: "Prism Trade OPC 53 · 30 bags", amountPaise: null, balancePaise: null, note: null });
+    expect(ledgerRowsForViewer("admin", [row])[0]).toMatchObject({ amountPaise: -900_000, note: "Returned 30 bags: Wrong shop" });
+  });
+});
+
 describe("ledgerRowsForViewer", () => {
   const at = new Date("2026-10-01T06:00:00Z");
   const base = { note: "", actorId: "u1", createdAt: at, product: null, bags: null };

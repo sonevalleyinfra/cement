@@ -5,11 +5,13 @@ import {
   isOrderEventReasonCode,
   isPaymentReasonCode,
   isReasonCode,
+  isReversalReasonCode,
   isShopVisibleReason,
   isStockReasonCode,
   ORDER_EVENT_REASON_CODES,
   PAYMENT_REASON_CODES,
   REASON_LISTS,
+  REVERSAL_REASON_CODES,
   reasonHint,
   reasonLabel,
   reasonText,
@@ -39,6 +41,8 @@ describe("the lists", () => {
     expect(labelsOf("backdate")).toEqual(["Late entry", "Bank delay", "Wrong entry", "Owner said", "Other"]);
     expect(codesOf("shop_off")).toEqual(["closed_down", "moved", "bad_debt", "duplicate", "other"]);
     expect(labelsOf("shop_off")).toEqual(["Closed down", "Moved", "Bad debt", "Duplicate", "Other"]);
+    expect(codesOf("reversal")).toEqual(["entry_mistake", "returned", "wrong_shop", "short_received", "other"]);
+    expect(labelsOf("reversal")).toEqual(["Wrong entry", "Returned", "Wrong shop", "Short received", "Other"]);
   });
   it("each has at most 6 chips, Other last, labels of 3 words at most, no repeats", () => {
     for (const a of ACTIONS) {
@@ -51,8 +55,14 @@ describe("the lists", () => {
       for (const c of codes) expect(c).toMatch(/^[a-z_]+$/);
     }
   });
-  it("the order history codes are reject + cancel + rate change + override, once each", () => {
-    const union = new Set([...codesOf("reject"), ...codesOf("cancel"), ...codesOf("rate_change"), ...codesOf("override")]);
+  it("the order history codes are reject + cancel + rate change + override + reversal, once each", () => {
+    const union = new Set([
+      ...codesOf("reject"),
+      ...codesOf("cancel"),
+      ...codesOf("rate_change"),
+      ...codesOf("override"),
+      ...codesOf("reversal"),
+    ]);
     expect(new Set(ORDER_EVENT_REASON_CODES)).toEqual(union);
     expect(ORDER_EVENT_REASON_CODES.length).toBe(union.size);
     expect(isOrderEventReasonCode("cash_on_delivery")).toBe(true);
@@ -65,6 +75,12 @@ describe("the lists", () => {
     expect(isPaymentReasonCode("damage")).toBe(false);
     expect(isStockReasonCode("expired")).toBe(true);
     expect(isStockReasonCode("count")).toBe(false);
+    expect(isReversalReasonCode("short_received")).toBe(true);
+    expect(isReversalReasonCode("damage")).toBe(false);
+    expect(REVERSAL_REASON_CODES).toEqual(codesOf("reversal"));
+    // Reversal reasons are for staff only (only "Wrong entry" is shared with the cancel list).
+    expect(isShopVisibleReason("returned")).toBe(false);
+    expect(isShopVisibleReason("short_received")).toBe(false);
     expect(isReasonCode("cancel", "truck_issue")).toBe(true);
     expect(isReasonCode("reject", "truck_issue")).toBe(false);
     expect(isReasonCode("reject", 3)).toBe(false);

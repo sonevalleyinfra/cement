@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { ledgerEntries, receipts, retailers, user } from "@/db/schema";
 import { toISTDateKey } from "@/lib/datetime";
 import { LAST_PAYMENT_SKIPS } from "@/lib/home-rules";
-import { ledgerMomentSql } from "@/lib/ledger";
+import { ledgerMomentSql, ledgerReversesAtSql } from "@/lib/ledger";
 import { buildOverdueRows, type LastPayment, type OverdueShop } from "@/lib/overdue-rules";
 
 /**
@@ -20,6 +20,8 @@ export async function getOverdueRows(asOf = new Date()) {
         orderId: ledgerEntries.orderId,
         // A payment counts on the day it was received (ledgerMomentSql).
         createdAt: ledgerMomentSql,
+        // A dispatch reversal cancels its own load's debit (due-items.ts).
+        reversesAt: ledgerReversesAtSql,
       })
       .from(ledgerEntries)
       .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))

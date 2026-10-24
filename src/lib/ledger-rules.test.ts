@@ -22,7 +22,7 @@ const e = (retailerId: string, amountPaise: number, orderId?: string) => ({
 
 describe("LEDGER_KINDS", () => {
   it("has its own kind for a payment put back (receipt_reversal); the database CHECK is built from this list", () => {
-    expect(LEDGER_KINDS).toEqual(["opening", "order_debit", "receipt_credit", "adjustment", "receipt_reversal"]);
+    expect(LEDGER_KINDS).toEqual(["opening", "order_debit", "receipt_credit", "adjustment", "receipt_reversal", "dispatch_reversal"]);
   });
 });
 

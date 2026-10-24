@@ -6,6 +6,7 @@ const KIND_LABELS: Record<string, string> = {
   receipt_credit: "Payment",
   adjustment: "Adjustment",
   receipt_reversal: "Payment reversed",
+  dispatch_reversal: "Bags returned",
 };
 
 /** Rows about the shop's own payments (a payment, or a payment put back): a shop sees their amounts. */
@@ -42,7 +43,7 @@ export type LedgerSourceRow = {
   createdAt: Date;
   /** A payment received on an earlier day than it was typed in: show its date only (no time). */
   backdated?: boolean;
-  /** Dispatch rows: the product and bags sent (null when unknown). */
+  /** Dispatch rows: the product and bags sent (null when unknown); a dispatch_reversal row: minus the bags returned. */
   product: string | null;
   bags: number | null;
 };
@@ -67,7 +68,7 @@ export type LedgerViewRow = {
 /**
  * The rows of one retailer's ledger as this viewer may see them (owner's rule).
  * Staff see everything. Anyone else (the shop's own login) sees every row's kind, date and, for a
- * dispatch, the product and bags, but amounts only on payment rows (their own money): no dispatch,
+ * dispatch (or bags returned), the product and bags, but amounts only on payment rows (their own money): no dispatch,
  * opening or adjustment amount and no running balance, since bags with an amount (or the difference
  * of two balances) would give the rate away. Their total dues show at the top of the page.
  */
@@ -80,7 +81,10 @@ export function ledgerRowsForViewer(role: string | null | undefined, rows: reado
     backdated: r.backdated === true,
     amountPaise: staff || PAYMENT_KINDS.includes(r.kind) ? r.amountPaise : null,
     balancePaise: staff ? r.balancePaise : null,
-    what: r.kind === "order_debit" ? [r.product, r.bags !== null ? `${r.bags} bags` : null].filter(Boolean).join(" · ") : "",
+    what:
+      r.kind === "order_debit" || r.kind === "dispatch_reversal"
+        ? [r.product, r.bags !== null ? `${Math.abs(r.bags)} bags` : null].filter(Boolean).join(" · ")
+        : "",
     note: staff && r.note ? r.note : null,
     actorId: staff ? r.actorId : null,
   }));

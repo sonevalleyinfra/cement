@@ -1,7 +1,8 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/app/page-header";
+import { ReverseSheet } from "@/components/app/reverse-sheet";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
 import { dispatches, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
@@ -21,7 +22,12 @@ import {
 import { DELIVER_TO_LABELS, notesForViewer, orderSourceLabel } from "@/lib/order-delivery-rules";
 import { canCancelOrder, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
+import { reasonLabel } from "@/lib/reason-codes";
+import { isReversibleOrderStatus, reversedByLoad } from "@/lib/reversal-rules";
+import { can } from "@/lib/permissions";
 import { requireUser } from "@/lib/session";
+import { getPlaces } from "@/lib/stock-places";
+import { placeKey } from "@/lib/stock-rules";
 import { bagsText } from "@/lib/words";
 import { CancelForm } from "./cancel-form";
 import { RateForm } from "./rate-form";
@@ -107,6 +113,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         driverPhone: dispatches.driverPhone,
         createdAt: dispatches.createdAt,
         vehicle: vehicles.number,
+        reversesDispatchId: dispatches.reversesDispatchId,
+        reasonCode: dispatches.reasonCode,
+        fromGodownId: dispatches.fromGodownId,
+        fromVehicleId: dispatches.fromVehicleId,
       })
       .from(dispatches)
       .innerJoin(vehicles, eq(dispatches.vehicleId, vehicles.id))
@@ -125,6 +135,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const site = o.deliverTo === "site";
 
   const canCancel = canCancelOrder(user.role, o.status);
+  // Admin only (v2 B2): loads with bags left to reverse get a "Reverse" link; places are read only then.
+  const reversed = reversedByLoad(loads);
+  const leftOf = (l: (typeof loads)[number]) => (l.bags > 0 ? l.bags - (reversed.get(l.id) ?? 0) : 0);
+  const canReverse = can(user.role, "reverseStock") && isReversibleOrderStatus(o.status) && loads.some((l) => leftOf(l) > 0);
+  const backPlaces = canReverse ? await reversePlaces(loads) : [];
   const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o) ? "change" : null;
   // Staff only (never a retailer): last rate, this week's range and stock under the rate form.
   const [rateHint, stockBags] =
@@ -179,7 +194,16 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       )}
       {loads.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {loads.map((l) => (
+          {loads.map((l) =>
+            l.bags < 0 ? (
+              <li key={l.id} className="flex items-baseline justify-between gap-2 rounded-2xl bg-muted px-4 py-3 text-sm">
+                <span>
+                  <span className="tabular font-semibold">−{bagsText(-l.bags)}</span> returned
+                  {showPrice && l.reasonCode && ` · ${reasonLabel(l.reasonCode, "reversal")}`}
+                </span>
+                <span className="text-xs text-muted-foreground">{formatDateTime(l.createdAt)}</span>
+              </li>
+            ) : (
             <li key={l.id} className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="tabular text-lg font-bold">{bagsText(l.bags)}</span>
@@ -202,8 +226,25 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   {formatINR(l.ratePaise)} per bag · {formatINR(l.bags * l.ratePaise)}
                 </div>
               )}
+              {canReverse && leftOf(l) > 0 ? (
+                <div className="flex justify-end">
+                  <ReverseSheet
+                    left={leftOf(l)}
+                    target={{
+                      kind: "dispatch",
+                      id: l.id,
+                      places: backPlaces,
+                      defaultPlace: defaultBackPlace(l, backPlaces),
+                    }}
+                  />
+                </div>
+              ) : (
+                showPrice &&
+                leftOf(l) === 0 && <div className="text-right text-xs font-semibold text-muted-foreground">Reversed</div>
+              )}
             </li>
-          ))}
+            ),
+          )}
         </ul>
       )}
       {rateMode && (
@@ -234,4 +275,39 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       </ol>
     </div>
   );
+}
+
+/** Where reversed bags may go: active godowns, trucks holding bags, and the active trucks these loads came from. */
+async function reversePlaces(
+  loads: readonly { fromVehicleId: string | null }[],
+): Promise<{ value: string; label: string }[]> {
+  const sourceTrucks = [...new Set(loads.map((l) => l.fromVehicleId).filter((v): v is string => v !== null))];
+  const [places, trucks] = await Promise.all([
+    getPlaces(),
+    sourceTrucks.length
+      ? db
+          .select({ id: vehicles.id, number: vehicles.number })
+          .from(vehicles)
+          .where(and(inArray(vehicles.id, sourceTrucks), eq(vehicles.active, true)))
+      : Promise.resolve([]),
+  ]);
+  const out = places.map((p) => ({ value: p.key, label: p.name }));
+  for (const t of trucks) {
+    const key = placeKey({ kind: "vehicle", id: t.id });
+    if (!out.some((p) => p.value === key)) out.push({ value: key, label: t.number });
+  }
+  return out;
+}
+
+/** The load's own source place when it is still a choice, else nothing (the admin picks). */
+function defaultBackPlace(
+  load: { fromGodownId: string | null; fromVehicleId: string | null },
+  places: readonly { value: string }[],
+): string {
+  const key = load.fromGodownId
+    ? placeKey({ kind: "godown", id: load.fromGodownId })
+    : load.fromVehicleId
+      ? placeKey({ kind: "vehicle", id: load.fromVehicleId })
+      : "";
+  return places.some((p) => p.value === key) ? key : "";
 }

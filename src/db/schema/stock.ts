@@ -1,11 +1,12 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { CLAIM_STATUSES } from "../../lib/purchase-rules";
-import { STOCK_REASON_CODES } from "../../lib/reason-codes";
+import { REVERSAL_REASON_CODES, STOCK_REASON_CODES } from "../../lib/reason-codes";
 import { MOVEMENT_TYPES } from "../../lib/stock-rules";
 import { oneOf } from "../check-helpers";
 import { user } from "./auth";
 import { products } from "./catalogue";
+import { dispatches } from "./dispatches";
 import { orders } from "./orders";
 import { vehicles } from "./vehicles";
 
@@ -42,27 +43,52 @@ export const stockMovements = pgTable(
       .references(() => products.id),
     godownId: uuid("godown_id").references(() => godowns.id),
     vehicleId: uuid("vehicle_id").references(() => vehicles.id),
-    /** opening | purchase | dispatch | adjustment | transfer (MOVEMENT_TYPES in lib/stock-rules.ts) */
+    /** opening | purchase | dispatch | adjustment | transfer | return | purchase_reversal (MOVEMENT_TYPES in lib/stock-rules.ts) */
     type: text("type").notNull(),
     bags: integer("bags").notNull(),
     orderId: uuid("order_id").references(() => orders.id),
     reason: text("reason").default("").notNull(),
-    /** Adjustments: the picked "why" (lib/reason-codes.ts, stock list); `reason` keeps the text. Null before 0039. */
+    /**
+     * Adjustments: the picked "why" (lib/reason-codes.ts, stock list); `reason` keeps the text. Null before 0039.
+     * `return` / `purchase_reversal`: a code from the reversal list.
+     */
     reasonCode: text("reason_code"),
-    /** Purchases only: what one bag cost, in paise (used for the average purchase cost per product). */
+    /**
+     * Purchases: what one bag cost, in paise (used for the average purchase cost per product).
+     * A `purchase_reversal` carries the reversed purchase's cost per bag.
+     */
     unitCostPaise: integer("unit_cost_paise"),
+    /** `return` only: the reversal dispatch row these bags came back with (v2 B2). */
+    dispatchId: uuid("dispatch_id").references(() => dispatches.id),
+    /** `purchase_reversal` only: the purchase movement it reverses (v2 B2). */
+    reversesMovementId: uuid("reverses_movement_id").references((): AnyPgColumn => stockMovements.id),
     actorId: text("actor_id").references(() => user.id),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     index("stock_movements_godown_idx").on(t.godownId, t.productId),
     index("stock_movements_vehicle_idx").on(t.vehicleId, t.productId),
+    index("stock_movements_reverses_idx").on(t.reversesMovementId),
+    uniqueIndex("stock_movements_one_return_idx")
+      .on(t.dispatchId)
+      .where(sql`${t.type} = 'return'`),
     check("stock_movements_bags_not_zero", sql`${t.bags} <> 0`),
     check("stock_movements_unit_cost_positive", sql`${t.unitCostPaise} is null or ${t.unitCostPaise} > 0`),
     check("stock_movements_one_place", sql`num_nonnulls(${t.godownId}, ${t.vehicleId}) = 1`),
     check("stock_movements_type_valid", oneOf(t.type, MOVEMENT_TYPES)),
     check("stock_movements_actor_required", sql`${t.actorId} is not null`),
-    check("stock_movements_reason_code_valid", sql`${t.reasonCode} is null or ${oneOf(t.reasonCode, STOCK_REASON_CODES)}`),
+    check(
+      "stock_movements_reason_code_valid",
+      sql`${t.reasonCode} is null or ${oneOf(t.reasonCode, [...new Set([...STOCK_REASON_CODES, ...REVERSAL_REASON_CODES])])}`,
+    ),
+    // v2 B2: a return / purchase reversal needs its link and a reversal reason; other rows have no link.
+    check(
+      "stock_movements_reversal_shape",
+      sql`case ${t.type}
+        when 'return' then ${t.bags} > 0 and ${t.orderId} is not null and ${t.dispatchId} is not null and ${t.reversesMovementId} is null and ${t.reasonCode} is not null and ${oneOf(t.reasonCode, REVERSAL_REASON_CODES)}
+        when 'purchase_reversal' then ${t.bags} < 0 and ${t.reversesMovementId} is not null and ${t.dispatchId} is null and ${t.unitCostPaise} is not null and ${t.reasonCode} is not null and ${oneOf(t.reasonCode, REVERSAL_REASON_CODES)}
+        else ${t.dispatchId} is null and ${t.reversesMovementId} is null end`,
+    ),
     // NOT VALID in drizzle/0039: old adjustments (append-only) are skipped.
     check("stock_movements_reason_code_required", sql`${t.type} <> 'adjustment' or ${t.reasonCode} is not null`),
   ],
