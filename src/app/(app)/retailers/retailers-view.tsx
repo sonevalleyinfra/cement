@@ -549,7 +549,11 @@ function ShopDetail({
               options={repOptions}
             />
           )}
-          {owes && newRepName && <HintLine>{`${duesText} dues move to ${newRepName}`}</HintLine>}
+          {owes && newRepName && (
+            <div className="-mt-2">
+              <HintLine>{`${duesText} dues move to ${newRepName}`}</HintLine>
+            </div>
+          )}
           {logins && <SelectField label="Login" value={loginId} onChange={setLoginId} options={loginOptions} />}
         </section>
         <section className="flex flex-col gap-4">
