@@ -1,20 +1,21 @@
 import { DataTable } from "@/components/app/data-table";
 import { EmptyState } from "@/components/app/empty-state";
 import { rolesFor } from "@/lib/permissions";
-import { param, reportRange } from "@/lib/report-range";
+import { previousRange } from "@/lib/report-compare";
+import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getCashReport } from "@/lib/reports";
 import { requireRole } from "@/lib/session";
 import { daysText } from "@/lib/words";
-import { money, num, ReportFrame, Section, Stats } from "../report-frame";
+import { CompareNote, compareOf, money, num, ReportFrame, Section, Stats } from "../report-frame";
 
 export default async function CashReportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
-  const r = await getCashReport(range);
+  const [r, before] = await Promise.all([getCashReport(range), getCashReport(previousRange(range))]);
   const m = r.byMode;
   return (
-    <ReportFrame title="Cash and online" range={range}>
+    <ReportFrame title="Cash and online" range={range} csvHref={`/reports/cash/csv?${rangeQuery(range)}`}>
       <Stats
         items={[
           { label: "Cash held by staff", value: money(r.heldPaise) },
@@ -34,6 +35,8 @@ export default async function CashReportPage({ searchParams }: { searchParams: P
         />
       )}
       <Section title="Payments recorded in the dates picked" />
+      <Stats items={[{ label: "Total recorded", value: money(m.total.paise), compare: compareOf(m.total.paise, before.byMode.total.paise, money) }]} />
+      <CompareNote range={range} />
       <DataTable
         columns={[{ label: "Mode" }, { label: "Count" }, { label: "Amount" }]}
         rows={[

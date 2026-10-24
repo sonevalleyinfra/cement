@@ -224,6 +224,15 @@ describe("activitySentence", () => {
     expect(say(row("grade", "rename", { from: "43", to: "43S" }))).toBe("Ramesh renamed grade 43 to 43S");
   });
 
+  it("report exports", () => {
+    expect(say(row("report", "export", { report: "sales", from: "2026-04-01", to: "2026-04-30" }, "sales"))).toBe(
+      "Ramesh exported the sales report (2026-04-01 to 2026-04-30)",
+    );
+    expect(say(row("report", "export", {}, ""))).toBe("Ramesh exported a report");
+    expect(groupOf("report")).toBe("masters");
+    expect(isAllowedAudit("report", "export")).toBe(true);
+  });
+
   it("unknown names and old rows still read", () => {
     expect(activitySentence(row("dispatch", "create", {}), new Map())).toBe("Someone dispatched cement to a shop");
     expect(say({ ...row("order", "fill_rate", { ratePaise: { before: null, after: 1000 } }), details: null })).toBe(

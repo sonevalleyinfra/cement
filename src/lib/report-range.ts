@@ -58,6 +58,11 @@ export function reportRange(input: { from?: unknown; to?: unknown }, now: Date =
   let from = isDateKey(input.from) ? input.from : `${today.slice(0, 8)}01`;
   let to = isDateKey(input.to) ? input.to : today;
   if (from > to) [from, to] = [to, from];
+  return rangeOf(from, to);
+}
+
+/** A range from two valid days (`from` not after `to`), without the "today" defaults. */
+export function rangeOf(from: string, to: string): ReportRange {
   return { from, to, start: istStartOf(from), end: istStartOf(addDays(to, 1)) };
 }
 

@@ -6,7 +6,7 @@ import { formatDate, formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { ledgerEntryLabel } from "@/lib/ledger-view-rules";
 import { rolesFor } from "@/lib/permissions";
-import { param, reportRange } from "@/lib/report-range";
+import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getRetailerStatement, retailerOptions } from "@/lib/reports";
 import { requireRole } from "@/lib/session";
 import { Mismatch, money, ReportFrame, Stats } from "../report-frame";
@@ -27,6 +27,7 @@ export default async function RetailerStatementPage({ searchParams }: { searchPa
     <ReportFrame
       title="Statement"
       range={range}
+      csvHref={shop ? `/reports/statement/csv?${rangeQuery(range)}&retailer=${shop.id}` : undefined}
       filters={
         <ShopPicker name="retailer" label="Retailer" value={shop?.id ?? ""} shops={shops} />
       }

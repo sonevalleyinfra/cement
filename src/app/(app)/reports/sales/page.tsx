@@ -2,11 +2,12 @@ import { EmptyState } from "@/components/app/empty-state";
 import { DataTable } from "@/components/app/data-table";
 import { formatDate } from "@/lib/datetime";
 import { rolesFor } from "@/lib/permissions";
-import { param, reportRange } from "@/lib/report-range";
+import { previousRange } from "@/lib/report-compare";
+import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getSalesReport } from "@/lib/reports";
 import type { SalesLine } from "@/lib/sales-report";
 import { requireRole } from "@/lib/session";
-import { money, num, ReportFrame, Section, Stats } from "../report-frame";
+import { CompareNote, compareOf, money, num, ReportFrame, Section, Stats } from "../report-frame";
 
 function Lines({
   title,
@@ -37,16 +38,17 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
   await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
-  const r = await getSalesReport(range);
+  const [r, before] = await Promise.all([getSalesReport(range), getSalesReport(previousRange(range))]);
   return (
-    <ReportFrame title="Sales" range={range}>
+    <ReportFrame title="Sales" range={range} csvHref={`/reports/sales/csv?${rangeQuery(range)}`}>
       <Stats
         items={[
-          { label: "Value", value: money(r.valuePaise) },
-          { label: "Bags", value: num(r.bags) },
-          { label: "Dispatches", value: num(r.loads) },
+          { label: "Value", value: money(r.valuePaise), compare: compareOf(r.valuePaise, before.valuePaise, money) },
+          { label: "Bags", value: num(r.bags), compare: compareOf(r.bags, before.bags, num) },
+          { label: "Dispatches", value: num(r.loads), compare: compareOf(r.loads, before.loads, num) },
         ]}
       />
+      <CompareNote range={range} />
       {r.loads === 0 ? (
         <EmptyState title="No dispatches" />
       ) : (
