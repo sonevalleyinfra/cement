@@ -46,14 +46,6 @@ export default async function Page() {
                 <p className="tabular text-sm text-muted-foreground">
                   Cost {formatINR(unitCost)} · Landed {formatINR(r.landedUnitCostPaise)} per bag
                 </p>
-                {(r.reversedBags > 0 || (canReverse && left > 0 && r.unitCostPaise !== null)) && (
-                  <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="tabular font-semibold">{r.reversedBags > 0 ? `Reversed ${formatCount(r.reversedBags)} bags` : ""}</span>
-                    {canReverse && left > 0 && r.unitCostPaise !== null && (
-                      <ReverseSheet left={left} target={{ kind: "purchase", id: r.movementId, placeName: r.placeName }} />
-                    )}
-                  </div>
-                )}
                 {lost > 0 && (
                   <div className="flex flex-col gap-2 pt-1">
                     <p className="tabular text-sm">
@@ -68,6 +60,14 @@ export default async function Page() {
                         <ClaimButtons purchaseId={r.id} status={r.claimStatus} />
                       )}
                     </div>
+                  </div>
+                )}
+                {(r.reversedBags > 0 || (canReverse && left > 0 && r.unitCostPaise !== null)) && (
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="tabular font-semibold">{r.reversedBags > 0 ? `Reversed ${formatCount(r.reversedBags)} bags` : ""}</span>
+                    {canReverse && left > 0 && r.unitCostPaise !== null && (
+                      <ReverseSheet left={left} target={{ kind: "purchase", id: r.movementId, placeName: r.placeName }} />
+                    )}
                   </div>
                 )}
               </li>

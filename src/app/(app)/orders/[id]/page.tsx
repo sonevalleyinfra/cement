@@ -199,7 +199,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <li key={l.id} className="flex items-baseline justify-between gap-2 rounded-2xl bg-muted px-4 py-3 text-sm">
                 <span>
                   <span className="tabular font-semibold">−{bagsText(-l.bags)}</span> returned
-                  {showPrice && l.reasonCode && ` · ${reasonLabel(l.reasonCode, "reversal")}`}
+                  {showPrice && l.reasonCode && l.reasonCode !== "returned" && ` · ${reasonLabel(l.reasonCode, "reversal")}`}
                 </span>
                 <span className="text-xs text-muted-foreground">{formatDateTime(l.createdAt)}</span>
               </li>
