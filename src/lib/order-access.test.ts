@@ -5,6 +5,7 @@ import {
   historyRateLine,
   historyReason,
   historyStepLabel,
+  isReversalEvent,
   mentionsMoney,
   orderAmountSummary,
   canPlaceOrder,
@@ -159,6 +160,35 @@ describe("historyForViewer", () => {
     for (const t of ["", "Dues too high", "40 bags in KA01", "wrong product", "hrs late", "separate truck"]) {
       expect(mentionsMoney(t)).toBe(false);
     }
+  });
+});
+
+describe("reversal history rows (v2 B2)", () => {
+  const staffOnly = { id: "r1", toStatus: "approved", reasonCode: "returned", reason: "Returned 30 bags in KA01AB1234: Returned · shop said wet" };
+  const visibleCode = {
+    id: "r2",
+    toStatus: "partly_dispatched",
+    reasonCode: "entry_mistake",
+    reason: "Returned 10 bags in KA01AB1234: Wrong entry · typed 110 not 100",
+  };
+  const onCancelled = { id: "r3", toStatus: "cancelled", reasonCode: "wrong_shop", reason: "Returned 5 bags in KA01AB1234: Wrong shop" };
+  it("are labelled 'Bags returned', never the new status", () => {
+    for (const e of [staffOnly, visibleCode, onCancelled]) expect(historyStepLabel(e)).toBe("Bags returned");
+    expect(isReversalEvent("40 bags in KA01AB1234")).toBe(false);
+    expect(historyStepLabel({ toStatus: "approved", reason: "" })).toBe("Approved");
+    expect(historyStepLabel({ toStatus: "cancelled", reason: "Shop closed" })).toBe("Cancelled");
+  });
+  it("staff see the whole reason once; a shop sees the bags and truck only, no code or note", () => {
+    expect(historyReason(visibleCode)).toBe("Returned 10 bags in KA01AB1234: Wrong entry · typed 110 not 100");
+    expect(historyForViewer("admin", [visibleCode])).toEqual([visibleCode]);
+    const seen = historyForViewer("retailer", [staffOnly, visibleCode, onCancelled]);
+    expect(seen.map((e) => [e.reason, e.reasonCode])).toEqual([
+      ["Returned 30 bags in KA01AB1234", null],
+      ["Returned 10 bags in KA01AB1234", null],
+      ["Returned 5 bags in KA01AB1234", null],
+    ]);
+    expect(seen.map(historyStepLabel)).toEqual(["Bags returned", "Bags returned", "Bags returned"]);
+    expect(seen.map(historyReason)).toEqual(["Returned 30 bags in KA01AB1234", "Returned 10 bags in KA01AB1234", "Returned 5 bags in KA01AB1234"]);
   });
 });
 

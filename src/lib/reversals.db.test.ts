@@ -62,7 +62,7 @@ describe.skipIf(!url)("reversals (real database)", () => {
   let vehicleId: string;
   let vehicleNumber: string;
   const started = new Date(Date.now() - 1000);
-  const made = { orders: new Set<string>(), shops: new Set<string>() };
+  const made = { orders: new Set<string>(), shops: new Set<string>(), godownNames: new Set<string>() };
 
   const suffix = () => randomBytes(6).toString("hex");
 
@@ -78,7 +78,9 @@ describe.skipIf(!url)("reversals (real database)", () => {
     return row.id;
   }
   async function makeGodown(admin: string, bags: number, at?: Date) {
-    const [g] = await db.insert(godowns).values({ name: `Rev godown ${suffix()}` }).returning({ id: godowns.id });
+    const name = `Rev godown ${suffix()}`;
+    const [g] = await db.insert(godowns).values({ name }).returning({ id: godowns.id });
+    made.godownNames.add(name);
     if (bags > 0) {
       const [m] = await db
         .insert(stockMovements)
@@ -405,7 +407,18 @@ describe.skipIf(!url)("reversals (real database)", () => {
     const refs = new Set<string>([...made.orders, ...made.shops, brandId]);
     for (const [id, query] of checks) {
       const rows = (await db.execute(query)) as unknown as { ref: string | null; what: string | null }[];
-      const ours = rows.filter((r) => (r.ref !== null && refs.has(r.ref)) || (r.what ?? "").includes(productName));
+      // Stock rows have no ref: I1 "<product> · <place>", I5 "<product> · moves", I11 / I12 "Stock <type> · <product>".
+      // Match this run's product and places exactly.
+      const ours = rows.filter((r) => {
+        if (r.ref !== null && refs.has(r.ref)) return true;
+        const what = r.what ?? "";
+        if (!what.includes(productName)) return false;
+        return (
+          what === `${productName} · moves` ||
+          (what.startsWith("Stock ") && what.endsWith(` · ${productName}`)) ||
+          [...made.godownNames].some((g) => what === `${productName} · ${g}`)
+        );
+      });
       expect({ id, ours }).toEqual({ id, ours: [] });
     }
   });
