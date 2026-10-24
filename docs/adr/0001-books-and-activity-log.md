@@ -107,7 +107,7 @@ stored total that could drift: every screen and report sums the rows.
    new rows without failing on any old ones.
 2. **Add an admin "Books check" (T2).** A read-only report under Reports that runs I1–I9, I11 and
    I12 and shows each as ✓ or "N problems", with up to 20 offending rows linking to the order,
-   payment, staff member or account. Queries in `lib/books-check.ts`; turning results into
+   payment, staff member or account. Queries in `lib/books-check-queries.ts` (run by `lib/books-check.ts`); turning results into
    pass/fail lines in plain functions with tests. No writes, no fixing from the page.
    I12 skips rows older than the first activity-log row, so data from before the log existed is
    not reported forever.
