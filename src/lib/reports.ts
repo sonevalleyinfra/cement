@@ -254,6 +254,17 @@ const paymentColumns = {
   receivedBy: receipts.receivedBy,
 };
 
+/**
+ * Payments received in the range by `received_on` (IST dates, both ends inclusive). Reports → Cash
+ * and the owner Home "Collected" both read this, so the two always show the same rows.
+ */
+export function paymentsReceivedIn(range: ReportRange) {
+  return db
+    .select(paymentColumns)
+    .from(receipts)
+    .where(and(gte(receipts.receivedOn, range.from), lte(receipts.receivedOn, range.to)));
+}
+
 /** Cash held now, online waiting now, and payments received in the range (by `received_on`) by mode. */
 export async function getCashReport(range: ReportRange, now = new Date()) {
   const [holders, waiting, inRange] = await Promise.all([
@@ -262,10 +273,7 @@ export async function getCashReport(range: ReportRange, now = new Date()) {
       .select(paymentColumns)
       .from(receipts)
       .where(and(eq(receipts.mode, "online"), eq(receipts.status, "unverified"))),
-    db
-      .select(paymentColumns)
-      .from(receipts)
-      .where(and(gte(receipts.receivedOn, range.from), lte(receipts.receivedOn, range.to))),
+    paymentsReceivedIn(range),
   ]);
   return {
     holders,

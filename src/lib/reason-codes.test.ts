@@ -37,6 +37,8 @@ describe("the lists", () => {
     expect(labelsOf("stock")).toEqual(["Transit short", "Transit burst", "Damaged", "Wrong entry", "Expired", "Other"]);
     expect(codesOf("backdate")).toEqual(["late_entry", "bank_delay", "entry_mistake", "owner_said", "other"]);
     expect(labelsOf("backdate")).toEqual(["Late entry", "Bank delay", "Wrong entry", "Owner said", "Other"]);
+    expect(codesOf("shop_off")).toEqual(["closed_down", "moved", "bad_debt", "duplicate", "other"]);
+    expect(labelsOf("shop_off")).toEqual(["Closed down", "Moved", "Bad debt", "Duplicate", "Other"]);
   });
   it("each has at most 6 chips, Other last, labels of 3 words at most, no repeats", () => {
     for (const a of ACTIONS) {

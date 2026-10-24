@@ -5,8 +5,10 @@ import { db } from "@/db";
 import { bankAccounts, retailers } from "@/db/schema";
 import { bankAccountLabel } from "@/lib/bank-account-rules";
 import { toISTDateKey } from "@/lib/datetime";
+import { getAllBalances } from "@/lib/ledger";
 import { isAdmin } from "@/lib/roles";
 import { pickPrefillRetailerId } from "@/lib/retailer-rules";
+import { payableShops } from "@/lib/shop-off-rules";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { ReceiptForm } from "./receipt-form";
@@ -17,12 +19,13 @@ export default async function NewReceiptPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await requireRole(...rolesFor("recordReceipt"));
-  const [list, accounts] = await Promise.all([
+  // Switched-on shops, plus switched-off shops that still owe (their dues can still be collected).
+  const [shops, balances, accounts] = await Promise.all([
     db
-      .select({ id: retailers.id, name: retailers.name, place: retailers.place })
+      .select({ id: retailers.id, name: retailers.name, place: retailers.place, active: retailers.active })
       .from(retailers)
-      .where(eq(retailers.active, true))
       .orderBy(asc(retailers.name)),
+    getAllBalances(),
     // Switched-on accounts only: an online payment picks the one it came into.
     db
       .select({ id: bankAccounts.id, name: bankAccounts.name, last4: bankAccounts.last4 })
@@ -30,6 +33,9 @@ export default async function NewReceiptPage({
       .where(eq(bankAccounts.active, true))
       .orderBy(asc(bankAccounts.name)),
   ]);
+  const list = payableShops(shops, new Map(balances.map((b) => [b.retailerId, b.balancePaise]))).map(
+    ({ id, name, place }) => ({ id, name, place }),
+  );
   if (list.length === 0) {
     return (
       <div className="flex flex-col gap-4">

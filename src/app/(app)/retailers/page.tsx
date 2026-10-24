@@ -3,7 +3,9 @@ import { db } from "@/db";
 import { areas, creditLimitChanges, retailers, user as users } from "@/db/schema";
 import { creditChangeParts } from "@/lib/credit-rules";
 import { formatDateTime } from "@/lib/datetime";
-import { NO_REP_FILTER, needsSalesRep } from "@/lib/home-rules";
+import { hasNoLimit, NO_LIMIT_FILTER, NO_REP_FILTER, needsSalesRep } from "@/lib/home-rules";
+import { getAllBalances } from "@/lib/ledger";
+import { duesFrom } from "@/lib/ledger-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { pickableRetailerLogins } from "@/lib/retailer-rules";
 import { pickableSalesReps } from "@/lib/sales-rep-rules";
@@ -19,10 +21,13 @@ export default async function RetailersPage({
   // Retailer phones are internal: staff only (a retailer would see every other shop).
   const { user } = await requireRole(...rolesFor("viewRetailers"));
   // `?filter=no-rep` (from Home): only the switched-on shops that still need a sales person.
-  const onlyNoRep = (await searchParams).filter === NO_REP_FILTER;
+  const filter = (await searchParams).filter;
+  const onlyNoRep = filter === NO_REP_FILTER;
   // Only admin edits; sales, accounts and admin see the credit terms (not logistics).
   const canEdit = can(user.role, "editRetailers");
   const canSeeCredit = can(user.role, "viewLedger");
+  // `?filter=no-limit` (from Home): switched-on shops with no credit limit. Ignored for roles that may not see credit.
+  const onlyNoLimit = canSeeCredit && filter === NO_LIMIT_FILTER;
   // The last 5 credit changes of each shop, for admin's shop sheet.
   const ranked = db
     .select({
@@ -40,7 +45,7 @@ export default async function RetailersPage({
     })
     .from(creditLimitChanges)
     .as("ranked");
-  const [rows, people, areaRows, history] = await Promise.all([
+  const [rows, people, areaRows, history, balances] = await Promise.all([
     db
       .select({
         id: retailers.id,
@@ -85,17 +90,22 @@ export default async function RetailersPage({
     canEdit
       ? db.select().from(ranked).where(lte(ranked.rn, 5)).orderBy(desc(ranked.createdAt), desc(ranked.id))
       : Promise.resolve([]),
+    // Dues, for admin's "Turn off" and sales person change (never sent to roles that cannot see the ledger).
+    canEdit && canSeeCredit ? getAllBalances() : Promise.resolve([]),
   ]);
+  const dues = new Map(balances.map((b) => [b.retailerId, duesFrom(b.balancePaise)]));
   const areaNames = new Map(areaRows.map((a) => [a.id, a.name]));
   const names = new Map(people.map((u) => [u.id, u.name]));
   const activeRepIds = new Set(people.filter((u) => !u.banned && !u.deletedAt).map((u) => u.id));
   const shown = rows
     .filter((r) => !onlyNoRep || needsSalesRep(r, activeRepIds))
+    .filter((r) => !onlyNoLimit || hasNoLimit(r))
     .map(({ creditLimitPaise, creditDays, creditStatus, ...r }) => ({
       ...r,
       salesRepName: r.salesRepId ? (names.get(r.salesRepId) ?? "") : "",
       loginName: r.userId ? (names.get(r.userId) ?? "") : "",
       areaName: r.areaId ? (areaNames.get(r.areaId) ?? "") : "",
+      duesPaise: canEdit && canSeeCredit ? (dues.get(r.id) ?? 0) : null,
       // Credit terms are not sent at all to roles that may not see them.
       credit: canSeeCredit
         ? { limitPaise: creditLimitPaise, creditDays, status: isCreditStatus(creditStatus) ? creditStatus : "ok" }
@@ -129,6 +139,7 @@ export default async function RetailersPage({
       salesReps={salesReps}
       areas={pickableAreas}
       onlyNoRep={onlyNoRep}
+      onlyNoLimit={onlyNoLimit}
       canRecordPayment={can(user.role, "recordReceipt")}
       canOrder={can(user.role, "placeOrder")}
     />

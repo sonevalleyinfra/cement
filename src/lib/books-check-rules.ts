@@ -1,6 +1,6 @@
 /**
  * Books check (ADR 0001, decision 2): the invariant checks and how their results become
- * pass/fail lines. Plain functions, no database. The queries live in lib/books-check.ts.
+ * pass/fail lines. Plain functions, no database. The queries live in lib/books-check-queries.ts.
  *
  * Numbering follows the ADR table: I11 = every movement/money row has an actor,
  * I12 = every movement/money row has its activity-log row. I10 (balances are sums) and
@@ -18,7 +18,7 @@ export const CHECKS = [
   { id: "I6", title: "Purchases", meaning: "One supplier entry per purchase = bags × cost" },
   { id: "I7", title: "Payments in the ledger", meaning: "Credit only for received or verified payments" },
   { id: "I8", title: "Cash payments", meaning: "Cash in the recorder's wallet = payment total" },
-  { id: "I9", title: "Cash held", meaning: "Held and available ≥ 0; handovers answered once, never more than asked" },
+  { id: "I9", title: "Cash held", meaning: "Held and available ≥ 0; handovers answered once, never more than asked; none with a switched-off person" },
   { id: "I11", title: "Who did it", meaning: "Every movement and money row has a person" },
   { id: "I12", title: "Activity log", meaning: "Every movement and money row has its log row" },
 ] as const;

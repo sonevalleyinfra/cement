@@ -235,6 +235,24 @@ describe("shopScope with filterOverdue", () => {
   });
 });
 
+describe("a switched-off shop that still owes stays on the lists", () => {
+  const off = r("off", { active: false, salesRepId: "u1", duePaise: 12_400_000, overduePaise: 12_400_000, daysPastTerms: 95 });
+  const rows = [r("on", { salesRepId: "u1" }), off];
+
+  it("is kept by every days filter, the sales person filter and each scope", () => {
+    for (const minDays of [0, 30, 60, 90] as const) {
+      expect(filterOverdue(rows, { minDays })).toContainEqual(off);
+    }
+    expect(filterOverdue(rows, { minDays: 0, repId: shopScope("sales", "u1")!.repId })).toContainEqual(off);
+    expect(filterOverdue(rows, { minDays: 0, repId: shopScope("accounts", "u9")!.repId })).toContainEqual(off);
+    expect(filterOverdue(rows, { minDays: 0 }).at(-1)).toMatchObject({ retailerId: "off", active: false });
+  });
+
+  it("is in Collect today, after the switched-on shops", () => {
+    expect(collectToday(rows, "u1").map((x) => x.retailerId)).toEqual(["on", "off"]);
+  });
+});
+
 describe("collectToday", () => {
   const rows = [
     r("due-big", { overduePaise: 0, duePaise: 900 }),
