@@ -207,7 +207,7 @@ describe("overrides counted", () => {
   });
   it("by reason, most first", () => {
     expect(overridesByReason(rows)).toEqual([
-      { code: "payment_promised", label: "Payment promised", count: 2 },
+      { code: "payment_promised", label: "Will pay soon", count: 2 },
       { code: "old_customer", label: "Old customer", count: 1 },
     ]);
   });

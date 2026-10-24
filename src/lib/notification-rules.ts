@@ -296,7 +296,7 @@ const OVERRIDE_TITLES: Record<CreditFlag, string> = {
 };
 
 /**
- * One row per admin except the one who approved: "Approved over limit" / "Raju Stores · ₹38,000 over limit · Payment promised"
+ * One row per admin except the one who approved: "Approved over limit" / "Raju Stores · ₹38,000 over limit · Will pay soon"
  * (the title follows the first flag: "Approved with overdue dues" when not over the limit). It opens the order (orderId).
  */
 export function buildCreditOverrideNotifications(input: CreditOverrideInput): NotificationDraft[] {
