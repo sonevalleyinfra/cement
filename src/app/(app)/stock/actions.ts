@@ -72,8 +72,12 @@ export type StockInput = {
 };
 
 /** Admin only. Only a purchase may use a typed-in truck. */
-async function prepare(input: StockInput, allowNewTruck = false) {
-  const session = await requireRole(...rolesFor("manageStock"));
+async function prepare(
+  input: StockInput,
+  action: "manageStock" | "recordPurchase" = "manageStock",
+  allowNewTruck = false,
+) {
+  const session = await requireRole(...rolesFor(action));
   const request = checkRequestId(input.requestId);
   if (!request.ok) return { error: request.error, session: null, place: null, requestId: null } as const;
   const place = allowNewTruck && input.place === NEW_TRUCK_PLACE ? NEW_TRUCK_PLACE : parsePlaceKey(input.place);
@@ -168,7 +172,7 @@ function done(): StockResult {
  * row (`purchases`) keeps the invoice, truck, driver, bags, freight + unloading and the landed cost per good bag.
  */
 export async function recordPurchase(input: StockInput): Promise<StockResult> {
-  const p = await prepare(input, true);
+  const p = await prepare(input, "recordPurchase", true);
   if (p.error !== null) return { ok: false, error: p.error };
   const cost = checkCostPerBag(input.costPerBagPaise);
   if (!cost.ok) return cost;
@@ -318,7 +322,7 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
  * It posts no supplier credit: the money is recorded with a supplier Credit entry.
  */
 export async function setPurchaseClaim(input: { purchaseId: string; status: string; requestId: string }): Promise<StockResult> {
-  const session = await requireRole(...rolesFor("manageStock"));
+  const session = await requireRole(...rolesFor("recordPurchase"));
   const request = checkRequestId(input.requestId);
   if (!request.ok) return request;
   if (!isUuid(input.purchaseId)) return { ok: false, error: "That purchase was not found." };

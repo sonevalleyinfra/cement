@@ -3,12 +3,12 @@ import { createServer } from "node:net";
 
 /** Runs a command and returns what it printed. Throws if it fails. */
 export function run(command: string, args: string[], options: { cwd?: string } = {}): string {
-  return execFileSync(command, args, { cwd: options.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return execFileSync(command, args, { cwd: options.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], shell: process.platform === "win32" }).trim();
 }
 
 /** Runs a command with its output shown live in the terminal. Throws if it fails. */
 export function runVisible(command: string, args: string[], options: { cwd?: string } = {}): void {
-  execFileSync(command, args, { cwd: options.cwd, stdio: "inherit" });
+  execFileSync(command, args, { cwd: options.cwd, stdio: "inherit", shell: process.platform === "win32" });
 }
 
 /** Stops with a clear message if a tool is not installed. */

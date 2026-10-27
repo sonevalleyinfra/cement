@@ -12,7 +12,7 @@ import { formatCount } from "@/lib/words";
 import { ClaimButtons } from "./claim-buttons";
 
 export default async function Page() {
-  const { user } = await requireRole(...rolesFor("manageStock"));
+  const { user } = await requireRole(...rolesFor("recordPurchase"));
   const rows = await getPurchases();
   const canReverse = can(user.role, "reverseStock");
   return (

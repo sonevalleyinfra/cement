@@ -52,11 +52,13 @@ export const ACTION_ROLES = {
   manageBankAccounts: ["admin"],
   // Supplier accounts, one per brand (docs/idea.md section 7): admin only
   viewSuppliers: ["admin"],
-  /** Opening balance, payment to a supplier, scheme credit and adjustment. (A purchase is `manageStock`.) */
+  /** Opening balance, payment to a supplier, scheme credit and adjustment. (A purchase is `recordPurchase`.) */
   manageSuppliers: ["admin"],
   // Stock
   viewStock: STAFF,
   manageStock: ["admin"],
+  /** Enter a factory purchase (billed bags, truck details, waste, landed cost). */
+  recordPurchase: ["logistics"],
   /** Move bags between two places (godown / vehicle). */
   transferStock: ["logistics"],
   /** Reverse a dispatch (bags back, full or part) or a purchase, with a reason (v2 B2, owner decision D3). */

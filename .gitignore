@@ -44,3 +44,9 @@ next-env.d.ts
 
 # Claude Code's scratch copies of this repo
 .claude/worktrees/
+
+# local tooling & scratch
+scratch/
+.neon
+neon.ts*
+

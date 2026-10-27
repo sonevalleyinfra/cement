@@ -8,7 +8,7 @@ import { getPlaces } from "@/lib/stock-places";
 /**
  * Shared by the stock forms: role check, all active places, products, balances (`data` goes to the form).
  */
-async function loadData(action: "manageStock" | "transferStock") {
+async function loadData(action: "manageStock" | "transferStock" | "recordPurchase") {
   await requireRole(...rolesFor(action));
   const [places, prods, balances] = await Promise.all([getPlaces(), getProducts({ activeOnly: true }), getBalances()]);
   const data = {
@@ -32,8 +32,8 @@ async function loadData(action: "manageStock" | "transferStock") {
  * brand (only when there is more than one), trade-type, type, grade. They offer only what existing,
  * switched-on products are made from (products are added in Catalogue, never by these forms).
  */
-export async function loadFormData() {
-  const { data } = await loadData("manageStock");
+export async function loadFormData(action: "manageStock" | "recordPurchase" = "recordPurchase") {
+  const { data } = await loadData(action);
   const lists = listsUsedBy(await getCatalogueLists(), data.products);
   return {
     ...data,

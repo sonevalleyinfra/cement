@@ -35,7 +35,7 @@ type PlaceOption = { key: string; kind: string; name: string };
 type Balance = { productId: string; placeKey: string; bags: number };
 
 const copy = {
-  purchase: { button: "Add purchase", note: "Supplier / note (optional)", done: "Purchase added." },
+  purchase: { button: "Add purchase", note: "Purchase source / note (optional)", done: "Purchase added." },
   opening: { button: "Set opening stock", note: "", done: "Opening stock set." },
   adjust: { button: "Save adjustment", note: "Note (optional)", done: "Adjustment saved." },
 } as const;
@@ -70,12 +70,22 @@ function SmallField({
   );
 }
 
-function NoteField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function NoteField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   const id = useId();
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} maxLength={200} />
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} maxLength={200} placeholder={placeholder} />
     </div>
   );
 }
@@ -322,7 +332,7 @@ export function StockForm({
             <SmallField label="Unloading (₹)" value={unloadingText} onChange={setUnloadingText} inputMode="decimal" maxLength={12} />
           </div>
           {landed !== null && <p className="tabular text-sm text-muted-foreground">Landed {formatINR(landed)} per bag</p>}
-          <NoteField label={copy.purchase.note} value={note} onChange={setNote} />
+          <NoteField label={copy.purchase.note} value={note} onChange={setNote} placeholder="e.g. Maihar Plant, Satna Depot, Supplier name" />
         </>
       )}
       {mode === "adjust" && (

@@ -18,9 +18,11 @@ export default async function StockPage() {
   const admin = isAdmin(session.user.role);
   const [products, balances] = await Promise.all([getProducts({ activeOnly: false }), getBalances()]);
   const tiles: { href: string; label: string; icon: LucideIcon }[] = [
+    ...(can(session.user.role, "recordPurchase")
+      ? [{ href: "/stock/purchase", label: "Purchase", icon: PackagePlus }]
+      : []),
     ...(admin
       ? [
-          { href: "/stock/purchase", label: "Purchase", icon: PackagePlus },
           { href: "/stock/opening", label: "Opening", icon: PackageOpen },
           { href: "/stock/adjust", label: "Adjust", icon: SlidersHorizontal },
         ]
