@@ -1,3 +1,5 @@
+import net from "node:net";
+if (net.setDefaultAutoSelectFamily) net.setDefaultAutoSelectFamily(false);
 /**
  * Applies pending SQL migrations from /drizzle to the database.
  * Runs on every container start (see docker-entrypoint.sh) and via `pnpm db:migrate`.
@@ -9,7 +11,7 @@ import postgres from "postgres";
 import { env } from "@/env";
 
 async function main() {
-  const client = postgres(env.DATABASE_URL, { max: 1, connect_timeout: 10, onnotice: () => {} });
+  const client = postgres(process.env.DATABASE_URL_UNPOOLED || env.DATABASE_URL, { max: 1, connect_timeout: 30, onnotice: () => {} });
   try {
     console.log("[migrate] Applying migrations from ./drizzle ...");
     await migrate(drizzle({ client }), { migrationsFolder: "drizzle" });

@@ -32,6 +32,7 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   manageSuppliers:   [Y, N, N, N, N, N],
   viewStock:         [Y, Y, Y, Y, N, N],
   manageStock:       [Y, N, N, N, N, N],
+  recordPurchase:    [Y, N, N, Y, N, N],
   transferStock:     [Y, N, N, Y, N, N],
   reverseStock:      [Y, N, N, N, N, N],
   viewRetailers:     [Y, Y, Y, Y, N, N],

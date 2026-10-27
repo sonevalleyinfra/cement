@@ -53,8 +53,13 @@ async function main() {
     console.log(`!! Not copied (they are LIVE keys in your test keys file): ${keys.refusedLive.join(", ")}. Run pnpm keys.`);
   }
 
-  try {
-    run("docker", ["info"]);
+  let env = readFileSync(".env", "utf8");
+  const dbUrl = readEnvValue(env, "DATABASE_URL") ?? "";
+  const isLocalDb = !dbUrl || dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1");
+
+  if (isLocalDb) {
+    try {
+      run("docker", ["info"]);
   } catch {
     console.error(`
 [dev] Docker is not running, and the local database needs it.
@@ -76,6 +81,9 @@ async function main() {
 
   console.log("==> Starting the local database");
   step("docker", [...COMPOSE, "up", "-d", "--wait"]);
+  } else {
+    console.log("==> Using remote database");
+  }
   step("pnpm", ["db:migrate"]);
   step("pnpm", ["db:seed"]);
 
@@ -83,7 +91,7 @@ async function main() {
 ==> Starting the app at http://localhost:3000  (Ctrl+C to stop)
     Emails are not sent on your computer: links are printed here instead.
 `);
-  const dev = spawnSync("pnpm", ["exec", "next", "dev"], { stdio: "inherit" });
+  const dev = spawnSync("pnpm", ["exec", "next", "dev"], { stdio: "inherit", shell: process.platform === "win32" });
   process.exit(dev.status ?? 0);
 }
 
