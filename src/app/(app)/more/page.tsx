@@ -158,7 +158,7 @@ export default async function MorePage() {
         {/* Roles Responsibilities summary */}
         <div className="mt-3 border-t border-foreground/6 pt-3">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-            Role Responsibility / ज़िम्मेदारी:
+            Role Responsibilities:
           </p>
           <div className="flex flex-col gap-1.5">
             {roles.length === 0 ? (
