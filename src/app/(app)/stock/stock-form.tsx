@@ -1,3 +1,5 @@
+"use client";
+
 export const DEFAULT_PURCHASE_SOURCES = [
   "RLJ Chunar",
   "Satna Plant",
@@ -6,8 +8,6 @@ export const DEFAULT_PURCHASE_SOURCES = [
   "Rake - Chaukhandi",
   "Other",
 ] as const;
-
-"use client";
 
 import { useRouter } from "next/navigation";
 import { type ComponentProps, useId, useState } from "react";
