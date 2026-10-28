@@ -47,21 +47,37 @@ export async function bagsAtPlace(tx: Tx, place: PlaceRef): Promise<number> {
 
 /**
  * The truck with this (already cleaned) number: made the first time it is typed, switched back on
- * if it was off.
+ * if it was off. Keeps the latest driver name and phone.
  */
-export async function truckByNumber(tx: Tx, number: string, actorId: string): Promise<string> {
+export async function truckByNumber(
+  tx: Tx,
+  number: string,
+  actorId: string,
+  driver?: { name?: string | null; phone?: string | null },
+): Promise<string> {
+  const cleanName = (driver?.name ?? "").trim().slice(0, 80);
+  const cleanPhone = (driver?.phone ?? "").trim().replace(/\D/g, "").slice(0, 15);
   const [made] = await tx
     .insert(vehicles)
-    .values({ number, driverName: "" })
+    .values({
+      number,
+      driverName: cleanName,
+      driverPhone: cleanPhone,
+    })
     .onConflictDoNothing({ target: vehicles.number })
     .returning({ id: vehicles.id });
   if (made) {
-    await writeAudit(tx, { actorId, entity: "vehicle", entityId: made.id, action: "create", details: { number } });
+    await writeAudit(tx, { actorId, entity: "vehicle", entityId: made.id, action: "create", details: { number, driverName: cleanName } });
     return made.id;
   }
   const [row] = await tx
     .update(vehicles)
-    .set({ active: true, updatedAt: new Date() })
+    .set({
+      active: true,
+      ...(cleanName ? { driverName: cleanName } : {}),
+      ...(cleanPhone ? { driverPhone: cleanPhone } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(vehicles.number, number))
     .returning({ id: vehicles.id });
   return row.id;

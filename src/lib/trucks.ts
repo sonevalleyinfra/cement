@@ -17,12 +17,25 @@ export type TruckRow = {
 
 /** Every vehicle in the system, with current loaded bags. Server-only. */
 export async function getTrucks(): Promise<TruckRow[]> {
+  const effectiveDriverName = sql<string>`coalesce(
+    nullif(${vehicles.driverName}, ''),
+    (select p.driver_name from purchases p where p.truck_number = ${vehicles.number} and p.driver_name <> '' order by p.created_at desc limit 1),
+    (select d.driver_name from dispatches d where d.vehicle_id = ${vehicles.id} and d.driver_name <> '' order by d.created_at desc limit 1),
+    ''
+  )`;
+  const effectiveDriverPhone = sql<string>`coalesce(
+    nullif(${vehicles.driverPhone}, ''),
+    (select p.driver_phone from purchases p where p.truck_number = ${vehicles.number} and p.driver_phone <> '' order by p.created_at desc limit 1),
+    (select d.driver_phone from dispatches d where d.vehicle_id = ${vehicles.id} and d.driver_phone <> '' order by d.created_at desc limit 1),
+    ''
+  )`;
+
   const rows = await db
     .select({
       id: vehicles.id,
       number: vehicles.number,
-      driverName: vehicles.driverName,
-      driverPhone: vehicles.driverPhone,
+      driverName: effectiveDriverName,
+      driverPhone: effectiveDriverPhone,
       active: vehicles.active,
       bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
     })
@@ -36,11 +49,24 @@ export async function getTrucks(): Promise<TruckRow[]> {
 
 /** Active trucks list for dropdowns and auto-fill. */
 export async function getActiveTrucks(): Promise<{ number: string; driverName: string; driverPhone: string }[]> {
+  const effectiveDriverName = sql<string>`coalesce(
+    nullif(${vehicles.driverName}, ''),
+    (select p.driver_name from purchases p where p.truck_number = ${vehicles.number} and p.driver_name <> '' order by p.created_at desc limit 1),
+    (select d.driver_name from dispatches d where d.vehicle_id = ${vehicles.id} and d.driver_name <> '' order by d.created_at desc limit 1),
+    ''
+  )`;
+  const effectiveDriverPhone = sql<string>`coalesce(
+    nullif(${vehicles.driverPhone}, ''),
+    (select p.driver_phone from purchases p where p.truck_number = ${vehicles.number} and p.driver_phone <> '' order by p.created_at desc limit 1),
+    (select d.driver_phone from dispatches d where d.vehicle_id = ${vehicles.id} and d.driver_phone <> '' order by d.created_at desc limit 1),
+    ''
+  )`;
+
   return db
     .select({
       number: vehicles.number,
-      driverName: vehicles.driverName,
-      driverPhone: vehicles.driverPhone,
+      driverName: effectiveDriverName,
+      driverPhone: effectiveDriverPhone,
     })
     .from(vehicles)
     .where(eq(vehicles.active, true))
