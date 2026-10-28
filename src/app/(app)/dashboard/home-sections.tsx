@@ -579,7 +579,7 @@ export function AdminHome() {
         <OwnerSuppliers />
       </Suspense>
       <Cards>
-        <Card index={4} href="/stock/purchase" title="Purchase" icon={PackagePlus} tone="orange" stats={[{ label: "Factory bill", value: "+ Purchase" }, { label: "History", value: "View" }]} />
+        <Card index={4} href="/stock/purchase" title="Purchase" icon={PackagePlus} tone="orange" stats={[]} />
         <Card index={5} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
         <Card index={6} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
       </Cards>

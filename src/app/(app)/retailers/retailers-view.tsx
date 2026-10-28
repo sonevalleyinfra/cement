@@ -737,34 +737,19 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
   return (
     <form onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label>Customer Type</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setCategory("retailer")}
-            className={cn(
-              "flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-colors cursor-pointer",
-              category === "retailer"
-                ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs"
-                : "border-border bg-background text-muted-foreground hover:border-foreground/30"
-            )}
-          >
-            <span className="text-sm">Retailer</span>
-            <span className="text-[11px] opacity-75">दुकानदार</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCategory("contractor")}
-            className={cn(
-              "flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-colors cursor-pointer",
-              category === "contractor"
-                ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs"
-                : "border-border bg-background text-muted-foreground hover:border-foreground/30"
-            )}
-          >
-            <span className="text-sm">Contractor</span>
-            <span className="text-[11px] opacity-75">ठेकेदार</span>
-          </button>
+        <Label>Customer type</Label>
+        <div className="flex gap-2">
+          {SHOP_CATEGORIES.filter((c) => c === "retailer" || c === "contractor").map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={category === c}
+              className={chipClass(category === c, "flex-1")}
+              onClick={() => setCategory(c)}
+            >
+              {SHOP_CATEGORY_LABELS[c]}
+            </button>
+          ))}
         </div>
       </div>
       <div className="flex flex-col gap-1.5">

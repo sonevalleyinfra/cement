@@ -294,6 +294,7 @@ export function StockForm({
             {purchaseSource === "Other" && (
               <Input
                 aria-label="Source name"
+                placeholder="Source name"
                 value={otherSource}
                 onChange={(e) => setOtherSource(e.target.value)}
                 maxLength={60}
