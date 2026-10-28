@@ -15,39 +15,49 @@ export type TruckRow = {
 
 /** Every vehicle in the system, with current loaded bags. Server-only. */
 export async function getTrucks(): Promise<TruckRow[]> {
-  const rows = await db
-    .select({
-      id: vehicles.id,
-      number: vehicles.number,
-      driverName: vehicles.driverName,
-      driverPhone: vehicles.driverPhone,
-      active: vehicles.active,
-      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
-    })
-    .from(vehicles)
-    .leftJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
-    .groupBy(vehicles.id, vehicles.number, vehicles.driverName, vehicles.driverPhone, vehicles.active)
-    .orderBy(asc(vehicles.number));
+  try {
+    const rows = await db
+      .select({
+        id: vehicles.id,
+        number: vehicles.number,
+        driverName: vehicles.driverName,
+        driverPhone: vehicles.driverPhone,
+        active: vehicles.active,
+        bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
+      })
+      .from(vehicles)
+      .leftJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
+      .groupBy(vehicles.id, vehicles.number, vehicles.driverName, vehicles.driverPhone, vehicles.active)
+      .orderBy(asc(vehicles.number));
 
-  return rows.map((r) => ({
-    ...r,
-    bags: Math.max(r.bags, 0),
-  }));
+    return rows.map((r) => ({
+      ...r,
+      bags: Math.max(r.bags, 0),
+    }));
+  } catch (error) {
+    console.error("getTrucks error:", error);
+    return [];
+  }
 }
 
 /** Active trucks list for dropdowns and auto-fill. */
 export async function getActiveTrucks(): Promise<{ number: string; driverName: string; driverPhone: string }[]> {
-  const rows = await db
-    .select({
-      number: vehicles.number,
-      driverName: vehicles.driverName,
-      driverPhone: vehicles.driverPhone,
-    })
-    .from(vehicles)
-    .where(eq(vehicles.active, true))
-    .orderBy(asc(vehicles.number));
+  try {
+    const rows = await db
+      .select({
+        number: vehicles.number,
+        driverName: vehicles.driverName,
+        driverPhone: vehicles.driverPhone,
+      })
+      .from(vehicles)
+      .where(eq(vehicles.active, true))
+      .orderBy(asc(vehicles.number));
 
-  return rows;
+    return rows;
+  } catch (error) {
+    console.error("getActiveTrucks error:", error);
+    return [];
+  }
 }
 
 export type TruckResult = { ok: true; id?: string } | { ok: false; error: string };

@@ -10,7 +10,7 @@ export type TruckInput = { number: string; driverName: string; driverPhone: stri
  * The quick truck form: number, driver, phone (purchase and move bags). The phone is required
  * unless `phoneOptional` (moving bags). With `fixedNumber` (a purchase into a truck already in the
  * list) the number is shown as text instead of typed.
- * Auto-fills driver name and phone when a known truck number is selected.
+ * Dropdown selector for known trucks with auto-fill, plus manual entry option.
  */
 export function TruckFields({
   value,
@@ -41,6 +41,8 @@ export function TruckFields({
     }
   }
 
+  const isKnownTruck = knownTrucks.some((t) => t.number === value.number);
+
   return (
     <div className="animate-in-up flex flex-col gap-4">
       {fixedNumber ? (
@@ -48,26 +50,56 @@ export function TruckFields({
           Truck <span className="tabular font-semibold text-foreground">{fixedNumber}</span>
         </p>
       ) : (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${id}-number`}>Truck number</Label>
-          <Input
-            id={`${id}-number`}
-            list={`${id}-truck-datalist`}
-            value={value.number}
-            onChange={(e) => onNumberChange(e.target.value)}
-            placeholder="e.g. UP65BT1234"
-            autoCapitalize="characters"
-            autoComplete="off"
-            maxLength={14}
-          />
+        <div className="flex flex-col gap-2">
           {knownTrucks.length > 0 && (
-            <datalist id={`${id}-truck-datalist`}>
-              {knownTrucks.map((t) => (
-                <option key={t.number} value={t.number}>
-                  {t.driverName ? `${t.driverName} (${t.driverPhone || "No phone"})` : t.number}
-                </option>
-              ))}
-            </datalist>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`${id}-truck-select`}>Select Truck (from Fleet)</Label>
+              <select
+                id={`${id}-truck-select`}
+                className="h-12 w-full rounded-xl border bg-background px-3 text-sm font-medium shadow-xs"
+                value={isKnownTruck ? value.number : value.number ? "__other__" : ""}
+                onChange={(e) => {
+                  const sel = e.target.value;
+                  if (sel === "__other__") {
+                    onChange({ ...value, number: "" });
+                  } else if (sel) {
+                    const match = knownTrucks.find((t) => t.number === sel);
+                    if (match) {
+                      onChange({
+                        number: match.number,
+                        driverName: match.driverName || value.driverName,
+                        driverPhone: match.driverPhone || value.driverPhone,
+                      });
+                    }
+                  }
+                }}
+              >
+                <option value="">-- Choose Truck ({knownTrucks.length} available) --</option>
+                {knownTrucks.map((t) => (
+                  <option key={t.number} value={t.number}>
+                    🚛 {t.number} {t.driverName ? `· ${t.driverName}` : ""} {t.driverPhone ? `(${t.driverPhone})` : ""}
+                  </option>
+                ))}
+                <option value="__other__">✏️ + Enter New / Other Truck Number</option>
+              </select>
+            </div>
+          )}
+
+          {(!isKnownTruck || knownTrucks.length === 0) && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`${id}-number`}>
+                {knownTrucks.length > 0 ? "Or Type Truck Number" : "Truck Number"}
+              </Label>
+              <Input
+                id={`${id}-number`}
+                value={value.number}
+                onChange={(e) => onNumberChange(e.target.value)}
+                placeholder="e.g. UP65BT1234"
+                autoCapitalize="characters"
+                autoComplete="off"
+                maxLength={14}
+              />
+            </div>
           )}
         </div>
       )}

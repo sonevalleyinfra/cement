@@ -21,6 +21,7 @@ import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
 import { toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
@@ -324,19 +325,48 @@ export function StockForm({
               </Button>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <SelectField
-              label="Purchase Source / Plant"
-              value={purchaseSource}
-              onChange={setPurchaseSource}
-              options={DEFAULT_PURCHASE_SOURCES.map((s) => ({ value: s, label: s }))}
-            />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label>Purchase Source / Plant</Label>
+              <span className="text-xs text-muted-foreground font-normal">Select source</span>
+            </div>
+            {/* Quick 1-tap chips for plant / depot */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {DEFAULT_PURCHASE_SOURCES.map((source) => {
+                const isSelected = purchaseSource === source;
+                const icon =
+                  source.includes("Plant") || source.includes("Chunar")
+                    ? "🏭"
+                    : source.includes("Rake")
+                    ? "🚂"
+                    : source === "Other"
+                    ? "✏️"
+                    : "🏬";
+                return (
+                  <button
+                    key={source}
+                    type="button"
+                    onClick={() => setPurchaseSource(source)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-xl border p-2.5 text-left text-sm font-medium transition-all cursor-pointer",
+                      isSelected
+                        ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs ring-1 ring-primary"
+                        : "border-border bg-background text-foreground hover:border-foreground/30"
+                    )}
+                  >
+                    <span className="text-base shrink-0">{icon}</span>
+                    <span className="truncate">{source}</span>
+                  </button>
+                );
+              })}
+            </div>
             {purchaseSource === "Other" && (
               <Input
-                placeholder="Enter custom plant or depot name"
+                placeholder="Enter plant / depot / source name"
                 value={otherSource}
                 onChange={(e) => setOtherSource(e.target.value)}
                 maxLength={60}
+                autoFocus
               />
             )}
           </div>
