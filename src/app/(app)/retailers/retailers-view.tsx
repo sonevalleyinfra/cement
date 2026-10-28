@@ -131,7 +131,47 @@ export function RetailersView({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Retailers" back={fromHome ? "/retailers" : undefined} />
+      <PageHeader title="Retailers & Contractors" back={fromHome ? "/retailers" : undefined} />
+
+      {/* Category filter tabs */}
+      <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1">
+        <button
+          type="button"
+          onClick={() => setCategoryFilter("all")}
+          className={cn(
+            "rounded-lg py-2 text-xs font-semibold transition-all",
+            categoryFilter === "all"
+              ? "bg-background text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          All ({rows.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setCategoryFilter("retailer")}
+          className={cn(
+            "rounded-lg py-2 text-xs font-semibold transition-all",
+            categoryFilter === "retailer"
+              ? "bg-background text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Retailers ({rows.filter((r) => (r.category ?? "retailer") === "retailer").length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setCategoryFilter("contractor")}
+          className={cn(
+            "rounded-lg py-2 text-xs font-semibold transition-all",
+            categoryFilter === "contractor"
+              ? "bg-background text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Contractors ({rows.filter((r) => r.category === "contractor").length})
+        </button>
+      </div>
       {rows.length > 0 && (
         <Input
           type="search"
@@ -155,7 +195,21 @@ export function RetailersView({
                 title={r.name}
                 onClick={() => setDetailId(r.id)}
                 className={r.active ? undefined : "opacity-60"}
-                top={r.active ? undefined : <StatusChip status="cancelled" label="Off" />}
+                top={
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                        r.category === "contractor"
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                          : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                      )}
+                    >
+                      {r.category === "contractor" ? "Contractor" : "Retailer"}
+                    </span>
+                    {!r.active && <StatusChip status="cancelled" label="Off" />}
+                  </div>
+                }
                 bottom={
                   <div className="flex w-full min-w-0 flex-col gap-0.5 text-xs text-muted-foreground">
                     <span>
@@ -711,6 +765,37 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
 
   return (
     <form onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <Label>Customer Type</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setCategory("retailer")}
+            className={cn(
+              "flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all cursor-pointer",
+              category === "retailer"
+                ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs"
+                : "border-border bg-background text-muted-foreground hover:border-foreground/30"
+            )}
+          >
+            <span className="text-sm">Retailer</span>
+            <span className="text-[11px] opacity-75">दुकानदार</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCategory("contractor")}
+            className={cn(
+              "flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all cursor-pointer",
+              category === "contractor"
+                ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs"
+                : "border-border bg-background text-muted-foreground hover:border-foreground/30"
+            )}
+          >
+            <span className="text-sm">Contractor</span>
+            <span className="text-[11px] opacity-75">ठेकेदार</span>
+          </button>
+        </div>
+      </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="add-name">Name</Label>
         <Input id="add-name" name="name" autoComplete="off" />
