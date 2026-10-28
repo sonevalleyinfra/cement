@@ -42,10 +42,10 @@ export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];
 export const MODE_LABELS: Record<string, string> = { cash: "Cash", online: "Online" };
 
 /** How an online payment was sent. */
-export const ONLINE_METHODS = ["upi", "neft", "rtgs", "imps"] as const;
+export const ONLINE_METHODS = ["upi", "neft", "rtgs", "imps", "cheque"] as const;
 export type OnlineMethod = (typeof ONLINE_METHODS)[number];
 
-export const ONLINE_METHOD_LABELS: Record<string, string> = { upi: "UPI", neft: "NEFT", rtgs: "RTGS", imps: "IMPS" };
+export const ONLINE_METHOD_LABELS: Record<string, string> = { upi: "UPI", neft: "NEFT", rtgs: "RTGS", imps: "IMPS", cheque: "Cheque" };
 
 export function isOnlineMethod(value: unknown): value is OnlineMethod {
   return typeof value === "string" && (ONLINE_METHODS as readonly string[]).includes(value);
@@ -95,12 +95,12 @@ export function normaliseUtr(utr: string | null | undefined): string {
 export const MAX_UTR = 40;
 
 /** Online needs a UTR / reference; cash needs nothing. Returns an error or null. */
-export function validateModeDetails(mode: string, d: { utr?: string | null }): string | null {
+export function validateModeDetails(mode: string, d: { utr?: string | null; method?: string | null }): string | null {
   if (mode === "cash") return null;
   if (mode === "online") {
     const utr = normaliseUtr(d.utr);
-    if (!utr) return "Enter the UTR / reference number.";
-    if (utr.length > MAX_UTR) return "That UTR is too long.";
+    if (!utr) return d.method === "cheque" ? "Enter the Cheque number." : "Enter the UTR / reference number.";
+    if (utr.length > MAX_UTR) return d.method === "cheque" ? "That Cheque number is too long." : "That UTR is too long.";
     return null;
   }
   return "Pick a payment mode: cash or online.";
@@ -138,7 +138,7 @@ export const UTR_TAKEN = "This UTR is already recorded.";
 
 /* ---------- Online details ---------- */
 
-export const PICK_METHOD = "Pick UPI, NEFT, RTGS or IMPS.";
+export const PICK_METHOD = "Pick UPI, NEFT, RTGS, IMPS or Cheque.";
 export const PICK_ACCOUNT = "Pick the account it came into.";
 
 /** Online needs a method and the account it came into; the payer name is optional. Returns an error or null. */
@@ -215,6 +215,9 @@ export type ReceiptRequest = {
   onlineMethod?: unknown;
   bankAccountId?: unknown;
   payerName?: unknown;
+  proofImage?: unknown;
+  chequeDate?: unknown;
+  chequeBank?: unknown;
   backdateReasonCode?: unknown;
   backdateNote?: unknown;
 };
@@ -230,6 +233,9 @@ export type ReceiptPlan =
       onlineMethod: OnlineMethod | null;
       bankAccountId: string | null;
       payerName: string;
+      proofImage: string | null;
+      chequeDate: string | null;
+      chequeBank: string | null;
       receivedOn: string;
       /** Set when an admin picked a day more than 2 days back. */
       backdate: Backdate | null;
@@ -252,6 +258,9 @@ export function planReceipt(req: ReceiptRequest): ReceiptPlan {
   }
   const note = typeof req.note === "string" ? req.note.trim() : "";
   if (note.length > MAX_REASON) return { ok: false, error: `Keep the note under ${MAX_REASON} characters.` };
+  const proofImage = typeof req.proofImage === "string" && req.proofImage.trim() ? req.proofImage.trim() : null;
+  const chequeDate = typeof req.chequeDate === "string" && req.chequeDate.trim() ? req.chequeDate.trim() : null;
+  const chequeBank = typeof req.chequeBank === "string" && req.chequeBank.trim() ? req.chequeBank.trim().slice(0, 80) : null;
   const date = checkReceivedOn(req.role, req.receivedOn, req.today, { code: req.backdateReasonCode, note: req.backdateNote });
   if (!date.ok) return date;
   const when = { receivedOn: date.receivedOn, backdate: date.backdate };
@@ -264,6 +273,9 @@ export function planReceipt(req: ReceiptRequest): ReceiptPlan {
       onlineMethod: req.onlineMethod as OnlineMethod,
       bankAccountId: req.bankAccountId as string,
       payerName: cleanPayerName(req.payerName),
+      proofImage,
+      chequeDate: req.onlineMethod === "cheque" ? chequeDate : null,
+      chequeBank: req.onlineMethod === "cheque" ? chequeBank : null,
       ...when,
       ledger: null,
       walletPaise: 0,
@@ -277,6 +289,9 @@ export function planReceipt(req: ReceiptRequest): ReceiptPlan {
     onlineMethod: null,
     bankAccountId: null,
     payerName: "",
+    proofImage,
+    chequeDate: null,
+    chequeBank: null,
     ...when,
     ledger: { retailerId: req.retailerId, kind: "receipt_credit", amountPaise: -req.totalPaise },
     walletPaise: req.totalPaise,

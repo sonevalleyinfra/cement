@@ -309,6 +309,13 @@
       "when": 1792858680880,
       "tag": "0043_reversals",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793200000000,
+      "tag": "0044_payment_proof_and_cheque",
+      "breakpoints": true
     }
   ]
 }

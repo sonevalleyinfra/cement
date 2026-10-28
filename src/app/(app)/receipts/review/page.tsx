@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { FilterTabs } from "@/components/app/filter-tabs";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
+import { ProofModal } from "@/components/app/proof-modal";
 import { db } from "@/db";
 import { bankAccounts, receipts, retailers, user as users } from "@/db/schema";
 import { bankAccountLabel } from "@/lib/bank-account-rules";
@@ -43,6 +44,9 @@ export default async function ReviewPage({
       accountName: bankAccounts.name,
       accountLast4: bankAccounts.last4,
       payerName: receipts.payerName,
+      proofImage: receipts.proofImage,
+      chequeDate: receipts.chequeDate,
+      chequeBank: receipts.chequeBank,
       receivedOn: receipts.receivedOn,
       recorder: users.name,
       createdAt: receipts.createdAt,
@@ -81,35 +85,50 @@ export default async function ReviewPage({
                   </span>
                 }
                 bottom={
-                  <div className="flex w-full flex-col gap-2">
+                  <div className="flex w-full flex-col gap-2.5">
                     <div className="flex items-end justify-between gap-2">
                       <span className="text-sm">
-                        UTR <span className="tabular font-semibold">{r.utr}</span>
+                        {r.onlineMethod === "cheque" ? "Cheque #" : "UTR "}{" "}
+                        <span className="tabular font-semibold">{r.utr}</span>
                       </span>
                       <span className="tabular text-lg font-bold">{formatINR(r.totalPaise, { hidePaise: true })}</span>
                     </div>
-                    {(r.onlineMethod || r.accountName) && (
-                      <span className="text-sm">
+
+                    {(r.onlineMethod || r.accountName || r.chequeBank || r.chequeDate) && (
+                      <span className="text-sm text-foreground/90">
                         {[
                           r.onlineMethod ? (ONLINE_METHOD_LABELS[r.onlineMethod] ?? r.onlineMethod) : "",
-                          r.accountName ? bankAccountLabel({ name: r.accountName, last4: r.accountLast4 }) : "",
+                          r.chequeBank ? `Bank: ${r.chequeBank}` : "",
+                          r.chequeDate ? `Date: ${r.chequeDate}` : "",
+                          r.accountName ? `Into: ${bankAccountLabel({ name: r.accountName, last4: r.accountLast4 })}` : "",
                         ]
                           .filter(Boolean)
                           .join(" · ")}
                       </span>
                     )}
+
                     {/* The top line already has the entry day: show Received only when it differs. */}
                     {(r.receivedOn !== toISTDateKey(r.createdAt) || r.payerName) && (
                       <span className="text-xs text-muted-foreground">
                         {[
                           r.receivedOn !== toISTDateKey(r.createdAt) ? `Received ${formatDate(istStartOf(r.receivedOn))}` : "",
-                          r.payerName ?? "",
+                          r.payerName ? `Payer: ${r.payerName}` : "",
                         ]
                           .filter(Boolean)
                           .join(" · ")}
                       </span>
                     )}
                     {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
+
+                    {r.proofImage && (
+                      <div className="pt-0.5">
+                        <ProofModal
+                          imageUrl={r.proofImage}
+                          title={r.onlineMethod === "cheque" ? "Cheque Photo" : "Payment Proof"}
+                        />
+                      </div>
+                    )}
+
                     <ReasonAction receiptId={r.id} action="reject" inline primary={<VerifyButton receiptId={r.id} />} />
                   </div>
                 }

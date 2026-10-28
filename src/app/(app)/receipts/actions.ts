@@ -92,6 +92,9 @@ export async function saveReceipt(input: {
   onlineMethod?: string | null;
   bankAccountId?: string | null;
   payerName?: string;
+  proofImage?: string | null;
+  chequeDate?: string | null;
+  chequeBank?: string | null;
   backdateReasonCode?: string | null;
   backdateNote?: string;
   requestId: string;
@@ -114,6 +117,9 @@ export async function saveReceipt(input: {
     onlineMethod: input.onlineMethod,
     bankAccountId: input.bankAccountId,
     payerName: input.payerName,
+    proofImage: input.proofImage,
+    chequeDate: input.chequeDate,
+    chequeBank: input.chequeBank,
     backdateReasonCode: input.backdateReasonCode,
     backdateNote: input.backdateNote,
   });
@@ -154,6 +160,9 @@ export async function saveReceipt(input: {
           onlineMethod: plan.onlineMethod,
           bankAccountId: plan.bankAccountId,
           payerName: plan.payerName,
+          proofImage: plan.proofImage,
+          chequeDate: plan.chequeDate,
+          chequeBank: plan.chequeBank,
           receivedOn: plan.receivedOn,
           backdateReasonCode: plan.backdate?.code ?? null,
           backdateNote: plan.backdate?.note ?? "",
@@ -175,6 +184,8 @@ export async function saveReceipt(input: {
           ...(plan.utr ? { utr: plan.utr } : {}),
           receivedOn: plan.receivedOn,
           ...(plan.onlineMethod ? { onlineMethod: plan.onlineMethod, bankAccountId: plan.bankAccountId } : {}),
+          ...(plan.chequeDate ? { chequeDate: plan.chequeDate, chequeBank: plan.chequeBank } : {}),
+          ...(plan.proofImage ? { hasProof: true } : {}),
           ...(plan.backdate
             ? { backdateReasonCode: plan.backdate.code, ...(plan.backdate.note ? { backdateNote: plan.backdate.note } : {}) }
             : {}),

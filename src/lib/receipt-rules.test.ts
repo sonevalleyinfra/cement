@@ -100,6 +100,9 @@ describe("planReceipt", () => {
       onlineMethod: null,
       bankAccountId: null,
       payerName: "",
+      proofImage: null,
+      chequeDate: null,
+      chequeBank: null,
       receivedOn: TODAY,
       backdate: null,
       ledger: { retailerId: "R", kind: "receipt_credit", amountPaise: -10000000 },
@@ -123,6 +126,9 @@ describe("planReceipt", () => {
       onlineMethod: "upi",
       bankAccountId: ACCOUNT,
       payerName: "Ravi Kumar",
+      proofImage: null,
+      chequeDate: null,
+      chequeBank: null,
       receivedOn: TODAY,
       backdate: null,
       ledger: null,
@@ -131,8 +137,8 @@ describe("planReceipt", () => {
   });
   it("online needs a UTR", () => expect(planReceipt({ ...online, utr: "" }).ok).toBe(false));
   it("online needs a method and the account it came into", () => {
-    expect(planReceipt({ ...online, onlineMethod: undefined })).toEqual({ ok: false, error: "Pick UPI, NEFT, RTGS or IMPS." });
-    expect(planReceipt({ ...online, onlineMethod: "cheque" })).toEqual({ ok: false, error: "Pick UPI, NEFT, RTGS or IMPS." });
+    expect(planReceipt({ ...online, onlineMethod: undefined })).toEqual({ ok: false, error: "Pick UPI, NEFT, RTGS, IMPS or Cheque." });
+    expect(planReceipt({ ...online, onlineMethod: "cheque" }).ok).toBe(true);
     expect(planReceipt({ ...online, bankAccountId: null })).toEqual({ ok: false, error: "Pick the account it came into." });
     expect(planReceipt({ ...online, bankAccountId: "sbi" })).toEqual({ ok: false, error: "Pick the account it came into." });
     for (const m of ONLINE_METHODS) expect(planReceipt({ ...online, onlineMethod: m }).ok).toBe(true);
