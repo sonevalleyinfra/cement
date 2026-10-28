@@ -1,3 +1,12 @@
+export const DEFAULT_PURCHASE_SOURCES = [
+  "RLJ Chunar",
+  "Satna Plant",
+  "Jagatpur Depo",
+  "Harhua Depo",
+  "Rake - Chaukhandi",
+  "Other",
+] as const;
+
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -101,6 +110,7 @@ export function StockForm({
   products,
   balances,
   lists,
+  trucks = [],
 }: {
   mode: keyof typeof copy;
   places: PlaceOption[];
@@ -108,6 +118,7 @@ export function StockForm({
   balances: Balance[];
   /** Brands, types and grades the products are made from. */
   lists: Lists;
+  trucks?: { number: string; driverName: string; driverPhone: string }[];
 }) {
   const router = useRouter();
   const { pending, run } = useSubmit();
@@ -128,6 +139,10 @@ export function StockForm({
   const [unloadingText, setUnloadingText] = useState("");
   // The truck and driver of a purchase: nothing about the driver is saved for next time.
   const [truck, setTruck] = useState(NO_TRUCK);
+  const [purchaseMode, setPurchaseMode] = useState<"depot" | "direct_site">("depot");
+  const [purchaseSource, setPurchaseSource] = useState<string>("RLJ Chunar");
+  const [otherSource, setOtherSource] = useState("");
+  const [siteName, setSiteName] = useState("");
   const purchase = mode === "purchase";
   const newTruck = purchase && place === NEW_TRUCK_PLACE;
   // A purchase into a truck already in the list keeps that truck's number.
@@ -197,7 +212,7 @@ export function StockForm({
       place,
       truck: purchase ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
-      note,
+      note: purchase ? [`Source: ${purchaseSource === "Other" ? (otherSource.trim() || "Other") : purchaseSource}`, purchaseMode === "direct_site" ? `Site: ${siteName.trim() || "Direct Site"}` : "Depot Stock", note.trim()].filter(Boolean).join(" · ") : note,
       ...(mode === "adjust" ? { reason: reason ?? "" } : {}),
       ...(purchase
         ? {
@@ -290,7 +305,54 @@ export function StockForm({
       {!newTruck && <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>}
       {purchase && (
         <>
-          <TruckFields value={truck} onChange={setTruck} fixedNumber={placeTruck} />
+          <div className="flex flex-col gap-1.5">
+            <Label>Purchase Mode</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={purchaseMode === "depot" ? "default" : "outline"}
+                onClick={() => setPurchaseMode("depot")}
+              >
+                Depot / Godown Stock
+              </Button>
+              <Button
+                type="button"
+                variant={purchaseMode === "direct_site" ? "default" : "outline"}
+                onClick={() => setPurchaseMode("direct_site")}
+              >
+                Sales Order (Direct Site)
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <SelectField
+              label="Purchase Source / Plant"
+              value={purchaseSource}
+              onChange={setPurchaseSource}
+              options={DEFAULT_PURCHASE_SOURCES.map((s) => ({ value: s, label: s }))}
+            />
+            {purchaseSource === "Other" && (
+              <Input
+                placeholder="Enter custom plant or depot name"
+                value={otherSource}
+                onChange={(e) => setOtherSource(e.target.value)}
+                maxLength={60}
+              />
+            )}
+          </div>
+          {purchaseMode === "direct_site" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="site-name">Customer Site Name / Location</Label>
+              <Input
+                id="site-name"
+                placeholder="e.g. Rameshwaram Project, Lanka"
+                value={siteName}
+                onChange={(e) => setSiteName(e.target.value)}
+                maxLength={100}
+              />
+            </div>
+          )}
+          <TruckFields value={truck} onChange={setTruck} fixedNumber={placeTruck} knownTrucks={trucks} />
           <div className="grid grid-cols-2 gap-3">
             <SmallField label="Invoice no." value={invoiceNo} onChange={setInvoiceNo} maxLength={60} />
             <SmallField label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} max={today} />

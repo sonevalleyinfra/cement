@@ -39,6 +39,7 @@ const looks: Record<string, { icon: LucideIcon; tone: Tone }> = {
   "/approvals": { icon: BadgeCheck, tone: "moss" },
   "/stock": { icon: Package, tone: "blue" },
   "/dispatch": { icon: Truck, tone: "blue" },
+  "/trucks": { icon: Truck, tone: "blue" },
   "/godowns": { icon: Warehouse, tone: "blue" },
   "/catalogue": { icon: Tags, tone: "blue" },
   "/users": { icon: Users, tone: "slate" },

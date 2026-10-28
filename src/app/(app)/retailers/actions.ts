@@ -226,6 +226,7 @@ export async function addRetailer(form: {
   phone: string;
   place: string;
   salesRepId: string;
+  category?: string;
 }): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
   const check = validateRetailer(form ?? {});
@@ -240,7 +241,7 @@ export async function addRetailer(form: {
     await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(retailers)
-        .values({ name, phone, place, salesRepId: rep.id })
+        .values({ name, phone, place, salesRepId: rep.id, category: form?.category && (form.category === "contractor" || form.category === "retailer") ? form.category : "retailer" })
         .returning({ id: retailers.id });
       await writeAudit(tx, {
         actorId: session.user.id,

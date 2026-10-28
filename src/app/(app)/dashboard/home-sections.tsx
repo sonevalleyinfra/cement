@@ -7,6 +7,7 @@ import {
   ClipboardList,
   History,
   Package,
+  PackagePlus,
   Receipt,
   Store,
   TriangleAlert,
@@ -231,7 +232,7 @@ export async function LogisticsHome() {
     <Cards>
       <Card index={0} href="/dispatch" title="Dispatch" icon={Truck} tone="blue" stats={[{ label: "Ready", value: num(s.ready) }, { label: "Partly sent", value: num(s.partly) }]} note={ageNote(s.oldestToDispatch, now)} />
       <Card
-        index={1}
+        index={2}
         href="/stock"
         title="Godown stock"
         icon={Warehouse}
@@ -240,12 +241,12 @@ export async function LogisticsHome() {
         note={{ text: `Cover ${cover === null ? "—" : daysText(cover)}`, tone: coverTone(cover) }}
       />
       {s.trucks.length === 0 ? (
-        <Card index={2} href="/stock" title="Truck stock" icon={Package} tone="blue" stats={[{ label: "Loaded trucks", value: "0" }]} />
+        <Card index={3} href="/stock" title="Truck stock" icon={Package} tone="blue" stats={[{ label: "Loaded trucks", value: "0" }]} />
       ) : (
         s.trucks.map((t, i) => (
           <Card
             key={t.truck}
-            index={i + 2}
+            index={i + 3}
             href="/stock"
             title={`Truck ${t.truck}`}
             icon={Truck}
@@ -578,6 +579,7 @@ export function AdminHome() {
         <OwnerSuppliers />
       </Suspense>
       <Cards>
+        <Card index={4} href="/stock/purchase" title="Purchase" icon={PackagePlus} tone="orange" stats={[{ label: "Factory bill", value: "+ Purchase" }, { label: "History", value: "View" }]} />
         <Card index={5} href="/reports" title="Reports" icon={ChartColumn} tone="orange" stats={[]} />
         <Card index={6} href="/activity" title="Activity" icon={History} tone="slate" stats={[]} />
       </Cards>

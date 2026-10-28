@@ -15,7 +15,7 @@ export default async function DispatchPage() {
   const { user } = await requireRole(...rolesFor("dispatch"));
 
   // Every approved or partly dispatched order: any logistics person may send it.
-  const [rows, balances, recent] = await Promise.all([
+  const [rows, balances, recent, allVehicles] = await Promise.all([
     db
       .select({
         id: orders.id,
@@ -49,6 +49,7 @@ export default async function DispatchPage() {
       .where(gt(dispatches.bags, 0))
       .orderBy(desc(dispatches.createdAt))
       .limit(30),
+    db.select({ truck: vehicles.number, driverName: vehicles.driverName, driverPhone: vehicles.driverPhone }).from(vehicles).where(eq(vehicles.active, true)),
   ]);
   // The earliest "needed by" first (none last), then the oldest order first.
   const today = toISTDateKey(new Date());

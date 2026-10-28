@@ -3,16 +3,13 @@
  * them for its CHECK constraints (src/db/schema/retailers.ts).
  */
 
-/** What kind of buyer a shop is. */
-export const SHOP_CATEGORIES = ["retailer", "sub_dealer", "contractor", "builder", "institution"] as const;
+/** What kind of buyer a shop is: Retailer (shop owner) or Contractor (builder/site contractor). */
+export const SHOP_CATEGORIES = ["retailer", "contractor"] as const;
 export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
 
 export const SHOP_CATEGORY_LABELS: Record<ShopCategory, string> = {
   retailer: "Retailer",
-  sub_dealer: "Sub-dealer",
   contractor: "Contractor",
-  builder: "Builder",
-  institution: "Institution",
 };
 
 /**

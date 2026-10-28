@@ -122,9 +122,10 @@ export function RetailersView({
 }) {
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "retailer" | "contractor">("all");
   const [adding, setAdding] = useState(false);
   const detail = rows.find((r) => r.id === detailId) ?? null;
-  const shown = rows.filter((r) => matchesRetailerSearch(r, query));
+  const shown = rows.filter((r) => categoryFilter === "all" || (r.category ?? "retailer") === categoryFilter).filter((r) => matchesRetailerSearch(r, query));
   // Opened from a Home shortcut: back goes to the full list, and an empty list reads "None left".
   const fromHome = onlyNoRep || onlyNoLimit;
 
@@ -684,6 +685,7 @@ function ShopDetail({
 
 function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void }) {
   const [rep, setRep] = useState("");
+  const [category, setCategory] = useState<string>("retailer");
   // The text fields are read with FormData, so the form's onInput clears the error.
   const { error, setError, clearError } = useFormError();
   const [pending, start] = useTransition();
@@ -700,6 +702,7 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
         phone: String(f.get("phone") ?? ""),
         place: String(f.get("place") ?? ""),
         salesRepId: rep,
+        category,
       });
       if (res.ok) onDone();
       else setError(res.error);

@@ -92,6 +92,16 @@ export function DispatchView({
     setAutoTruck(next.autoFilled);
   }
 
+  function onTruckChange(val: string) {
+    const clean = val.toUpperCase().replace(/\s+/g, "");
+    setTruck(clean);
+    const match = truckChips.find((c) => c.truck.toUpperCase().replace(/\s+/g, "") === clean);
+    if (match) {
+      setDriverName(match.driverName);
+      setDriverPhone(match.driverPhone);
+    }
+  }
+
   /** A chip fills the truck number and the driver; a number filled this way is a typed one (it stays). */
   function pickChip(c: TruckChip) {
     setTruck(c.truck);
