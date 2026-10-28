@@ -49,7 +49,7 @@ export default async function Page() {
                 {lost > 0 && (
                   <div className="flex flex-col gap-2 pt-1">
                     <p className="tabular text-sm">
-                      Short {formatCount(r.shortBags)} · Burst {formatCount(r.burstBags)} · Claim{" "}
+                      Short {formatCount(r.shortBags)} · Damage {formatCount(r.burstBags)} · Claim{" "}
                       {formatINR(claimValuePaise(lost, unitCost))}
                     </p>
                     <div className="flex items-center justify-between gap-2">

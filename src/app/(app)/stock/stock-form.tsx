@@ -44,7 +44,7 @@ type PlaceOption = { key: string; kind: string; name: string };
 type Balance = { productId: string; placeKey: string; bags: number };
 
 const copy = {
-  purchase: { button: "Add purchase", note: "Purchase source / note (optional)", done: "Purchase added." },
+  purchase: { button: "Add purchase", note: "Note (optional)", done: "Purchase added." },
   opening: { button: "Set opening stock", note: "", done: "Opening stock set." },
   adjust: { button: "Save adjustment", note: "Note (optional)", done: "Adjustment saved." },
 } as const;
@@ -135,8 +135,8 @@ export function StockForm({
   const [invoiceDate, setInvoiceDate] = useState(today);
   const [shortText, setShortText] = useState("");
   const [burstText, setBurstText] = useState("");
-  const [freightText, setFreightText] = useState("");
-  const [unloadingText, setUnloadingText] = useState("");
+
+
   // The truck and driver of a purchase: nothing about the driver is saved for next time.
   const [truck, setTruck] = useState(NO_TRUCK);
   const [purchaseMode, setPurchaseMode] = useState<"depot" | "direct_site">("depot");
@@ -161,8 +161,8 @@ export function StockForm({
     invoiceDate,
     shortText,
     burstText,
-    freightText,
-    unloadingText,
+
+
     truck,
   ]);
 
@@ -176,13 +176,13 @@ export function StockForm({
   const bags = Number(digits || 0);
   const costPaise = parseRupeesToPaise(costText);
   const received = bags - Number(shortText || 0) - Number(burstText || 0);
-  const freightPaise = optionalPaise(freightText);
-  const unloadingPaise = optionalPaise(unloadingText);
+
+
   const costOk = costPaise !== null && costPaise >= 1;
-  const landed =
-    purchase && costOk && received >= 1 && freightPaise !== null && unloadingPaise !== null
-      ? landedUnitCostPaise({ unitCostPaise: costPaise, freightPaise, unloadingPaise, receivedBags: received })
-      : null;
+  const landed = null; //
+
+
+
 
   const why = mode === "adjust" ? reasonHint("stock", reason, note) : null;
   const hint = firstMissing([
@@ -197,8 +197,8 @@ export function StockForm({
     [purchase && received < 1, "Received bags must be more than 0"],
     [why !== null, why ?? ""],
     [purchase && !costOk, "Enter the cost per bag"],
-    [purchase && freightPaise === null, "Enter the freight in rupees"],
-    [purchase && unloadingPaise === null, "Enter the unloading in rupees"],
+
+
   ]);
 
   function submit() {
@@ -221,8 +221,8 @@ export function StockForm({
             invoiceDate,
             shortBags: Number(shortText || 0),
             burstBags: Number(burstText || 0),
-            freightPaise: freightPaise ?? undefined,
-            unloadingPaise: unloadingPaise ?? undefined,
+
+
           }
         : {}),
     };
@@ -242,8 +242,8 @@ export function StockForm({
           setInvoiceDate(today);
           setShortText("");
           setBurstText("");
-          setFreightText("");
-          setUnloadingText("");
+
+
           setTruck(NO_TRUCK);
           router.refresh();
         } else setError(res.error);
@@ -353,6 +353,7 @@ export function StockForm({
             </div>
           )}
           <TruckFields value={truck} onChange={setTruck} fixedNumber={placeTruck} knownTrucks={trucks} />
+
           <div className="grid grid-cols-2 gap-3">
             <SmallField label="Invoice no." value={invoiceNo} onChange={setInvoiceNo} maxLength={60} />
             <SmallField label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} max={today} />
@@ -384,17 +385,13 @@ export function StockForm({
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
       {purchase && (
         <>
+
           <div className="grid grid-cols-2 gap-3">
             <SmallField label="Short" value={shortText} onChange={(v) => setShortText(bagDigits(v))} inputMode="numeric" />
-            <SmallField label="Burst" value={burstText} onChange={(v) => setBurstText(bagDigits(v))} inputMode="numeric" />
+            <SmallField label="Damage" value={burstText} onChange={(v) => setBurstText(bagDigits(v))} inputMode="numeric" />
           </div>
           <p className="tabular text-sm text-muted-foreground">Received {bagsText(Math.max(received, 0))}</p>
-          <div className="grid grid-cols-2 gap-3">
-            <SmallField label="Freight (₹)" value={freightText} onChange={setFreightText} inputMode="decimal" maxLength={12} />
-            <SmallField label="Unloading (₹)" value={unloadingText} onChange={setUnloadingText} inputMode="decimal" maxLength={12} />
-          </div>
-          {landed !== null && <p className="tabular text-sm text-muted-foreground">Landed {formatINR(landed)} per bag</p>}
-          <NoteField label={copy.purchase.note} value={note} onChange={setNote} placeholder="e.g. Maihar Plant, Satna Depot, Supplier name" />
+          <NoteField label={copy.purchase.note} value={note} onChange={setNote} placeholder="e.g. Additional remarks or memo" />
         </>
       )}
       {mode === "adjust" && (
