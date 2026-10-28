@@ -53,7 +53,7 @@ async function main() {
     console.log(`!! Not copied (they are LIVE keys in your test keys file): ${keys.refusedLive.join(", ")}. Run pnpm keys.`);
   }
 
-  let env = readFileSync(".env", "utf8");
+  const env = readFileSync(".env", "utf8");
   const dbUrl = readEnvValue(env, "DATABASE_URL") ?? "";
   const isLocalDb = !dbUrl || dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1");
 
