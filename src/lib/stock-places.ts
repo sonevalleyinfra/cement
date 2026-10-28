@@ -1,4 +1,4 @@
-import { asc, eq, gt, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { godowns, stockMovements, vehicles } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -14,8 +14,8 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type Place = { key: string; kind: PlaceKind; id: string; name: string; active: boolean };
 
 /**
- * Places for the stock forms: every active godown (by name), then the trucks (by number)
- * that hold bags right now. Trucks are hired and typed each time, so empty ones are left out. Server-only.
+ * Places for stock forms: every active godown (by name) and all active trucks (by number).
+ * Server-only.
  */
 export async function getPlaces(): Promise<Place[]> {
   const [g, v] = await Promise.all([
@@ -27,10 +27,7 @@ export async function getPlaces(): Promise<Place[]> {
     db
       .select({ id: vehicles.id, name: vehicles.number, active: vehicles.active })
       .from(vehicles)
-      .innerJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
       .where(eq(vehicles.active, true))
-      .groupBy(vehicles.id, vehicles.number, vehicles.active)
-      .having(gt(sql`sum(${stockMovements.bags})`, 0))
       .orderBy(asc(vehicles.number)),
   ]);
   return [
@@ -50,7 +47,7 @@ export async function bagsAtPlace(tx: Tx, place: PlaceRef): Promise<number> {
 
 /**
  * The truck with this (already cleaned) number: made the first time it is typed, switched back on
- * if it was off. Nothing else is kept on it; the driver goes with each purchase or dispatch.
+ * if it was off.
  */
 export async function truckByNumber(tx: Tx, number: string, actorId: string): Promise<string> {
   const [made] = await tx

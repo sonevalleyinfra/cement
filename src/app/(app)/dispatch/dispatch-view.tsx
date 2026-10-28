@@ -224,7 +224,7 @@ export function DispatchView({
             {options.length === 0 && <p className="text-sm text-destructive">No place holds {Number(bags || 1)} bags.</p>}
             {truckChips.length > 0 && (
               <div className="flex flex-col gap-1">
-                <span className="text-sm font-semibold">Recent trucks</span>
+                <span className="text-sm font-semibold">Truck (Fleet & Recent)</span>
                 <div className="flex flex-wrap gap-2">
                   {truckChips.map((c) => (
                     <button
@@ -232,9 +232,16 @@ export function DispatchView({
                       type="button"
                       onClick={() => pickChip(c)}
                       aria-pressed={truck === c.truck}
-                      className={`tabular min-h-12 rounded-xl px-3 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${truck === c.truck ? "bg-primary text-primary-foreground ring-primary" : "bg-card ring-foreground/10"}`}
+                      className={`tabular min-h-12 rounded-xl px-3 py-1.5 text-left text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${
+                        truck === c.truck
+                          ? "bg-primary text-primary-foreground ring-primary"
+                          : "bg-card ring-foreground/10 hover:bg-muted"
+                      }`}
                     >
-                      {c.truck}
+                      <span className="block font-semibold">{c.truck}</span>
+                      {c.driverName && (
+                        <span className="block text-xs font-normal opacity-85">{c.driverName}</span>
+                      )}
                     </button>
                   ))}
                 </div>

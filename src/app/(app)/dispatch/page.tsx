@@ -9,13 +9,14 @@ import { getBalances } from "@/lib/stock";
 import { rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
+import { getActiveTrucks } from "@/lib/trucks";
 import { DispatchView } from "./dispatch-view";
 
 export default async function DispatchPage() {
   const { user } = await requireRole(...rolesFor("dispatch"));
 
   // Every approved or partly dispatched order: any logistics person may send it.
-  const [rows, balances, recent] = await Promise.all([
+  const [rows, balances, recent, activeTrucks] = await Promise.all([
     db
       .select({
         id: orders.id,
@@ -49,6 +50,7 @@ export default async function DispatchPage() {
       .where(gt(dispatches.bags, 0))
       .orderBy(desc(dispatches.createdAt))
       .limit(30),
+    getActiveTrucks(),
   ]);
   // The earliest "needed by" first (none last), then the oldest order first.
   const today = toISTDateKey(new Date());
@@ -58,11 +60,15 @@ export default async function DispatchPage() {
     late: isPastRequiredBy(r.requiredBy, today),
   }));
   // Places with stock history (godown still switched on), godowns first.
-  // Trucks are hired, so only the ones holding bags right now are listed.
+  // Trucks holding bags right now are listed under places.
   const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.placeKey));
   const chips = truckChips(
     [...loadedTrucks].map((k) => balances.find((b) => b.placeKey === k)?.placeName ?? ""),
-    recent,
+    [
+      ...activeTrucks.map((t) => ({ truck: t.number, driverName: t.driverName, driverPhone: t.driverPhone })),
+      ...recent,
+    ],
+    12,
   );
   const places = [
     ...new Map(

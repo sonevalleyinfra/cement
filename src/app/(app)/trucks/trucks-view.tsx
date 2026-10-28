@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { CallButton } from "@/components/app/call-button";
 import { ChipCount, chipClass } from "@/components/app/chip";
@@ -35,7 +36,9 @@ function matchesFilter(r: TruckRow, filter: Filter): boolean {
 export function TrucksView({ rows }: { rows: TruckRow[] }) {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState<Filter>("all");
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [filter, setFilter] = useState<Filter>(tabParam === "loaded" || tabParam === "standing" ? tabParam : "all");
 
   const normalized = query.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   const shown = rows.filter((r) => {
