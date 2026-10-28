@@ -1,3 +1,4 @@
+import "@/lib/dns-patch";
 import net from "node:net";
 if (net.setDefaultAutoSelectFamily) net.setDefaultAutoSelectFamily(false);
 import { drizzle } from "drizzle-orm/postgres-js";
