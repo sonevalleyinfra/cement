@@ -1,12 +1,16 @@
 "use server";
 
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/db";
-import { vehicles } from "@/db/schema";
-import { requireRole } from "@/lib/session";
+import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
-import { saveTruck, type TruckResult } from "@/lib/trucks";
+import { requireRole } from "@/lib/session";
+import { saveTruck, switchTruck, type TruckResult } from "@/lib/trucks";
+
+function refresh() {
+  revalidatePath("/trucks");
+  revalidatePath("/dispatch");
+  revalidatePath("/stock");
+}
 
 export async function addTruck(form: {
   number: string;
@@ -15,19 +19,14 @@ export async function addTruck(form: {
 }): Promise<TruckResult> {
   const session = await requireRole(...rolesFor("dispatch"));
   const res = await saveTruck(form, session.user.id);
-  if (res.ok) {
-    revalidatePath("/trucks");
-    revalidatePath("/dispatch");
-    revalidatePath("/stock");
-  }
+  if (res.ok) refresh();
   return res;
 }
 
 export async function setTruckActive(id: string, active: boolean): Promise<TruckResult> {
-  await requireRole(...rolesFor("dispatch"));
-  await db.update(vehicles).set({ active, updatedAt: new Date() }).where(eq(vehicles.id, id));
-  revalidatePath("/trucks");
-  revalidatePath("/dispatch");
-  revalidatePath("/stock");
-  return { ok: true };
+  const session = await requireRole(...rolesFor("dispatch"));
+  if (!isUuid(id) || typeof active !== "boolean") return { ok: false, error: "Truck not found" };
+  const res = await switchTruck(id, active, session.user.id);
+  if (res.ok) refresh();
+  return res;
 }

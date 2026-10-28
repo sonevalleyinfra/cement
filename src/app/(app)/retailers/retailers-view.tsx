@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ComponentProps, type FormEvent, type ReactNode, useState, useTransition } from "react";
+import { ChipCount, chipClass } from "@/components/app/chip";
 import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
@@ -25,12 +26,16 @@ import { formatINR } from "@/lib/money";
 import { reasonHint } from "@/lib/reason-codes";
 import { matchesRetailerSearch } from "@/lib/retailer-rules";
 import {
+  type CategoryFilter,
   CREDIT_STATUSES,
   CREDIT_STATUS_LABELS,
   type CreditStatus,
   isShopCategory,
+  matchesCategoryFilter,
   SHOP_CATEGORIES,
   SHOP_CATEGORY_LABELS,
+  type ShopCategory,
+  shopCategoryOf,
 } from "@/lib/shop-lists";
 import { ADDRESS_MAX, cleanGeo, geoErrorText, mapUrl, OWNER_NAME_MAX } from "@/lib/shop-master-rules";
 import { cn } from "@/lib/utils";
@@ -92,6 +97,12 @@ function MapLink({ lat, lng }: { lat: number; lng: number }) {
 
 const NO_LIMIT_CLASS = "text-amber-700";
 
+const CATEGORY_TABS: { value: CategoryFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "retailer", label: "Retailers" },
+  { value: "contractor", label: "Contractors" },
+];
+
 export function RetailersView({
   rows,
   canEdit,
@@ -122,10 +133,10 @@ export function RetailersView({
 }) {
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "retailer" | "contractor">("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [adding, setAdding] = useState(false);
   const detail = rows.find((r) => r.id === detailId) ?? null;
-  const shown = rows.filter((r) => categoryFilter === "all" || (r.category ?? "retailer") === categoryFilter).filter((r) => matchesRetailerSearch(r, query));
+  const shown = rows.filter((r) => matchesCategoryFilter(r.category, categoryFilter) && matchesRetailerSearch(r, query));
   // Opened from a Home shortcut: back goes to the full list, and an empty list reads "None left".
   const fromHome = onlyNoRep || onlyNoLimit;
 
@@ -133,44 +144,13 @@ export function RetailersView({
     <div className="flex flex-col gap-4">
       <PageHeader title="Retailers & Contractors" back={fromHome ? "/retailers" : undefined} />
 
-      {/* Category filter tabs */}
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1">
-        <button
-          type="button"
-          onClick={() => setCategoryFilter("all")}
-          className={cn(
-            "rounded-lg py-2 text-xs font-semibold transition-all",
-            categoryFilter === "all"
-              ? "bg-background text-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          All ({rows.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setCategoryFilter("retailer")}
-          className={cn(
-            "rounded-lg py-2 text-xs font-semibold transition-all",
-            categoryFilter === "retailer"
-              ? "bg-background text-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Retailers ({rows.filter((r) => (r.category ?? "retailer") === "retailer").length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setCategoryFilter("contractor")}
-          className={cn(
-            "rounded-lg py-2 text-xs font-semibold transition-all",
-            categoryFilter === "contractor"
-              ? "bg-background text-foreground shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Contractors ({rows.filter((r) => r.category === "contractor").length})
-        </button>
+      <div className="scroll-x-fade -mx-4 flex gap-2 px-4 pb-1">
+        {CATEGORY_TABS.map((t) => (
+          <button key={t.value} type="button" className={chipClass(categoryFilter === t.value)} onClick={() => setCategoryFilter(t.value)}>
+            {t.label}
+            <ChipCount n={rows.filter((r) => matchesCategoryFilter(r.category, t.value)).length} on={categoryFilter === t.value} />
+          </button>
+        ))}
       </div>
       {rows.length > 0 && (
         <Input
@@ -196,17 +176,8 @@ export function RetailersView({
                 onClick={() => setDetailId(r.id)}
                 className={r.active ? undefined : "opacity-60"}
                 top={
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                        r.category === "contractor"
-                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                          : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
-                      )}
-                    >
-                      {r.category === "contractor" ? "Contractor" : "Retailer"}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{SHOP_CATEGORY_LABELS[shopCategoryOf(r.category)]}</span>
                     {!r.active && <StatusChip status="cancelled" label="Off" />}
                   </div>
                 }
@@ -739,7 +710,7 @@ function ShopDetail({
 
 function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void }) {
   const [rep, setRep] = useState("");
-  const [category, setCategory] = useState<string>("retailer");
+  const [category, setCategory] = useState<ShopCategory>("retailer");
   // The text fields are read with FormData, so the form's onInput clears the error.
   const { error, setError, clearError } = useFormError();
   const [pending, start] = useTransition();
@@ -772,7 +743,7 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
             type="button"
             onClick={() => setCategory("retailer")}
             className={cn(
-              "flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all cursor-pointer",
+              "flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-colors cursor-pointer",
               category === "retailer"
                 ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs"
                 : "border-border bg-background text-muted-foreground hover:border-foreground/30"
@@ -785,7 +756,7 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
             type="button"
             onClick={() => setCategory("contractor")}
             className={cn(
-              "flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all cursor-pointer",
+              "flex flex-col items-center justify-center rounded-xl border p-3 text-center transition-colors cursor-pointer",
               category === "contractor"
                 ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs"
                 : "border-border bg-background text-muted-foreground hover:border-foreground/30"

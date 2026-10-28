@@ -1,16 +1,8 @@
 "use client";
 
-export const DEFAULT_PURCHASE_SOURCES = [
-  "RLJ Chunar",
-  "Satna Plant",
-  "Jagatpur Depo",
-  "Harhua Depo",
-  "Rake - Chaukhandi",
-  "Other",
-] as const;
-
 import { useRouter } from "next/navigation";
 import { type ComponentProps, useId, useState } from "react";
+import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -21,12 +13,12 @@ import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
 import { toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
-import { formatINR, landedUnitCostPaise, parseRupeesToPaise } from "@/lib/money";
+import { parseRupeesToPaise } from "@/lib/money";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
+import { DEFAULT_PURCHASE_SOURCES, PURCHASE_NOTE_MAX, purchaseNote } from "@/lib/purchase-rules";
 import { reasonHint } from "@/lib/reason-codes";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -54,12 +46,6 @@ const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
 
 /** Whole bags typed in a small field: digits only, at most 6. */
 const bagDigits = (text: string) => text.replace(/\D/g, "").slice(0, 6);
-/** Optional rupees (freight, unloading): empty = 0, null when not valid rupees. */
-const optionalPaise = (text: string) => {
-  if (!text.trim()) return 0;
-  const paise = parseRupeesToPaise(text);
-  return paise !== null && paise >= 0 ? paise : null;
-};
 
 function SmallField({
   label,
@@ -85,17 +71,19 @@ function NoteField({
   value,
   onChange,
   placeholder,
+  maxLength = 200,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  maxLength?: number;
 }) {
   const id = useId();
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} maxLength={200} placeholder={placeholder} />
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} maxLength={maxLength} placeholder={placeholder} />
     </div>
   );
 }
@@ -136,14 +124,10 @@ export function StockForm({
   const [invoiceDate, setInvoiceDate] = useState(today);
   const [shortText, setShortText] = useState("");
   const [burstText, setBurstText] = useState("");
-
-
   // The truck and driver of a purchase: nothing about the driver is saved for next time.
   const [truck, setTruck] = useState(NO_TRUCK);
-  const [purchaseMode, setPurchaseMode] = useState<"depot" | "direct_site">("depot");
-  const [purchaseSource, setPurchaseSource] = useState<string>("RLJ Chunar");
+  const [purchaseSource, setPurchaseSource] = useState<string>(DEFAULT_PURCHASE_SOURCES[0]);
   const [otherSource, setOtherSource] = useState("");
-  const [siteName, setSiteName] = useState("");
   const purchase = mode === "purchase";
   const newTruck = purchase && place === NEW_TRUCK_PLACE;
   // A purchase into a truck already in the list keeps that truck's number.
@@ -162,8 +146,6 @@ export function StockForm({
     invoiceDate,
     shortText,
     burstText,
-
-
     truck,
   ]);
 
@@ -177,13 +159,7 @@ export function StockForm({
   const bags = Number(digits || 0);
   const costPaise = parseRupeesToPaise(costText);
   const received = bags - Number(shortText || 0) - Number(burstText || 0);
-
-
   const costOk = costPaise !== null && costPaise >= 1;
-  const landed = null; //
-
-
-
 
   const why = mode === "adjust" ? reasonHint("stock", reason, note) : null;
   const hint = firstMissing([
@@ -198,8 +174,6 @@ export function StockForm({
     [purchase && received < 1, "Received bags must be more than 0"],
     [why !== null, why ?? ""],
     [purchase && !costOk, "Enter the cost per bag"],
-
-
   ]);
 
   function submit() {
@@ -213,7 +187,7 @@ export function StockForm({
       place,
       truck: purchase ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
-      note: purchase ? [`Source: ${purchaseSource === "Other" ? (otherSource.trim() || "Other") : purchaseSource}`, purchaseMode === "direct_site" ? `Site: ${siteName.trim() || "Direct Site"}` : "Depot Stock", note.trim()].filter(Boolean).join(" · ") : note,
+      note: purchase ? purchaseNote({ source: purchaseSource, otherSource, note }) : note,
       ...(mode === "adjust" ? { reason: reason ?? "" } : {}),
       ...(purchase
         ? {
@@ -222,8 +196,6 @@ export function StockForm({
             invoiceDate,
             shortBags: Number(shortText || 0),
             burstBags: Number(burstText || 0),
-
-
           }
         : {}),
     };
@@ -243,8 +215,6 @@ export function StockForm({
           setInvoiceDate(today);
           setShortText("");
           setBurstText("");
-
-
           setTruck(NO_TRUCK);
           router.refresh();
         } else setError(res.error);
@@ -306,63 +276,24 @@ export function StockForm({
       {!newTruck && <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>}
       {purchase && (
         <>
-          <div className="flex flex-col gap-1.5">
-            <Label>Purchase Mode</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant={purchaseMode === "depot" ? "default" : "outline"}
-                onClick={() => setPurchaseMode("depot")}
-              >
-                Depot / Godown Stock
-              </Button>
-              <Button
-                type="button"
-                variant={purchaseMode === "direct_site" ? "default" : "outline"}
-                onClick={() => setPurchaseMode("direct_site")}
-              >
-                Sales Order (Direct Site)
-              </Button>
-            </div>
-          </div>
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Purchase Source / Plant</Label>
-              <span className="text-xs text-muted-foreground font-normal">Select source</span>
-            </div>
-            {/* Quick 1-tap chips for plant / depot */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {DEFAULT_PURCHASE_SOURCES.map((source) => {
-                const isSelected = purchaseSource === source;
-                const icon =
-                  source.includes("Plant") || source.includes("Chunar")
-                    ? "🏭"
-                    : source.includes("Rake")
-                    ? "🚂"
-                    : source === "Other"
-                    ? "✏️"
-                    : "🏬";
-                return (
-                  <button
-                    key={source}
-                    type="button"
-                    onClick={() => setPurchaseSource(source)}
-                    className={cn(
-                      "flex items-center gap-2 rounded-xl border p-2.5 text-left text-sm font-medium transition-all cursor-pointer",
-                      isSelected
-                        ? "border-primary bg-primary/10 text-primary font-semibold shadow-xs ring-1 ring-primary"
-                        : "border-border bg-background text-foreground hover:border-foreground/30"
-                    )}
-                  >
-                    <span className="text-base shrink-0">{icon}</span>
-                    <span className="truncate">{source}</span>
-                  </button>
-                );
-              })}
+            <Label>Source</Label>
+            <div className="flex flex-wrap gap-2">
+              {DEFAULT_PURCHASE_SOURCES.map((source) => (
+                <button
+                  key={source}
+                  type="button"
+                  aria-pressed={purchaseSource === source}
+                  className={chipClass(purchaseSource === source)}
+                  onClick={() => setPurchaseSource(source)}
+                >
+                  {source}
+                </button>
+              ))}
             </div>
             {purchaseSource === "Other" && (
               <Input
-                placeholder="Enter plant / depot / source name"
+                aria-label="Source name"
                 value={otherSource}
                 onChange={(e) => setOtherSource(e.target.value)}
                 maxLength={60}
@@ -370,20 +301,7 @@ export function StockForm({
               />
             )}
           </div>
-          {purchaseMode === "direct_site" && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="site-name">Customer Site Name / Location</Label>
-              <Input
-                id="site-name"
-                placeholder="e.g. Rameshwaram Project, Lanka"
-                value={siteName}
-                onChange={(e) => setSiteName(e.target.value)}
-                maxLength={100}
-              />
-            </div>
-          )}
           <TruckFields value={truck} onChange={setTruck} fixedNumber={placeTruck} knownTrucks={trucks} />
-
           <div className="grid grid-cols-2 gap-3">
             <SmallField label="Invoice no." value={invoiceNo} onChange={setInvoiceNo} maxLength={60} />
             <SmallField label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} max={today} />
@@ -415,13 +333,12 @@ export function StockForm({
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
       {purchase && (
         <>
-
           <div className="grid grid-cols-2 gap-3">
             <SmallField label="Short" value={shortText} onChange={(v) => setShortText(bagDigits(v))} inputMode="numeric" />
             <SmallField label="Damage" value={burstText} onChange={(v) => setBurstText(bagDigits(v))} inputMode="numeric" />
           </div>
           <p className="tabular text-sm text-muted-foreground">Received {bagsText(Math.max(received, 0))}</p>
-          <NoteField label={copy.purchase.note} value={note} onChange={setNote} placeholder="e.g. Additional remarks or memo" />
+          <NoteField label={copy.purchase.note} value={note} onChange={setNote} maxLength={PURCHASE_NOTE_MAX} />
         </>
       )}
       {mode === "adjust" && (

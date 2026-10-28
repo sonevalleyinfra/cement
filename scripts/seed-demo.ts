@@ -405,11 +405,11 @@ type DemoMaster = {
 /** Master data and credit terms of the 6 demo shops (same order as `shops`). GSTINs have a valid checksum. */
 const MASTER: DemoMaster[] = [
   { ownerName: "Rajesh Sharma", altPhone: "9431000001", address: "Ashok Rajpath, near Gandhi Maidan", area: "Patna City", pincode: "800004", lat: 25.6176, lng: 85.1453, category: "retailer", openedOn: "2012-04-15", gstin: "10AABCS1429B1Z9", creditLimitPaise: 20_000_000, creditDays: 30, creditStatus: "ok" },
-  { ownerName: "Anil Gupta", altPhone: null, address: "Station Road", area: "Gaya Road", pincode: "823001", lat: 24.7955, lng: 85.0002, category: "retailer", openedOn: "2008-01-10", gstin: "10AAKFG4821M1ZH", creditLimitPaise: 50_000_000, creditDays: 45, creditStatus: "ok" },
+  { ownerName: "Anil Gupta", altPhone: null, address: "Station Road", area: "Gaya Road", pincode: "823001", lat: 24.7955, lng: 85.0002, category: "sub_dealer", openedOn: "2008-01-10", gstin: "10AAKFG4821M1ZH", creditLimitPaise: 50_000_000, creditDays: 45, creditStatus: "ok" },
   { ownerName: "Vikram Singh", altPhone: "9431000003", address: "Main Bazar", area: "Arrah Bazar", pincode: "802301", lat: 25.5541, lng: 84.6603, category: "contractor", openedOn: "2016-07-01", gstin: null, creditLimitPaise: 20_000_000, creditDays: null, creditStatus: "hold" },
   { ownerName: "Sunil Kumar", altPhone: null, address: "Motijheel", area: "North Bihar", pincode: "842001", lat: 26.1209, lng: 85.3647, category: "retailer", openedOn: "2019-11-20", gstin: null, creditLimitPaise: 30_000_000, creditDays: 30, creditStatus: "ok" },
-  { ownerName: "Manoj Yadav", altPhone: "9431000005", address: "Tilka Manjhi Chowk", area: "North Bihar", pincode: "812001", lat: 25.2425, lng: 86.9842, category: "contractor", openedOn: "2021-03-05", gstin: null, creditLimitPaise: null, creditDays: null, creditStatus: "ok" },
-  { ownerName: "Ravi Mishra", altPhone: null, address: "Tower Chowk", area: "North Bihar", pincode: "846004", lat: 26.1542, lng: 85.8918, category: "contractor", openedOn: "2010-09-12", gstin: null, creditLimitPaise: null, creditDays: null, creditStatus: "ok" },
+  { ownerName: "Manoj Yadav", altPhone: "9431000005", address: "Tilka Manjhi Chowk", area: "North Bihar", pincode: "812001", lat: 25.2425, lng: 86.9842, category: "builder", openedOn: "2021-03-05", gstin: null, creditLimitPaise: null, creditDays: null, creditStatus: "ok" },
+  { ownerName: "Ravi Mishra", altPhone: null, address: "Tower Chowk", area: "North Bihar", pincode: "846004", lat: 26.1542, lng: 85.8918, category: "institution", openedOn: "2010-09-12", gstin: null, creditLimitPaise: null, creditDays: null, creditStatus: "ok" },
 ];
 
 /** The retailers columns for one demo shop's master data and credit terms. */

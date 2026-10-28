@@ -1,16 +1,19 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
+import { SelectField } from "@/components/app/select-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export type TruckInput = { number: string; driverName: string; driverPhone: string };
 
+const OTHER = "__other__";
+
 /**
  * The quick truck form: number, driver, phone (purchase and move bags). The phone is required
  * unless `phoneOptional` (moving bags). With `fixedNumber` (a purchase into a truck already in the
  * list) the number is shown as text instead of typed.
- * Dropdown selector for known trucks with auto-fill, plus manual entry option.
+ * With `knownTrucks` the number is picked from a list (driver and phone filled in), or "Other truck" to type it.
  */
 export function TruckFields({
   value,
@@ -41,7 +44,24 @@ export function TruckFields({
     }
   }
 
+  const [typing, setTyping] = useState(false);
   const isKnownTruck = knownTrucks.some((t) => t.number === value.number);
+
+  function onPick(sel: string) {
+    if (sel === OTHER) {
+      setTyping(true);
+      onChange({ ...value, number: "" });
+      return;
+    }
+    const match = knownTrucks.find((t) => t.number === sel);
+    if (!match) return;
+    setTyping(false);
+    onChange({
+      number: match.number,
+      driverName: match.driverName || value.driverName,
+      driverPhone: match.driverPhone || value.driverPhone,
+    });
+  }
 
   return (
     <div className="animate-in-up flex flex-col gap-4">
@@ -52,49 +72,25 @@ export function TruckFields({
       ) : (
         <div className="flex flex-col gap-2">
           {knownTrucks.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${id}-truck-select`}>Select Truck (from Fleet)</Label>
-              <select
-                id={`${id}-truck-select`}
-                className="h-12 w-full rounded-xl border bg-background px-3 text-sm font-medium shadow-xs"
-                value={isKnownTruck ? value.number : value.number ? "__other__" : ""}
-                onChange={(e) => {
-                  const sel = e.target.value;
-                  if (sel === "__other__") {
-                    onChange({ ...value, number: "" });
-                  } else if (sel) {
-                    const match = knownTrucks.find((t) => t.number === sel);
-                    if (match) {
-                      onChange({
-                        number: match.number,
-                        driverName: match.driverName || value.driverName,
-                        driverPhone: match.driverPhone || value.driverPhone,
-                      });
-                    }
-                  }
-                }}
-              >
-                <option value="">-- Choose Truck ({knownTrucks.length} available) --</option>
-                {knownTrucks.map((t) => (
-                  <option key={t.number} value={t.number}>
-                    🚛 {t.number} {t.driverName ? `· ${t.driverName}` : ""} {t.driverPhone ? `(${t.driverPhone})` : ""}
-                  </option>
-                ))}
-                <option value="__other__">✏️ + Enter New / Other Truck Number</option>
-              </select>
-            </div>
+            <SelectField
+              label="Truck"
+              value={isKnownTruck ? value.number : typing || value.number ? OTHER : ""}
+              onChange={onPick}
+              placeholder="Pick a truck"
+              options={[
+                ...knownTrucks.map((t) => ({ value: t.number, label: [t.number, t.driverName].filter(Boolean).join(" · ") })),
+                { value: OTHER, label: "Other truck" },
+              ]}
+            />
           )}
-
-          {(!isKnownTruck || knownTrucks.length === 0) && (
+          {(knownTrucks.length === 0 || (!isKnownTruck && (typing || value.number))) && (
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${id}-number`}>
-                {knownTrucks.length > 0 ? "Or Type Truck Number" : "Truck Number"}
-              </Label>
+              <Label htmlFor={`${id}-number`}>Truck number</Label>
               <Input
                 id={`${id}-number`}
                 value={value.number}
                 onChange={(e) => onNumberChange(e.target.value)}
-                placeholder="e.g. UP65BT1234"
+                placeholder="BR01AB1234"
                 autoCapitalize="characters"
                 autoComplete="off"
                 maxLength={14}
@@ -109,7 +105,6 @@ export function TruckFields({
           id={`${id}-driver`}
           value={value.driverName}
           onChange={(e) => onChange({ ...value, driverName: e.target.value })}
-          placeholder="Driver Name"
           autoComplete="off"
           maxLength={80}
         />
@@ -119,8 +114,7 @@ export function TruckFields({
         <Input
           id={`${id}-phone`}
           value={value.driverPhone}
-          onChange={(e) => onChange({ ...value, driverPhone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
-          placeholder="10-digit mobile"
+          onChange={(e) => onChange({ ...value, driverPhone: e.target.value })}
           type="tel"
           inputMode="numeric"
           autoComplete="off"

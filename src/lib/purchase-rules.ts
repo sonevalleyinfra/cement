@@ -132,3 +132,22 @@ export function claimValuePaise(bags: number, unitCostPaise: number): number {
   if (!Number.isSafeInteger(v)) throw new RangeError("Claim value is too large");
   return v;
 }
+
+/** The places a purchase usually comes from, shown as one-tap choices. "Other" asks for a name. */
+export const DEFAULT_PURCHASE_SOURCES = [
+  "RLJ Chunar",
+  "Satna Plant",
+  "Jagatpur Depo",
+  "Harhua Depo",
+  "Rake - Chaukhandi",
+  "Other",
+] as const;
+
+/** Longest typed note on a purchase, so "Source: <60 chars> · <note>" fits the 200-character note column. */
+export const PURCHASE_NOTE_MAX = 120;
+
+/** The note saved with a purchase: "Source: Satna Plant · <note>" (empty parts left out). */
+export function purchaseNote({ source, otherSource, note }: { source: string; otherSource: string; note: string }): string {
+  const from = source === "Other" ? otherSource.trim() || "Other" : source.trim();
+  return [from ? `Source: ${from}` : "", note.trim()].filter(Boolean).join(" · ");
+}
