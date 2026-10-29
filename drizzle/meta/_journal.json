@@ -316,6 +316,13 @@
       "when": 1793200000000,
       "tag": "0044_payment_proof_and_cheque",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793260000000,
+      "tag": "0045_cement_variants_and_grades",
+      "breakpoints": true
     }
   ]
 }

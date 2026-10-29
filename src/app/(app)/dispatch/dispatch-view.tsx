@@ -81,13 +81,17 @@ export function DispatchView({
   function openSheet(o: OrderRow) {
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
-    // Start with the place holding the most bags of this product, and an empty truck box.
+    // Start with the place holding the most bags of this product, and auto-fill truck & driver if on a truck.
     const fullest = placesWithEnough(places, balances, o.productId, remainingBags(o.bags, o.sent)).sort(
       (a, b) => b.bagsHere - a.bagsHere,
     )[0];
-    pickPlace(fullest?.key ?? "", "", null);
-    setDriverName("");
-    setDriverPhone("");
+    const truckNo = fullest?.truck ?? null;
+    const chip = truckNo ? truckChips.find((c) => c.truck === truckNo) : null;
+    setFromPlace(fullest?.key ?? "");
+    setTruck(truckNo ?? "");
+    setAutoTruck(truckNo);
+    setDriverName(chip?.driverName ?? "");
+    setDriverPhone(chip?.driverPhone ?? "");
     clearError();
     renew();
   }
@@ -95,17 +99,25 @@ export function DispatchView({
   /** Bags already on a truck usually leave on that truck, so its number is filled in; a typed number stays. */
   function pickPlace(key: string, current = truck, auto = autoTruck) {
     setFromPlace(key);
-    const next = truckAfterPlacePick(current, auto, places.find((p) => p.key === key)?.truck ?? null);
+    const truckNo = places.find((p) => p.key === key)?.truck ?? null;
+    const next = truckAfterPlacePick(current, auto, truckNo);
     setTruck(next.truck);
     setAutoTruck(next.autoFilled);
+    if (next.autoFilled) {
+      const chip = truckChips.find((c) => c.truck === next.autoFilled);
+      if (chip) {
+        setDriverName(chip.driverName || "");
+        setDriverPhone(chip.driverPhone || "");
+      }
+    }
   }
 
   /** A chip fills the truck number and the driver; a number filled this way is a typed one (it stays). */
   function pickChip(c: TruckChip) {
     setTruck(c.truck);
     setAutoTruck(null);
-    setDriverName(c.driverName);
-    setDriverPhone(c.driverPhone);
+    setDriverName(c.driverName || "");
+    setDriverPhone(c.driverPhone || "");
   }
 
   // Only places holding enough of this product for the bags typed; a pick that no longer fits is dropped.

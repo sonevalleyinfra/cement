@@ -273,7 +273,7 @@ export function StockForm({
           options={parts.typeIds.map((id) => ({ value: id, label: lists.types.find((t) => t.id === id)?.code ?? "" }))}
         />
         <SelectField
-          label="Grade"
+          label={lists.types.find((t) => t.id === parts.typeId)?.code === "PPC" ? "Cement Name / Variant" : "Grade"}
           value={parts.gradeId}
           onChange={(gradeId) => setPick({ ...pick, brandId, channel: parts.channel, typeId: parts.typeId, gradeId })}
           options={parts.gradeIds.map((id) => ({ value: id, label: lists.grades.find((g) => g.id === id)?.name ?? "" }))}
