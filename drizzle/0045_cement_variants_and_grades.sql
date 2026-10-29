@@ -1,10 +1,10 @@
--- Insert PPC cement names / variants: Cement Plus, Duratech, AW, 33
+-- Insert PPC cement names / variants with grade 33: 33 - Cement Plus, 33 - Duratech, 33 - AW, 33
 INSERT INTO "grades" ("type_id", "name", "sort_order")
 SELECT t."id", g."name", g."ord"
 FROM "cement_types" t
-CROSS JOIN (VALUES ('Cement Plus', 1), ('Duratech', 2), ('AW', 3), ('33', 4)) AS g("name", "ord")
+CROSS JOIN (VALUES ('33 - Cement Plus', 1), ('33 - Duratech', 2), ('33 - AW', 3), ('33', 4)) AS g("name", "ord")
 WHERE t."code" = 'PPC'
-ON CONFLICT ("type_id", "name") DO NOTHING;
+ON CONFLICT ("type_id", "name") DO UPDATE SET "sort_order" = EXCLUDED."sort_order";
 --> statement-breakpoint
 -- Insert OPC grades: 43, 53, 33
 INSERT INTO "grades" ("type_id", "name", "sort_order")
@@ -12,17 +12,17 @@ SELECT t."id", g."name", g."ord"
 FROM "cement_types" t
 CROSS JOIN (VALUES ('43', 1), ('53', 2), ('33', 3)) AS g("name", "ord")
 WHERE t."code" = 'OPC'
-ON CONFLICT ("type_id", "name") DO NOTHING;
+ON CONFLICT ("type_id", "name") DO UPDATE SET "sort_order" = EXCLUDED."sort_order";
 --> statement-breakpoint
 -- Ensure Prism brand products exist for these variants and grades:
--- 1. Trade PPC variants: Cement Plus, Duratech, AW
+-- 1. Trade PPC variants: 33 - Cement Plus, 33 - Duratech, 33 - AW
 INSERT INTO "products" ("name", "brand_id", "channel", "grade_id", "bag_kg")
 SELECT
   b."name" || ' Trade PPC ' || g."name",
   b."id", 'trade', g."id", 50
 FROM "brands" b
 JOIN "cement_types" t ON t."code" = 'PPC'
-JOIN "grades" g ON g."type_id" = t."id" AND g."name" IN ('Cement Plus', 'Duratech', 'AW')
+JOIN "grades" g ON g."type_id" = t."id" AND g."name" IN ('33 - Cement Plus', '33 - Duratech', '33 - AW')
 WHERE b."name" = 'Prism'
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
@@ -50,3 +50,7 @@ JOIN "grades" g ON g."type_id" = t."id" AND (
 )
 WHERE b."name" = 'Prism'
 ON CONFLICT DO NOTHING;
+--> statement-breakpoint
+-- Switch off unrealistic combinations in Trade
+UPDATE "products" SET "active" = false, "updated_at" = now() WHERE "name" IN ('Prism Trade PPC 43', 'Prism Trade PPC 53');
+UPDATE "grades" SET "active" = false WHERE "name" IN ('43', '53') AND "type_id" IN (SELECT "id" FROM "cement_types" WHERE "code" = 'PPC');
