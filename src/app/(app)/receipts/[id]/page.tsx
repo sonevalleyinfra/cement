@@ -13,7 +13,7 @@ import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
 import { reasonText } from "@/lib/reason-codes";
 import { canReverseReceipt } from "@/lib/receipt-reversal";
-import { canVerifyPayments, MODE_LABELS, ONLINE_METHOD_LABELS, receiptChip } from "@/lib/receipt-rules";
+import { canVerifyPayments, isSafeProofImage, MODE_LABELS, ONLINE_METHOD_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { istStartOf } from "@/lib/report-range";
 import { showStaffDetails } from "@/lib/receipt-view-rules";
 import { requireUser } from "@/lib/session";
@@ -114,7 +114,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
         ))}
       </dl>
 
-      {r.proofImage && (
+      {isSafeProofImage(r.proofImage) && (
         <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {r.onlineMethod === "cheque" ? "Cheque Photo" : "Payment Proof"}

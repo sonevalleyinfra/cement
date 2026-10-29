@@ -20,9 +20,11 @@ import { retailerMeta } from "@/lib/retailer-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import {
+  BAD_PROOF_IMAGE,
   checkOnlineDetails,
   checkReceivedOn,
   earliestReceivedOn,
+  isSafeProofImage,
   MAX_PAYER_NAME,
   MAX_REASON,
   MAX_UTR,
@@ -182,7 +184,8 @@ export function ReceiptForm({
     if (!file) return;
     try {
       const compressed = await compressImage(file);
-      setProofImage(compressed);
+      if (isSafeProofImage(compressed)) setProofImage(compressed);
+      else setError(BAD_PROOF_IMAGE);
     } catch {
       setError("Could not process the selected image. Please try another.");
     }

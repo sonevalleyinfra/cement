@@ -28,7 +28,7 @@ import { toISTDateKey } from "./datetime";
 import { isUuid } from "./ids";
 import type { LedgerEntry } from "./ledger-rules";
 import { checkReason as checkReasonCode, isReasonCode, type BackdateReasonCode, type PaymentReasonCode } from "./reason-codes";
-import { addDays, daysBetween, istStartOf } from "./report-range";
+import { addDays, daysBetween, isDateKey, istStartOf } from "./report-range";
 import { hasAnyRole, isAdmin } from "./roles";
 import { checkEntryDate } from "./supplier-rules";
 
@@ -199,6 +199,29 @@ export function paymentMoment(receivedOn: string, createdAt: Date): Date {
   return createdAt;
 }
 
+/* ---------- Proof photo and cheque date ---------- */
+
+/** Longest proof photo we store (the form makes a JPEG of at most 1200 px, well under this). */
+export const MAX_PROOF_IMAGE_CHARS = 600_000;
+export const BAD_PROOF_IMAGE = "Attach the photo again (JPEG, PNG or WebP, under 450 KB).";
+export const CHEQUE_DATE_RANGE = "Pick a cheque date within the last year or the next 6 months.";
+
+/** True only for a small inline JPEG / PNG / WebP photo (never a link to another site). */
+export function isSafeProofImage(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > MAX_PROOF_IMAGE_CHARS) return false;
+  return /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value);
+}
+
+/** Cheque date: empty is fine (null); else a real day from a year back to 6 months ahead (post-dated cheques). */
+export function checkChequeDate(value: unknown, today: string): { ok: true; date: string | null } | { ok: false; error: string } {
+  if (value === null || value === undefined) return { ok: true, date: null };
+  if (typeof value !== "string") return { ok: false, error: CHEQUE_DATE_RANGE };
+  const date = value.trim();
+  if (!date) return { ok: true, date: null };
+  if (!isDateKey(date) || date < addDays(today, -365) || date > addDays(today, 180)) return { ok: false, error: CHEQUE_DATE_RANGE };
+  return { ok: true, date };
+}
+
 /* ---------- Recording ---------- */
 
 export type ReceiptRequest = {
@@ -259,7 +282,12 @@ export function planReceipt(req: ReceiptRequest): ReceiptPlan {
   const note = typeof req.note === "string" ? req.note.trim() : "";
   if (note.length > MAX_REASON) return { ok: false, error: `Keep the note under ${MAX_REASON} characters.` };
   const proofImage = typeof req.proofImage === "string" && req.proofImage.trim() ? req.proofImage.trim() : null;
-  const chequeDate = typeof req.chequeDate === "string" && req.chequeDate.trim() ? req.chequeDate.trim() : null;
+  if (proofImage !== null && !isSafeProofImage(proofImage)) return { ok: false, error: BAD_PROOF_IMAGE };
+  if (req.proofImage != null && typeof req.proofImage !== "string") return { ok: false, error: BAD_PROOF_IMAGE };
+  const isCheque = req.mode === "online" && req.onlineMethod === "cheque";
+  const cheque = isCheque ? checkChequeDate(req.chequeDate, req.today) : { ok: true as const, date: null };
+  if (!cheque.ok) return cheque;
+  const chequeDate = cheque.date;
   const chequeBank = typeof req.chequeBank === "string" && req.chequeBank.trim() ? req.chequeBank.trim().slice(0, 80) : null;
   const date = checkReceivedOn(req.role, req.receivedOn, req.today, { code: req.backdateReasonCode, note: req.backdateNote });
   if (!date.ok) return date;
@@ -274,7 +302,7 @@ export function planReceipt(req: ReceiptRequest): ReceiptPlan {
       bankAccountId: req.bankAccountId as string,
       payerName: cleanPayerName(req.payerName),
       proofImage,
-      chequeDate: req.onlineMethod === "cheque" ? chequeDate : null,
+      chequeDate,
       chequeBank: req.onlineMethod === "cheque" ? chequeBank : null,
       ...when,
       ledger: null,

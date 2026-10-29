@@ -1,9 +1,11 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
+import { Image as ImageIcon } from "lucide-react";
+import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
 import { FilterTabs } from "@/components/app/filter-tabs";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
-import { ProofModal } from "@/components/app/proof-modal";
+import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
 import { bankAccounts, receipts, retailers, user as users } from "@/db/schema";
 import { bankAccountLabel } from "@/lib/bank-account-rules";
@@ -14,6 +16,7 @@ import { rolesFor } from "@/lib/permissions";
 import { ONLINE_METHOD_LABELS } from "@/lib/receipt-rules";
 import { istStartOf, param } from "@/lib/report-range";
 import { requireRole } from "@/lib/session";
+import { cn } from "@/lib/utils";
 import { ReasonAction, VerifyButton } from "../payment-actions";
 
 /**
@@ -44,7 +47,7 @@ export default async function ReviewPage({
       accountName: bankAccounts.name,
       accountLast4: bankAccounts.last4,
       payerName: receipts.payerName,
-      proofImage: receipts.proofImage,
+      hasProof: sql<boolean>`${receipts.proofImage} is not null`,
       chequeDate: receipts.chequeDate,
       chequeBank: receipts.chequeBank,
       receivedOn: receipts.receivedOn,
@@ -120,13 +123,14 @@ export default async function ReviewPage({
                     )}
                     {r.note && <span className="text-xs text-muted-foreground">{r.note}</span>}
 
-                    {r.proofImage && (
-                      <div className="pt-0.5">
-                        <ProofModal
-                          imageUrl={r.proofImage}
-                          title={r.onlineMethod === "cheque" ? "Cheque Photo" : "Payment Proof"}
-                        />
-                      </div>
+                    {r.hasProof && (
+                      <Link
+                        href={`/receipts/${r.id}`}
+                        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "self-start")}
+                      >
+                        <ImageIcon aria-hidden />
+                        {r.onlineMethod === "cheque" ? "Cheque photo" : "Payment proof"}
+                      </Link>
                     )}
 
                     <ReasonAction receiptId={r.id} action="reject" inline primary={<VerifyButton receiptId={r.id} />} />

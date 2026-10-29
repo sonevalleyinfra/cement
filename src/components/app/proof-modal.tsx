@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Eye, Image as ImageIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isSafeProofImage } from "@/lib/receipt-rules";
 
 export function ProofModal({
   imageUrl,
@@ -12,6 +13,8 @@ export function ProofModal({
   title?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Only ever show an inline photo, never a link to another site.
+  if (!isSafeProofImage(imageUrl)) return null;
 
   return (
     <>
