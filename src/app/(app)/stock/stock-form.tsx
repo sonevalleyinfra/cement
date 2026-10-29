@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ComponentProps, useEffect, useId, useState } from "react";
+import { type ComponentProps, useId, useState } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { Keypad } from "@/components/app/keypad";
@@ -132,22 +132,21 @@ export function StockForm({
   const newTruck = purchase && place === NEW_TRUCK_PLACE;
   // A purchase into a truck already in the list keeps that truck's number.
   const placeTruck = purchase && place.startsWith("vehicle:") ? places.find((p) => p.key === place)?.name : undefined;
-  useEffect(() => {
+  // Same sync as an effect would do, done during render (adjust state when inputs change).
+  const [syncedTruck, setSyncedTruck] = useState<{ placeTruck?: string; trucks: typeof trucks }>({ trucks: [] });
+  if (syncedTruck.placeTruck !== placeTruck || syncedTruck.trucks !== trucks) {
+    setSyncedTruck({ placeTruck, trucks });
     if (placeTruck) {
       const match = trucks.find(
         (t) => t.number.toUpperCase().replace(/\s+/g, "") === placeTruck.toUpperCase().replace(/\s+/g, ""),
       );
-      if (match) {
-        setTruck((prev) => ({
-          number: placeTruck,
-          driverName: match.driverName || prev.driverName,
-          driverPhone: match.driverPhone || prev.driverPhone,
-        }));
-      } else {
-        setTruck((prev) => ({ ...prev, number: placeTruck }));
-      }
+      setTruck((prev) => ({
+        number: placeTruck,
+        driverName: (match && match.driverName) || prev.driverName,
+        driverPhone: (match && match.driverPhone) || prev.driverPhone,
+      }));
     }
-  }, [placeTruck, trucks]);
+  }
   // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
   const [done, setDone] = useState("");
   const { error, setError, clearError } = useFormError([
