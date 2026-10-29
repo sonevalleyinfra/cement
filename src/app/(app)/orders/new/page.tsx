@@ -21,11 +21,23 @@ export default async function NewOrderPage({
   const retailerOnly = !isStaff(user.role);
   const retailerRows = retailerOnly
     ? await db
-        .select({ id: retailers.id, name: retailers.name, place: retailers.place })
+        .select({
+          id: retailers.id,
+          name: retailers.name,
+          place: retailers.place,
+          address: retailers.address,
+          pincode: retailers.pincode,
+        })
         .from(retailers)
         .where(eq(retailers.userId, user.id))
     : await db
-        .select({ id: retailers.id, name: retailers.name, place: retailers.place })
+        .select({
+          id: retailers.id,
+          name: retailers.name,
+          place: retailers.place,
+          address: retailers.address,
+          pincode: retailers.pincode,
+        })
         .from(retailers)
         .where(eq(retailers.active, true))
         .orderBy(asc(retailers.name));

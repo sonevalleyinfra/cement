@@ -26,6 +26,10 @@ type OrderRow = {
   id: string;
   productId: string;
   retailer: string;
+  retailerAddress?: string | null;
+  retailerPlace: string;
+  retailerPincode?: string | null;
+  retailerPhone: string;
   product: string;
   bags: number;
   sent: number;
@@ -39,6 +43,10 @@ type OrderRow = {
   late: boolean;
   staffNote: string;
 };
+
+function formatShopAddress(address?: string | null, place?: string | null, pincode?: string | null): string {
+  return [address?.trim(), place?.trim(), pincode?.trim()].filter(Boolean).join(", ");
+}
 /** A stock place (`key` is "godown:<id>" or "vehicle:<id>"); `truck` is its number when the bags are on a truck. */
 type Place = { key: string; name: string; truck: string | null };
 type Balance = { productId: string; placeKey: string; bags: number };
@@ -173,6 +181,11 @@ export function DispatchView({
                       {o.deliverTo === "site" && o.siteAddress && (
                         <span className="text-sm text-foreground">Site · {o.siteAddress}</span>
                       )}
+                      {o.deliverTo === "shop" && (
+                        <span className="text-sm text-foreground">
+                          Shop · {formatShopAddress(o.retailerAddress, o.retailerPlace, o.retailerPincode) || o.retailerPlace || "Shop"}
+                        </span>
+                      )}
                       {o.requiredByText && (
                         <span className={o.late ? "font-semibold text-caution-foreground" : undefined}>
                           Needed by {o.requiredByText}
@@ -182,7 +195,7 @@ export function DispatchView({
                     </div>
                   }
                 />
-                {o.receiverPhone && (
+                {o.receiverPhone ? (
                   <a
                     href={`tel:${o.receiverPhone}`}
                     className="flex min-h-12 items-center gap-1 border-t border-border px-4 text-sm text-muted-foreground"
@@ -192,7 +205,17 @@ export function DispatchView({
                       {o.receiverPhone}
                     </span>
                   </a>
-                )}
+                ) : o.retailerPhone ? (
+                  <a
+                    href={`tel:${o.retailerPhone}`}
+                    className="flex min-h-12 items-center gap-1 border-t border-border px-4 text-sm text-muted-foreground"
+                  >
+                    {"Shop Contact · "}
+                    <span className="tabular font-semibold text-foreground underline underline-offset-2">
+                      {o.retailerPhone}
+                    </span>
+                  </a>
+                ) : null}
               </li>
             );
           })}
@@ -206,6 +229,16 @@ export function DispatchView({
                 {open.retailer} · {open.product} · {remainingBags(open.bags, open.sent)} bags left
               </span>
               <TextLink href={`/orders/${open.id}`}>Order</TextLink>
+            </div>
+            <div className="rounded-xl bg-muted/60 p-2.5 text-xs text-muted-foreground">
+              <div className="font-semibold text-foreground">
+                📍 Delivery: {open.deliverTo === "site" && open.siteAddress ? `Site · ${open.siteAddress}` : `Shop · ${formatShopAddress(open.retailerAddress, open.retailerPlace, open.retailerPincode) || open.retailerPlace || "Shop"}`}
+              </div>
+              {(open.receiverName || open.receiverPhone || open.retailerPhone) && (
+                <div className="mt-0.5">
+                  Contact: {open.receiverName ? `${open.receiverName} · ` : ""}{open.receiverPhone || open.retailerPhone}
+                </div>
+              )}
             </div>
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Bags

@@ -66,6 +66,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     salesRepId: orders.salesRepId,
     placedBy: orders.placedBy,
     retailer: retailers.name,
+    retailerAddress: retailers.address,
+    retailerPlace: retailers.place,
+    retailerPincode: retailers.pincode,
+    retailerPhone: retailers.phone,
     product: products.name,
   };
   const [o] = await db
@@ -160,18 +164,24 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       </PageHeader>
       <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <Fact label="Deliver to">
-          {site ? `${DELIVER_TO_LABELS.site} · ${o.siteAddress ?? ""}` : DELIVER_TO_LABELS.shop}
+          {site
+            ? `${DELIVER_TO_LABELS.site} · ${o.siteAddress ?? ""}`
+            : `${DELIVER_TO_LABELS.shop}${
+                [o.retailerAddress, o.retailerPlace, o.retailerPincode].filter(Boolean).length > 0
+                  ? ` · ${[o.retailerAddress, o.retailerPlace, o.retailerPincode].filter(Boolean).join(", ")}`
+                  : ""
+              }`}
         </Fact>
-        {(o.receiverName || o.receiverPhone) && (
-          <Fact label="Receiver">
+        {(o.receiverName || o.receiverPhone || (!site && o.retailerPhone)) && (
+          <Fact label={site ? "Receiver" : "Contact"}>
             {o.receiverName}
-            {o.receiverName && o.receiverPhone && " · "}
-            {o.receiverPhone && (
+            {o.receiverName && (o.receiverPhone || (!site && o.retailerPhone)) && " · "}
+            {(o.receiverPhone || (!site && o.retailerPhone)) && (
               <a
-                href={`tel:${o.receiverPhone}`}
+                href={`tel:${o.receiverPhone || o.retailerPhone}`}
                 className="tabular -my-2 inline-flex min-h-12 items-center underline underline-offset-2"
               >
-                {o.receiverPhone}
+                {o.receiverPhone || o.retailerPhone}
               </a>
             )}
           </Fact>

@@ -31,6 +31,10 @@ export default async function DispatchPage() {
         // Logistics and admin only (this page is staff): the staff note helps loading.
         staffNote: orders.staffNote,
         retailer: retailers.name,
+        retailerAddress: retailers.address,
+        retailerPlace: retailers.place,
+        retailerPincode: retailers.pincode,
+        retailerPhone: retailers.phone,
         product: products.name,
         sent: sql<number>`coalesce((select sum(${dispatches.bags}) from ${dispatches} where ${dispatches.orderId} = ${orders.id}), 0)`.mapWith(Number),
       })

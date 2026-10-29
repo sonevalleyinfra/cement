@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, MapPin } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { chipClass } from "@/components/app/chip";
@@ -34,7 +34,7 @@ import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
 import { getOrderHints, type OrderHints } from "../hints-actions";
 
-type Retailer = { id: string; name: string; place: string };
+type Retailer = { id: string; name: string; place: string; address?: string | null; pincode?: string | null };
 type Product = { id: string; name: string; channel: string; brand: string };
 
 /** Equal-width chips, 2 per row, where exactly one is picked (Source, Deliver to). */
@@ -239,6 +239,15 @@ export function NewOrderForm({
         value={deliverTo}
         onChange={setDeliverTo}
       />
+      {!site && retailer && (
+        <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3.5 text-xs text-muted-foreground ring-1 ring-foreground/6">
+          <MapPin className="size-4 shrink-0 text-primary mt-0.5" aria-hidden />
+          <div className="min-w-0">
+            <span className="font-semibold text-foreground">Delivery to Shop: </span>
+            {[retailer.address, retailer.place, retailer.pincode].filter(Boolean).join(", ") || "Shop address not set"}
+          </div>
+        </div>
+      )}
       {site && (
         <div className="animate-in-up flex flex-col gap-4">
           <Field label="Site address">
