@@ -29,10 +29,12 @@ describe("salesReport", () => {
       loads: 0,
       bags: 0,
       valuePaise: 0,
+      byVehicle: [],
       byProduct: [],
       byRetailer: [],
       bySalesPerson: [],
       byDay: [],
+      dispatches: [],
     });
   });
 

@@ -1,4 +1,5 @@
 import { asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { dispatches, orders, products, retailers, vehicles } from "@/db/schema";
@@ -6,7 +7,7 @@ import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { truckChips } from "@/lib/dispatch-rules";
 import { byRequiredBy, isPastRequiredBy } from "@/lib/order-delivery-rules";
 import { getBalances } from "@/lib/stock";
-import { rolesFor } from "@/lib/permissions";
+import { can, rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
 import { getActiveTrucks } from "@/lib/trucks";
@@ -93,7 +94,16 @@ export default async function DispatchPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Dispatch" />
+      <PageHeader
+        title="Dispatch"
+        action={
+          can(user.role, "viewReports") ? (
+            <Link href="/reports/sales" className="text-sm font-medium text-primary hover:underline">
+              Sales report
+            </Link>
+          ) : undefined
+        }
+      />
       <DispatchView
         isAdmin={isAdmin(user.role)}
         orders={pending}
