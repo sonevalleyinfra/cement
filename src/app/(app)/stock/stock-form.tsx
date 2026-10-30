@@ -279,6 +279,12 @@ export function StockForm({
           options={parts.gradeIds.map((id) => ({ value: id, label: lists.grades.find((g) => g.id === id)?.name ?? "" }))}
         />
       </div>
+      {product && (
+        <div className="flex items-center justify-between rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          <span>Product:</span>
+          <span className="font-semibold text-foreground">{product.name}</span>
+        </div>
+      )}
       <SelectField
         label="Place"
         value={place}

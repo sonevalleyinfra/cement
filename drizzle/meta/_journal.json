@@ -330,6 +330,13 @@
       "when": 1793280000000,
       "tag": "0046_update_ppc_grades_with_33",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793290000000,
+      "tag": "0047_exact_cement_products",
+      "breakpoints": true
     }
   ]
 }
