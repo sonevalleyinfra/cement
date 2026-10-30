@@ -162,7 +162,14 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
                 bottom={
                   <>
                     <div>
-                      <div className="tabular text-2xl font-bold">{bagsText(o.bags)}</div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="tabular text-2xl font-bold">{bagsText(o.bags)}</span>
+                        {showPrice && o.ratePaise !== null && (
+                          <span className="tabular text-sm font-medium text-muted-foreground">
+                            @ {formatINR(o.ratePaise)}/bag
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {o.product} · {formatDate(o.createdAt)}
                       </div>

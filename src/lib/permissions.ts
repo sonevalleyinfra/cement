@@ -30,7 +30,7 @@ export const ACTION_ROLES = {
   /** Change a rate that is set, before the order is fully dispatched, with a reason. */
   changeRate: ["logistics"],
   /** Cancel the bags not dispatched yet, with a reason. */
-  cancelOrder: ["admin"],
+  cancelOrder: ["admin", "sales", "logistics"],
   // Money (docs/idea.md sections 5 and 6)
   /** Record a cash or online payment from a retailer. */
   recordReceipt: STAFF,

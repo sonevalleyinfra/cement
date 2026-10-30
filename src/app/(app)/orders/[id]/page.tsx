@@ -159,6 +159,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <PageHeader title={o.retailer} back="/orders" action={isOrderStatus(o.status) && <StatusChip status={o.status} />}>
         <p>
           {o.product} · <span className="tabular">{bagsText(o.bags)}</span>
+          {showPrice && o.ratePaise !== null && (
+            <span className="tabular text-muted-foreground"> · @ {formatINR(o.ratePaise)}/bag</span>
+          )}
         </p>
         {cancelled && <p>{cancelled}</p>}
       </PageHeader>
@@ -216,7 +219,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             ) : (
             <li key={l.id} className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="tabular text-lg font-bold">{bagsText(l.bags)}</span>
+                <span className="tabular text-lg font-bold">
+                  {bagsText(l.bags)}
+                  {showPrice && l.ratePaise !== null && (
+                    <span className="text-sm font-normal text-muted-foreground"> · @ {formatINR(l.ratePaise)}/bag</span>
+                  )}
+                </span>
                 <span className="text-sm font-semibold">{l.vehicle}</span>
               </div>
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">

@@ -58,6 +58,8 @@ export default async function RetailerLedgerPage({
         retailerId={retailerId}
         canOpen={can(user.role, "setOpeningBalance") && !hasOpening}
         canAdjust={can(user.role, "adjustLedger")}
+        canCollect={can(user.role, "recordReceipt")}
+        duesPaise={balance > 0 ? balance : 0}
       />
       {entries.length === 0 ? (
         <EmptyState title="No entries yet" />

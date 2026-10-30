@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { CircleCheck } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { FilterTabs } from "@/components/app/filter-tabs";
@@ -8,8 +9,9 @@ import { OverdueRow } from "@/components/app/overdue-row";
 import { PageHeader } from "@/components/app/page-header";
 import { SectionCaption } from "@/components/app/section-caption";
 import { TextLink } from "@/components/app/text-link";
+import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
-import { retailers } from "@/db/schema";
+import { retailers, walletMovements } from "@/db/schema";
 import { getAllBalances } from "@/lib/ledger";
 import { balanceLine } from "@/lib/ledger-view-rules";
 import { formatINR } from "@/lib/money";
@@ -28,6 +30,8 @@ import {
 import { param } from "@/lib/report-range";
 import { hasAnyRole, hasRole } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
+import { cn } from "@/lib/utils";
+import { walletBalance } from "@/lib/wallet-rules";
 import { shopsText } from "@/lib/words";
 import { ownRetailerId } from "./access";
 
@@ -48,23 +52,45 @@ export default async function LedgerPage({ searchParams }: { searchParams: Searc
 
   const sp = await searchParams;
   const scope = staff ? shopScope(user.role, user.id) : null;
-  const show = param(sp.show) === "all" || !scope ? "all" : "overdue";
+  const show = param(sp.show) === "overdue" ? "overdue" : "all";
+
+  let cashInHandPaise = 0;
+  if (staff) {
+    const movements = await db
+      .select({ amountPaise: walletMovements.amountPaise, kind: walletMovements.kind })
+      .from(walletMovements)
+      .where(eq(walletMovements.collectorId, user.id));
+    cashInHandPaise = walletBalance(movements).balancePaise;
+  }
   const tabs = scope && (
     <FilterTabs
       path="/ledger"
       param="show"
-      value={show === "all" ? "all" : ""}
+      value={show === "overdue" ? "overdue" : ""}
       label="Show"
       tabs={[
-        { value: "", label: "Overdue" },
-        { value: "all", label: "All" },
+        { value: "", label: "All" },
+        { value: "overdue", label: "Overdue" },
       ]}
     />
   );
+  const cashCard = staff && (
+    <div className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+      <div>
+        <div className="text-xs font-medium text-muted-foreground">My cash in hand</div>
+        <div className="tabular text-2xl font-bold">{formatINR(cashInHandPaise)}</div>
+      </div>
+      <Link href="/wallet" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+        {cashInHandPaise > 0 ? "Hand over cash" : "Wallet"}
+      </Link>
+    </div>
+  );
+
   if (scope && show === "overdue") {
     return (
       <div className="flex flex-col gap-4">
         {header}
+        {cashCard}
         {tabs}
         <OverdueList sp={sp} scope={scope} userId={user.id} />
       </div>
@@ -87,6 +113,7 @@ export default async function LedgerPage({ searchParams }: { searchParams: Searc
   return (
     <div className="flex flex-col gap-4">
       {header}
+      {cashCard}
       {tabs}
       <ul className="flex flex-col gap-3">
         {list.map((r, i) => {

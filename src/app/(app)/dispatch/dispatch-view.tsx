@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { placesWithEnough, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
+import { formatINR } from "@/lib/money";
 import { stagger } from "@/lib/motion";
 import { isOrderStatus, remainingBags } from "@/lib/order-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -31,6 +32,7 @@ type OrderRow = {
   retailerPincode?: string | null;
   retailerPhone: string;
   product: string;
+  ratePaise?: number | null;
   bags: number;
   sent: number;
   status: string;
@@ -189,6 +191,9 @@ export function DispatchView({
                       <span>
                         {o.product} · <span className="tabular">{o.sent}</span> of{" "}
                         <span className="tabular">{o.bags}</span> {o.bags === 1 ? "bag" : "bags"} sent
+                        {o.ratePaise ? (
+                          <span className="tabular font-medium text-foreground"> · @ {formatINR(o.ratePaise)}/bag</span>
+                        ) : null}
                       </span>
                       {o.deliverTo === "site" && o.siteAddress && (
                         <span className="text-sm text-foreground">Site · {o.siteAddress}</span>
@@ -239,8 +244,13 @@ export function DispatchView({
             <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
               <span>
                 {open.retailer} · {open.product} · {remainingBags(open.bags, open.sent)} bags left
+                {open.ratePaise ? ` · @ ${formatINR(open.ratePaise)}/bag` : ""}
               </span>
-              <TextLink href={`/orders/${open.id}`}>Order</TextLink>
+              <div className="flex items-center gap-2">
+                <TextLink href={`/orders/${open.id}#cancel`}>Cancel</TextLink>
+                <span>·</span>
+                <TextLink href={`/orders/${open.id}`}>Order</TextLink>
+              </div>
             </div>
             <div className="rounded-xl bg-muted/60 p-2.5 text-xs text-muted-foreground">
               <div className="font-semibold text-foreground">

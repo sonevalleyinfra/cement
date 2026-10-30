@@ -61,7 +61,7 @@ export function rolesForTransition(from: OrderStatus, to: OrderStatus): readonly
     case "dispatched":
       return ["logistics"];
     case "cancelled":
-      return ["admin"];
+      return ["admin", "sales", "logistics"];
     default:
       return [];
   }
@@ -116,7 +116,7 @@ export function planCancel(input: {
   if (!isOrderStatus(input.status) || !canTransition(input.status, "cancelled")) {
     return { ok: false, error: `An order that is ${input.status.replace("_", " ")} cannot be cancelled.` };
   }
-  if (!canCancelOrder(input.role, input.status)) return { ok: false, error: "Only admin can cancel an order." };
+  if (!canCancelOrder(input.role, input.status)) return { ok: false, error: "You cannot cancel this order." };
   const why = checkReason("cancel", input.reasonCode, input.note);
   if (!why.ok) return why;
   const cancelledBags = remainingBags(input.orderedBags, input.dispatchedBags);
