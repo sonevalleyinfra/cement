@@ -44,9 +44,6 @@ const copy = {
 
 const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
 
-/** Whole bags typed in a small field: digits only, at most 6. */
-const bagDigits = (text: string) => text.replace(/\D/g, "").slice(0, 6);
-
 function SmallField({
   label,
   value,
@@ -117,13 +114,11 @@ export function StockForm({
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
   const [reason, setReason] = useState<string | null>(null);
-  // Purchase only: what one bag cost (typed in rupees), the supplier invoice, short / burst bags and extras paid.
+  // Purchase only: what one bag cost (typed in rupees), the supplier invoice, and extras paid.
   const [costText, setCostText] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [today] = useState(() => toISTDateKey(new Date()));
   const [invoiceDate, setInvoiceDate] = useState(today);
-  const [shortText, setShortText] = useState("");
-  const [burstText, setBurstText] = useState("");
   // The truck and driver of a purchase: nothing about the driver is saved for next time.
   const [truck, setTruck] = useState(NO_TRUCK);
   const [purchaseSource, setPurchaseSource] = useState<string>(DEFAULT_PURCHASE_SOURCES[0]);
@@ -159,8 +154,6 @@ export function StockForm({
     costText,
     invoiceNo,
     invoiceDate,
-    shortText,
-    burstText,
     truck,
   ]);
 
@@ -173,7 +166,6 @@ export function StockForm({
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
   const costPaise = parseRupeesToPaise(costText);
-  const received = bags - Number(shortText || 0) - Number(burstText || 0);
   const costOk = costPaise !== null && costPaise >= 1;
 
   const why = mode === "adjust" ? reasonHint("stock", reason, note) : null;
@@ -185,8 +177,7 @@ export function StockForm({
     [purchase && !isValidIndianMobile(normalizePhone(truck.driverPhone)), "Enter the driver mobile (10 digits)"],
     [purchase && !invoiceNo.trim(), "Enter the invoice no."],
     [purchase && !invoiceDate, "Pick the invoice date"],
-    [bags === 0, purchase ? "Enter the billed bags" : "Enter the bags"],
-    [purchase && received < 1, "Received bags must be more than 0"],
+    [bags === 0, "Enter the bags"],
     [why !== null, why ?? ""],
     [purchase && !costOk, "Enter the cost per bag"],
   ]);
@@ -209,8 +200,8 @@ export function StockForm({
             costPerBagPaise: costPaise ?? undefined,
             invoiceNo,
             invoiceDate,
-            shortBags: Number(shortText || 0),
-            burstBags: Number(burstText || 0),
+            shortBags: 0,
+            burstBags: 0,
           }
         : {}),
     };
@@ -228,8 +219,6 @@ export function StockForm({
           setCostText("");
           setInvoiceNo("");
           setInvoiceDate(today);
-          setShortText("");
-          setBurstText("");
           setTruck(NO_TRUCK);
           router.refresh();
         } else setError(res.error);
@@ -350,16 +339,11 @@ export function StockForm({
       )}
       <div className="tabular text-center text-4xl font-bold" aria-live="polite">
         {mode === "adjust" && minus ? "−" : ""}
-        {bags} <span className="text-base font-medium text-muted-foreground">{purchase ? "bags billed" : "bags"}</span>
+        {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>
       <Keypad value={digits} onChange={setDigits} maxLength={6} />
       {purchase && (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            <SmallField label="Short" value={shortText} onChange={(v) => setShortText(bagDigits(v))} inputMode="numeric" />
-            <SmallField label="Damage" value={burstText} onChange={(v) => setBurstText(bagDigits(v))} inputMode="numeric" />
-          </div>
-          <p className="tabular text-sm text-muted-foreground">Received {bagsText(Math.max(received, 0))}</p>
           <NoteField label={copy.purchase.note} value={note} onChange={setNote} maxLength={PURCHASE_NOTE_MAX} />
         </>
       )}
