@@ -23,8 +23,9 @@ import { creditLimitText, effectiveCreditDays, parseCreditLimit, validateCreditD
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
 import { formatINR } from "@/lib/money";
+import { buildRetailersHref, type OrderScope } from "@/lib/order-filter-rules";
 import { reasonHint } from "@/lib/reason-codes";
-import { matchesRetailerSearch } from "@/lib/retailer-rules";
+import { matchesRetailerSearch, retailerInScope } from "@/lib/retailer-rules";
 import {
   type CategoryFilter,
   CREDIT_STATUSES,
@@ -103,6 +104,11 @@ const CATEGORY_TABS: { value: CategoryFilter; label: string }[] = [
   { value: "contractor", label: "Contractors" },
 ];
 
+const SCOPE_TABS: { value: OrderScope; label: string }[] = [
+  { value: "mine", label: "Mine" },
+  { value: "all", label: "All" },
+];
+
 export function RetailersView({
   rows,
   canEdit,
@@ -113,6 +119,9 @@ export function RetailersView({
   onlyNoLimit = false,
   canRecordPayment = false,
   canOrder = false,
+  viewerId,
+  hasScopeTabs = false,
+  initialScope = "all",
 }: {
   rows: Row[];
   /** Admin: add, edit and turn off shops. */
@@ -130,29 +139,68 @@ export function RetailersView({
   /** Shortcuts in the shop sheet: record a payment / place an order with this shop filled in. */
   canRecordPayment?: boolean;
   canOrder?: boolean;
+  /** Who is looking, for Mine (with `hasScopeTabs`). */
+  viewerId?: string;
+  /** A sales person's Mine / All control. */
+  hasScopeTabs?: boolean;
+  /** From `?scope=`. */
+  initialScope?: OrderScope;
 }) {
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [adding, setAdding] = useState(false);
+  const [scope, setScope] = useState(initialScope);
+  // The address moved without this view switching (the menu's Retailers link): follow it.
+  const [seenScope, setSeenScope] = useState(initialScope);
+  if (seenScope !== initialScope) {
+    setSeenScope(initialScope);
+    setScope(initialScope);
+  }
+  const router = useRouter();
+  const [, startScopeChange] = useTransition();
   const detail = rows.find((r) => r.id === detailId) ?? null;
-  const shown = rows.filter((r) => matchesCategoryFilter(r.category, categoryFilter) && matchesRetailerSearch(r, query));
+  const inScope = (r: Row, s: OrderScope) => !hasScopeTabs || retailerInScope(r, s, viewerId ?? "");
+  const scoped = rows.filter((r) => inScope(r, scope));
+  const shown = scoped.filter((r) => matchesCategoryFilter(r.category, categoryFilter) && matchesRetailerSearch(r, query));
   // Opened from a Home shortcut: back goes to the full list, and an empty list reads "None left".
   const fromHome = onlyNoRep || onlyNoLimit;
+  const mineView = hasScopeTabs && scope === "mine";
+
+  function switchScope(next: OrderScope) {
+    setScope(next);
+    startScopeChange(() => router.replace(buildRetailersHref(next), { scroll: false }));
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Retailers & Contractors" back={fromHome ? "/retailers" : undefined} />
 
+      {hasScopeTabs && (
+        <div className="grid grid-cols-2 gap-2">
+          {SCOPE_TABS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              aria-pressed={scope === t.value}
+              className={chipClass(scope === t.value, "w-full")}
+              onClick={() => switchScope(t.value)}
+            >
+              {t.label}
+              <ChipCount n={rows.filter((r) => inScope(r, t.value)).length} on={scope === t.value} />
+            </button>
+          ))}
+        </div>
+      )}
       <div className="scroll-x-fade -mx-4 flex gap-2 px-4 pb-1">
         {CATEGORY_TABS.map((t) => (
           <button key={t.value} type="button" className={chipClass(categoryFilter === t.value)} onClick={() => setCategoryFilter(t.value)}>
             {t.label}
-            <ChipCount n={rows.filter((r) => matchesCategoryFilter(r.category, t.value)).length} on={categoryFilter === t.value} />
+            <ChipCount n={scoped.filter((r) => matchesCategoryFilter(r.category, t.value)).length} on={categoryFilter === t.value} />
           </button>
         ))}
       </div>
-      {rows.length > 0 && (
+      {scoped.length > 0 && (
         <Input
           type="search"
           value={query}
@@ -162,10 +210,24 @@ export function RetailersView({
           autoComplete="off"
         />
       )}
-      {rows.length === 0 ? (
-        <EmptyState title={fromHome ? "None left" : "No retailers"} />
+      {scoped.length === 0 ? (
+        <EmptyState title={fromHome ? "None left" : mineView ? "No shops assigned" : "No retailers"} />
       ) : shown.length === 0 ? (
-        <EmptyState title="No match" />
+        <EmptyState
+          title="No match"
+          action={
+            mineView &&
+            query.trim() && (
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center px-2 text-sm text-muted-foreground underline underline-offset-2"
+                onClick={() => switchScope("all")}
+              >
+                Search all
+              </button>
+            )
+          }
+        />
       ) : (
         <ul className="flex flex-col gap-3">
           {shown.map((r, i) => (
@@ -188,7 +250,7 @@ export function RetailersView({
                       {r.place && ` · ${r.place}`}
                       {r.areaName && ` · ${r.areaName}`}
                     </span>
-                    {salesReps && <span>{r.salesRepName || "No sales person"}</span>}
+                    {(salesReps || (hasScopeTabs && scope === "all")) && <span>{r.salesRepName || "No sales person"}</span>}
                   </div>
                 }
               />

@@ -20,6 +20,7 @@ import {
   orderAmountSummary,
 } from "@/lib/order-access";
 import { DELIVER_TO_LABELS, notesForViewer, orderSourceLabel } from "@/lib/order-delivery-rules";
+import { orderBackHref } from "@/lib/order-filter-rules";
 import { canCancelOrder, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { reasonLabel } from "@/lib/reason-codes";
@@ -42,10 +43,18 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrderDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
   const { user } = await requireUser();
   if (!isUuid(id)) notFound();
+  // Back to the list as it was left (rebuilt from checked values, see orderBackHref).
+  const back = orderBackHref((await searchParams).from, user.role);
   // Staff see prices, every order and the staff note. The staff note is not even selected for anyone else.
   const showPrice = canSeePrice(user.role);
 
@@ -156,7 +165,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={o.retailer} back="/orders" action={isOrderStatus(o.status) && <StatusChip status={o.status} />}>
+      <PageHeader title={o.retailer} back={back} action={isOrderStatus(o.status) && <StatusChip status={o.status} />}>
         <p>
           {o.product} · <span className="tabular">{bagsText(o.bags)}</span>
           {showPrice && o.ratePaise !== null && (

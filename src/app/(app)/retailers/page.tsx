@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { hasNoLimit, NO_LIMIT_FILTER, NO_REP_FILTER, needsSalesRep } from "@/lib/home-rules";
 import { getAllBalances } from "@/lib/ledger";
 import { duesFrom } from "@/lib/ledger-rules";
+import { hasScopeTabs, parseRetailerScope } from "@/lib/order-filter-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { pickableRetailerLogins } from "@/lib/retailer-rules";
 import { pickableSalesReps } from "@/lib/sales-rep-rules";
@@ -21,7 +22,8 @@ export default async function RetailersPage({
   // Retailer phones are internal: staff only (a retailer would see every other shop).
   const { user } = await requireRole(...rolesFor("viewRetailers"));
   // `?filter=no-rep` (from Home): only the switched-on shops that still need a sales person.
-  const filter = (await searchParams).filter;
+  const sp = await searchParams;
+  const filter = sp.filter;
   const onlyNoRep = filter === NO_REP_FILTER;
   // Only admin edits; sales, accounts and admin see the credit terms (not logistics).
   const canEdit = can(user.role, "editRetailers");
@@ -142,6 +144,10 @@ export default async function RetailersPage({
       onlyNoLimit={onlyNoLimit}
       canRecordPayment={can(user.role, "recordReceipt")}
       canOrder={can(user.role, "placeOrder")}
+      viewerId={user.id}
+      // A Home shortcut's list is unscoped, with no Mine / All.
+      hasScopeTabs={hasScopeTabs(user.role) && !onlyNoRep && !onlyNoLimit}
+      initialScope={parseRetailerScope(sp.scope, user.role)}
     />
   );
 }

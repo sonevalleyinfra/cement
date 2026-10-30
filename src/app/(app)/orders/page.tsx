@@ -1,61 +1,50 @@
-import { and, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
 import { FilterTabs } from "@/components/app/filter-tabs";
-import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
-import { StatusChip } from "@/components/app/status-chip";
 import { TextLink } from "@/components/app/text-link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { db } from "@/db";
-import { dispatches, orders, products, retailers } from "@/db/schema";
-import { formatINR } from "@/lib/money";
-import { formatDate } from "@/lib/datetime";
-import { canPlaceOrder, canSeePrice, cancelledNote, orderListScope } from "@/lib/order-access";
+import { orders, retailers } from "@/db/schema";
+import { canPlaceOrder, canSeePrice, orderListScope } from "@/lib/order-access";
 import {
   buildOrdersHref,
-  escapeLike,
-  isOrderIdTerm,
+  hasScopeTabs,
   ORDER_PAGE_SIZE,
-  orderSearchTerms,
-  parseOrderSearch,
-  parsePages,
   ORDER_FILTER_EMPTY,
   ORDER_FILTER_LABELS,
+  orderDetailHref,
   orderFilterSpec,
   orderFilterTabs,
   orderFilterValue,
   parseOrderFilter,
+  parseOrdersListState,
   rateFilterOwnShopsOnly,
 } from "@/lib/order-filter-rules";
-import { isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { bagsText } from "@/lib/words";
+import { getOrderLoads, OrderCard, orderSearchWhere, selectOrderCards } from "./order-list";
+import { ScopedOrders } from "./scoped-orders";
 
 export default async function OrdersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { user } = await requireUser();
-  const sp = await searchParams;
-  // The tab is in the address (?show=rate), so Home cards can open the matching list.
-  const filter = parseOrderFilter(sp.show, user.role);
-  const spec = orderFilterSpec(filter);
+  const state = parseOrdersListState(await searchParams, user.role);
   const showPrice = canSeePrice(user.role);
-  // Search and "Load more" are for staff; a shop's own login sees few orders.
-  const q = showPrice ? parseOrderSearch(sp.q) : "";
-  const pages = parsePages(sp.n);
+  const canPlace = canPlaceOrder(user.role);
+  // A sales person gets Mine / All and status groups, except the focused "Rate to fill" list Home opens.
+  if (hasScopeTabs(user.role) && state.show !== "rate") {
+    return <ScopedOrders userId={user.id} state={state} scope={state.scope ?? "mine"} showPrice={showPrice} canPlace={canPlace} />;
+  }
+  const focused = hasScopeTabs(user.role);
+  // The tab is in the address (?show=rate), so Home cards can open the matching list.
+  const { show, q } = state;
+  const filter = parseOrderFilter(show, user.role);
+  const spec = orderFilterSpec(filter);
+  const pages = state.n;
   const shownCount = pages * ORDER_PAGE_SIZE;
-  // Every word must match the shop name, place, phone, or the start of the order number.
-  const searchWhere = orderSearchTerms(q).map((term) => {
-    const like = `%${escapeLike(term)}%`;
-    return or(
-      ilike(retailers.name, like),
-      ilike(retailers.place, like),
-      ilike(retailers.phone, like),
-      isOrderIdTerm(term) ? ilike(sql`${orders.id}::text`, `${term}%`) : undefined,
-    );
-  });
 
   const [own] = await db
     .select({ id: retailers.id })
@@ -67,19 +56,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const found =
     scope.kind === "none"
       ? []
-      : await db
-          .select({
-            id: orders.id,
-            bags: orders.bags,
-            ratePaise: orders.ratePaise,
-            status: orders.status,
-            createdAt: orders.createdAt,
-            retailer: retailers.name,
-            product: products.name,
-          })
-          .from(orders)
-          .innerJoin(retailers, eq(orders.retailerId, retailers.id))
-          .innerJoin(products, eq(orders.productId, products.id))
+      : await selectOrderCards()
           .where(
             and(
               scope.kind === "retailer" ? eq(orders.retailerId, scope.retailerId) : undefined,
@@ -87,7 +64,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
               spec.rate === "missing" ? isNull(orders.ratePaise) : spec.rate === "filled" ? isNotNull(orders.ratePaise) : undefined,
               // "Rate to fill" is the sales person's own shops, the same number Home shows.
               rateFilterOwnShopsOnly(user.role, filter) ? eq(orders.salesRepId, user.id) : undefined,
-              ...searchWhere,
+              ...orderSearchWhere(q),
             ),
           )
           .orderBy(desc(orders.createdAt), desc(orders.id))
@@ -95,33 +72,21 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           .limit(shownCount + 1);
   const hasMore = found.length > shownCount;
   const rows = found.slice(0, shownCount);
+  const loads = await getOrderLoads(rows.map((r) => r.id));
 
-  // Truck loads: the amount counts each load at its own rate (staff only), and a cancelled
-  // order shows how many bags went out.
-  const loads =
-    rows.length > 0
-      ? await db
-          .select({ orderId: dispatches.orderId, bags: dispatches.bags, ratePaise: dispatches.ratePaise })
-          .from(dispatches)
-          .where(inArray(dispatches.orderId, rows.map((r) => r.id)))
-      : [];
-  const loadsOf = (id: string) => loads.filter((l) => l.orderId === id);
-  const valueOf = (o: (typeof rows)[number]) => orderValuePaise({ ...o, loads: loadsOf(o.id) });
-  const sentOf = (id: string) => loadsOf(id).reduce((n, l) => n + l.bags, 0);
-
-  const canPlace = canPlaceOrder(user.role);
-  const show = orderFilterValue(filter, user.role);
   const tabs = orderFilterTabs(user.role).map((f) => ({ value: orderFilterValue(f, user.role), label: ORDER_FILTER_LABELS[f] }));
 
   return (
     <>
       <div className="mb-4">
-        <PageHeader title="Orders" />
+        <PageHeader title={focused ? ORDER_FILTER_LABELS.rate : "Orders"} back={focused ? "/orders" : undefined} />
       </div>
-      <div className="mb-3">
-        <FilterTabs path="/orders" param="show" value={show} tabs={tabs} label="Show orders" extra={{ q }} />
-      </div>
-      {showPrice && (
+      {!focused && (
+        <div className="mb-3">
+          <FilterTabs path="/orders" param="show" value={show} tabs={tabs} label="Show orders" extra={{ q }} />
+        </div>
+      )}
+      {showPrice && !focused && (
         <form method="get" action="/orders" role="search" className="mb-4 flex flex-col gap-1">
           {show && <input type="hidden" name="show" value={show} />}
           <div className="flex gap-2">
@@ -141,7 +106,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           </div>
           {q && (
             <div>
-              <TextLink href={buildOrdersHref(show, "")} replace scroll={false}>
+              <TextLink href={buildOrdersHref({ show })} replace scroll={false}>
                 Clear
               </TextLink>
             </div>
@@ -154,41 +119,13 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         <ul className="flex flex-col gap-3">
           {rows.map((o, i) => (
             <li key={o.id}>
-              <ListCard
-                index={i}
-                href={`/orders/${o.id}`}
-                title={o.retailer}
-                top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
-                bottom={
-                  <>
-                    <div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="tabular text-2xl font-bold">{bagsText(o.bags)}</span>
-                        {showPrice && o.ratePaise !== null && (
-                          <span className="tabular text-sm font-medium text-muted-foreground">
-                            @ {formatINR(o.ratePaise)}/bag
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {o.product} · {formatDate(o.createdAt)}
-                      </div>
-                      {cancelledNote(o.status, o.bags, sentOf(o.id)) && (
-                        <div className="text-xs text-muted-foreground">{cancelledNote(o.status, o.bags, sentOf(o.id))}</div>
-                      )}
-                    </div>
-                    {showPrice && valueOf(o) !== null && (
-                      <div className="tabular text-lg font-semibold">{formatINR(valueOf(o) ?? 0, { hidePaise: true })}</div>
-                    )}
-                  </>
-                }
-              />
+              <OrderCard order={o} loads={loads} href={orderDetailHref(o.id, state)} index={i} showPrice={showPrice} />
             </li>
           ))}
           {hasMore && (
             <li>
               <Link
-                href={buildOrdersHref(show, q, pages + 1)}
+                href={buildOrdersHref({ ...state, n: pages + 1 })}
                 replace
                 scroll={false}
                 className={cn(buttonVariants({ variant: "outline" }), "h-12 w-full")}

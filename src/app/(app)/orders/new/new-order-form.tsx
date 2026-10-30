@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
+import { GroupCaption } from "@/components/app/group-caption";
 import { Keypad } from "@/components/app/keypad";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -29,12 +30,21 @@ import {
   STAFF_ORDER_SOURCES,
   type DeliverTo,
 } from "@/lib/order-delivery-rules";
+import { groupPickerRetailers } from "@/lib/retailer-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { placeOrder } from "../actions";
 import { getOrderHints, type OrderHints } from "../hints-actions";
 
-type Retailer = { id: string; name: string; place: string; address?: string | null; pincode?: string | null };
+type Retailer = {
+  id: string;
+  name: string;
+  place: string;
+  phone?: string | null;
+  address?: string | null;
+  pincode?: string | null;
+  mine?: boolean;
+};
 type Product = { id: string; name: string; channel: string; brand: string };
 
 /** Equal-width chips, 2 per row, where exactly one is picked (Source, Deliver to). */
@@ -89,6 +99,7 @@ export function NewOrderForm({
   askRate,
   defaultSource,
   todayKey,
+  groupMine = false,
 }: {
   retailers: Retailer[];
   products: Product[];
@@ -101,6 +112,8 @@ export function NewOrderForm({
   defaultSource: string | null;
   /** Today in India ("YYYY-MM-DD"): the first day "Needed by" allows. */
   todayKey: string;
+  /** A sales person's picker: "My retailers", then "Other retailers". */
+  groupMine?: boolean;
 }) {
   const router = useRouter();
   const [retailerId, setRetailerId] = useState<string | null>(fixedRetailerId ?? initialRetailerId);
@@ -160,6 +173,24 @@ export function NewOrderForm({
   const shown = q
     ? retailers.filter((r) => `${r.name} ${r.place}`.toLowerCase().includes(q))
     : retailers;
+  const groups = groupMine ? groupPickerRetailers(retailers, search) : null;
+
+  const shopRow = (r: Retailer) => (
+    <li key={r.id}>
+      <button
+        type="button"
+        onClick={() => {
+          setRetailerId(r.id);
+          setOpen(false);
+          setSearch("");
+        }}
+        className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left shadow-card ring-1 ring-foreground/6"
+      >
+        <span className="font-semibold">{r.name}</span>
+        {r.place && <span className="text-xs text-muted-foreground">{r.place}</span>}
+      </button>
+    </li>
+  );
 
   const site = deliverTo === "site";
   const hint = firstMissing([
@@ -351,25 +382,27 @@ export function NewOrderForm({
           autoComplete="off"
           className="mb-3"
         />
-        <ul className="flex flex-col gap-2">
-          {shown.map((r) => (
-            <li key={r.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setRetailerId(r.id);
-                  setOpen(false);
-                  setSearch("");
-                }}
-                className="flex min-h-12 w-full flex-col items-start rounded-2xl bg-card px-4 py-2.5 text-left shadow-card ring-1 ring-foreground/6"
-              >
-                <span className="font-semibold">{r.name}</span>
-                {r.place && <span className="text-xs text-muted-foreground">{r.place}</span>}
-              </button>
-            </li>
-          ))}
-          {shown.length === 0 && <li className="py-6 text-center text-muted-foreground">No match</li>}
-        </ul>
+        {groups ? (
+          <div className="flex flex-col gap-6">
+            {[
+              { label: "My retailers", rows: groups.mine },
+              { label: "Other retailers", rows: groups.other },
+            ]
+              .filter((g) => g.rows.length > 0)
+              .map((g) => (
+                <section key={g.label} className="flex flex-col gap-2">
+                  <GroupCaption as="h3" label={g.label} />
+                  <ul className="flex flex-col gap-2">{g.rows.map(shopRow)}</ul>
+                </section>
+              ))}
+            {groups.mine.length + groups.other.length === 0 && <p className="py-6 text-center text-muted-foreground">No match</p>}
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {shown.map(shopRow)}
+            {shown.length === 0 && <li className="py-6 text-center text-muted-foreground">No match</li>}
+          </ul>
+        )}
       </Sheet>
     </div>
   );
