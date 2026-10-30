@@ -82,7 +82,11 @@ export default async function RetailerLedgerPage({
                   {e.note ? ` · ${e.note}` : ""}
                   {e.actorId ? ` · ${actors.get(e.actorId) ?? ""}` : ""}
                 </span>
-                {e.balancePaise !== null && <span className="tabular">Balance {formatINR(e.balancePaise)}</span>}
+                {e.balancePaise !== null && (
+                  <span className={`tabular ${e.balancePaise < 0 ? "text-green-700 font-medium" : ""}`}>
+                    {balanceLine(e.balancePaise).label} {formatINR(balanceLine(e.balancePaise).amountPaise)}
+                  </span>
+                )}
               </div>
             </li>
           ))}

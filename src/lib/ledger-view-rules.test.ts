@@ -72,7 +72,7 @@ describe("ledgerRowsForViewer", () => {
     }
     const v = ledgerRowsForViewer("accounts", rows);
     expect(v.map((r) => [r.amountPaise, r.balancePaise])).toEqual(rows.map((r) => [r.amountPaise, r.balancePaise]));
-    expect(v[1]).toMatchObject({ label: "Dispatch", what: "Prism Trade OPC 53 · 40 bags", note: "40 bags in BR01AB1234", actorId: "u1" });
+    expect(v[1]).toMatchObject({ label: "Dispatch", what: "Prism Trade OPC 53 · 40 bags @ ₹355.00/bag", note: "40 bags in BR01AB1234", actorId: "u1" });
   });
 
   it("a retailer sees what came (product, bags) but no dispatch amount and no running balance", () => {
