@@ -41,46 +41,32 @@ function DispatchRegister({ dispatches }: { dispatches: SaleRow[] }) {
   const sorted = [...dispatches].reverse();
   return (
     <>
-      <Section title="Dispatch Register" />
-      <ul className="flex flex-col gap-2.5">
+      <Section title="Dispatch register" />
+      <ul className="flex flex-col gap-3">
         {sorted.map((d, i) => {
           const value = saleValuePaise(d.bags, d.ratePaise);
+          const from = [d.driverName && `Driver ${d.driverName}`, d.fromPlaceName].filter(Boolean).join(" · ");
           return (
-            <li
-              key={i}
-              className="flex flex-col gap-1.5 rounded-2xl bg-card p-3.5 shadow-card ring-1 ring-foreground/6"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary tracking-wide">
+            <li key={i} className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
                     {d.vehicleNumber || "Truck"}
                   </span>
-                  <span className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</span>
+                  <span className="truncate text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</span>
                 </div>
-                <span className={`tabular text-sm font-bold ${d.bags < 0 ? "text-destructive" : ""}`}>
+                <span className={`tabular shrink-0 text-sm font-bold ${d.bags < 0 ? "text-destructive" : ""}`}>
                   {formatINR(value)}
                 </span>
               </div>
-
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-semibold text-sm">
-                  {d.retailerName}
-                  {d.retailerPlace && (
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">({d.retailerPlace})</span>
-                  )}
-                </span>
-                <span className="tabular text-xs font-medium text-foreground">
-                  {d.bags} bags @ {formatINR(d.ratePaise)}/bag
-                </span>
+              <div className="mt-1 text-sm font-semibold">
+                {d.retailerName}
+                {d.retailerPlace && <span className="font-normal text-muted-foreground"> · {d.retailerPlace}</span>}
               </div>
-
-              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>{d.productName}</span>
-                <span>
-                  {d.driverName ? `Driver: ${d.driverName}` : ""}
-                  {d.fromPlaceName ? ` · From: ${d.fromPlaceName}` : ""}
-                </span>
+              <div className="tabular text-xs text-muted-foreground">
+                {d.productName} · {d.bags} bags @ {formatINR(d.ratePaise)}/bag
               </div>
+              {from && <div className="text-xs text-muted-foreground">{from}</div>}
             </li>
           );
         })}

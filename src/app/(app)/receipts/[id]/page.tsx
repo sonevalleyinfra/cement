@@ -114,10 +114,10 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       <div className="tabular text-3xl font-bold">{formatINR(r.totalPaise)}</div>
 
       {duesPaise > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-800">
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-caution-soft p-4 ring-1 ring-caution/30">
           <div>
-            <div className="text-xs font-medium text-amber-800 dark:text-amber-300">Remaining due</div>
-            <div className="tabular text-xl font-bold text-amber-900 dark:text-amber-200">{formatINR(duesPaise)}</div>
+            <div className="text-xs font-medium text-caution-foreground">Remaining due</div>
+            <div className="tabular text-xl font-bold text-caution-foreground">{formatINR(duesPaise)}</div>
           </div>
           <Link href={`/receipts/new?retailer=${r.retailerId}`} className={cn(buttonVariants({ size: "sm" }))}>
             Collect more

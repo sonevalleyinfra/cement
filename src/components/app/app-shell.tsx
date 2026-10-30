@@ -18,7 +18,7 @@ export function AppTitle({ user }: { user?: { name: string; role?: string | null
     <div className="flex min-w-0 items-center gap-2">
       <span className="truncate text-base font-bold tracking-tight text-foreground">{user.name}</span>
       {roleLabel && (
-        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+        <span className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
           {roleLabel}
         </span>
       )}

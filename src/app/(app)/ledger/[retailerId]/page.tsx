@@ -94,7 +94,7 @@ export default async function RetailerLedgerPage({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold">{e.label}</span>
                 {e.amountPaise !== null && (
-                  <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-green-700" : ""}`}>
+                  <span className={`tabular text-sm font-semibold ${e.amountPaise < 0 ? "text-good-foreground" : ""}`}>
                     {formatINR(e.amountPaise)}
                   </span>
                 )}
@@ -107,7 +107,7 @@ export default async function RetailerLedgerPage({
                   {e.actorId ? ` · ${actors.get(e.actorId) ?? ""}` : ""}
                 </span>
                 {e.balancePaise !== null && (
-                  <span className={`tabular ${e.balancePaise < 0 ? "text-green-700 font-medium" : ""}`}>
+                  <span className={`tabular shrink-0 whitespace-nowrap ${e.balancePaise < 0 ? "text-good-foreground font-medium" : ""}`}>
                     {balanceLine(e.balancePaise).label} {formatINR(balanceLine(e.balancePaise).amountPaise)}
                   </span>
                 )}

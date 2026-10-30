@@ -271,7 +271,7 @@ export function NewOrderForm({
         onChange={setDeliverTo}
       />
       {!site && retailer && (
-        <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3.5 text-xs text-muted-foreground ring-1 ring-foreground/6">
+        <div className="flex items-start gap-2 rounded-2xl bg-muted/50 p-4 text-xs text-muted-foreground ring-1 ring-foreground/6">
           <MapPin className="size-4 shrink-0 text-primary mt-0.5" aria-hidden />
           <div className="min-w-0">
             <span className="font-semibold text-foreground">Delivery to Shop: </span>

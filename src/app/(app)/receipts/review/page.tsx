@@ -88,7 +88,7 @@ export default async function ReviewPage({
                   </span>
                 }
                 bottom={
-                  <div className="flex w-full flex-col gap-2.5">
+                  <div className="flex w-full flex-col gap-3">
                     <div className="flex items-end justify-between gap-2">
                       <span className="text-sm">
                         {r.onlineMethod === "cheque" ? "Cheque #" : "UTR "}{" "}

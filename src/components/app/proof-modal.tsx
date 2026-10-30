@@ -34,7 +34,7 @@ export function ProofModal({
               <Eye className="size-3.5" aria-hidden />
               {title}
             </span>
-            <span className="text-[10px] text-muted-foreground">Click to view</span>
+            <span className="text-xs text-muted-foreground">Tap to view</span>
           </div>
         </button>
       </div>

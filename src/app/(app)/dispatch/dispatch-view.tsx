@@ -252,7 +252,7 @@ export function DispatchView({
                 <TextLink href={`/orders/${open.id}`}>Order</TextLink>
               </div>
             </div>
-            <div className="rounded-xl bg-muted/60 p-2.5 text-xs text-muted-foreground">
+            <div className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
               <div className="font-semibold text-foreground">
                 📍 Delivery: {open.deliverTo === "site" && open.siteAddress ? `Site · ${open.siteAddress}` : `Shop · ${formatShopAddress(open.retailerAddress, open.retailerPlace, open.retailerPincode) || open.retailerPlace || "Shop"}`}
               </div>

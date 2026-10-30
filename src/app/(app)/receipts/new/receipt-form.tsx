@@ -416,7 +416,7 @@ export function ReceiptForm({
             )}
           </div>
           {proofImage ? (
-            <div className="relative flex items-center gap-3 rounded-2xl bg-card p-2.5 shadow-card ring-1 ring-foreground/6">
+            <div className="relative flex items-center gap-3 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
               <img
                 src={proofImage}
                 alt="Payment proof preview"
@@ -432,7 +432,7 @@ export function ReceiptForm({
           ) : (
             <label
               htmlFor="proof-image-input"
-              className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/30 px-4 py-3.5 text-center text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-muted/50"
+              className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/30 px-4 py-4 text-center text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-muted/50"
             >
               <Camera className="size-5 shrink-0 text-muted-foreground" aria-hidden />
               <span>
