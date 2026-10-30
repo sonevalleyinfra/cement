@@ -1,10 +1,12 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { PageHeader } from "@/components/app/page-header";
 import { TextLink } from "@/components/app/text-link";
+import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
-import { retailers, user as users } from "@/db/schema";
+import { retailers, user as users, walletMovements } from "@/db/schema";
 import { formatDate, formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
@@ -15,6 +17,8 @@ import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
 import { hasAnyRole } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
+import { cn } from "@/lib/utils";
+import { walletBalance } from "@/lib/wallet-rules";
 import { mayViewLedger } from "../access";
 import { LedgerActions } from "./ledger-actions";
 
@@ -32,6 +36,15 @@ export default async function RetailerLedgerPage({
   if (!retailer) notFound();
 
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
+  let cashInHandPaise = 0;
+  if (staff) {
+    const movements = await db
+      .select({ amountPaise: walletMovements.amountPaise, kind: walletMovements.kind })
+      .from(walletMovements)
+      .where(eq(walletMovements.collectorId, user.id));
+    cashInHandPaise = walletBalance(movements).balancePaise;
+  }
+
   const rows = await getEntries(retailerId);
   const actors = new Map(
     (await db.select({ id: users.id, name: users.name }).from(users)).map((u) => [u.id, u.name]),
@@ -50,6 +63,17 @@ export default async function RetailerLedgerPage({
         back={staff ? "/ledger" : undefined}
         action={isRetailerOnly(user.role) && <TextLink href="/receipts">Payments</TextLink>}
       />
+      {staff && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+          <div>
+            <div className="text-xs font-medium text-muted-foreground">My cash in hand</div>
+            <div className="tabular text-2xl font-bold">{formatINR(cashInHandPaise)}</div>
+          </div>
+          <Link href="/wallet" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+            {cashInHandPaise > 0 ? "Hand over cash" : "Wallet"}
+          </Link>
+        </div>
+      )}
       <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <div className="text-xs text-muted-foreground">{balanceLine(balance).label}</div>
         <div className="tabular text-3xl font-bold">{formatINR(balanceLine(balance).amountPaise)}</div>

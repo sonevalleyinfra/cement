@@ -48,6 +48,7 @@ export type LedgerSourceRow = {
   product: string | null;
   bags: number | null;
   ratePaise?: number | null;
+  receiptMode?: string | null;
 };
 
 export type LedgerViewRow = {
@@ -66,6 +67,19 @@ export type LedgerViewRow = {
   note: string | null;
   actorId: string | null;
 };
+
+function formatStaffNote(r: LedgerSourceRow): string {
+  if (!r.note) return "";
+  // Explicitly label cash payments when not already labeled (online payments say "Payment #... (online)")
+  if (
+    (r.receiptMode === "cash" || (!r.receiptMode && /^Payment #\d+$/.test(r.note.trim()))) &&
+    !r.note.toLowerCase().includes("cash") &&
+    !r.note.toLowerCase().includes("online")
+  ) {
+    return r.note.replace(/^Payment #(\d+)/, "Payment #$1 (Cash)");
+  }
+  return r.note;
+}
 
 /**
  * The rows of one retailer's ledger as this viewer may see them (owner's rule).
@@ -98,7 +112,7 @@ export function ledgerRowsForViewer(role: string | null | undefined, rows: reado
             .filter(Boolean)
             .join(" · ")
         : "",
-    note: staff && r.note ? r.note : null,
+    note: staff && r.note ? formatStaffNote(r) : null,
     actorId: staff ? r.actorId : null,
   }));
 }
