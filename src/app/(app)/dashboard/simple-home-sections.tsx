@@ -1,19 +1,18 @@
 import {
   ArrowRight,
   BadgeAlert,
-  BadgeCheck,
   Building2,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
-  Clock,
   Coins,
   FileSpreadsheet,
   HandCoins,
   Package,
   PackagePlus,
   Receipt,
+  RotateCcw,
   ShoppingCart,
   Store,
   TrendingUp,
@@ -21,10 +20,9 @@ import {
   Users,
   Wallet,
   Warehouse,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { Suspense, type ReactNode } from "react";
+import { Suspense } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import {
   getAccountsHome,
@@ -36,8 +34,7 @@ import {
 } from "@/lib/home-stats";
 import { formatINR, formatINRCompact } from "@/lib/money";
 import { getOwnerMonth, getOwnerRisk, getOwnerToday } from "@/lib/owner-home";
-import { homeWindows } from "@/lib/owner-home-rules";
-import { getSuppliers } from "@/lib/suppliers";
+import { deltaPct, homeWindows } from "@/lib/owner-home-rules";
 import { cn } from "@/lib/utils";
 import { bagsText, formatCount } from "@/lib/words";
 import { OverdueRow } from "@/components/app/overdue-row";
@@ -46,187 +43,150 @@ const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
 const short = (p: number) => (Math.abs(p) >= 1_00_000_00 ? formatINRCompact(p) : money(p));
 
-/* ----------------- Reusable Simple Action Components ----------------- */
-
-interface ActionCardProps {
-  href: string;
-  title: string;
-  description: string;
-  icon: LucideIcon;
-  badge?: string | number | null;
-  badgeTone?: "emerald" | "amber" | "blue" | "rose" | "purple" | "neutral";
-  colorClass?: string;
-  bgClass?: string;
-  iconBgClass?: string;
-}
-
-const BADGE_STYLES = {
-  emerald: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
-  amber: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
-  blue: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
-  rose: "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30",
-  purple: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30",
-  neutral: "bg-muted text-muted-foreground border-border",
-};
-
-export function SimpleActionCard({
-  href,
-  title,
-  description,
-  icon: Icon,
-  badge,
-  badgeTone = "neutral",
-  colorClass = "text-foreground",
-  bgClass = "bg-card hover:bg-muted/40",
-  iconBgClass = "bg-primary/10 text-primary",
-}: ActionCardProps) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "group relative flex min-h-[76px] items-center gap-3.5 rounded-2xl border border-border/80 p-4 shadow-xs transition-all active:scale-[0.985]",
-        bgClass,
-      )}
-    >
-      <div className={cn("flex size-12 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105", iconBgClass)}>
-        <Icon className="size-6" strokeWidth={2.2} />
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <div className="flex items-center gap-2">
-          <span className={cn("truncate text-base font-bold tracking-tight", colorClass)}>{title}</span>
-          {badge !== undefined && badge !== null && (
-            <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums", BADGE_STYLES[badgeTone])}>
-              {badge}
-            </span>
-          )}
-        </div>
-        <p className="line-clamp-1 text-xs text-muted-foreground">{description}</p>
-      </div>
-
-      <ChevronRight className="size-5 shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
-    </Link>
-  );
-}
-
-/* ----------------- 1. Admin / Owner Simple Home ----------------- */
+/* =========================================================================
+   1. ADMIN / OWNER SCREEN (Exact Match to admin_owner_dashboard_mockup)
+   ========================================================================= */
 
 export async function SimpleAdminHome() {
   const now = new Date();
   const w = homeWindows(now);
 
-  const [today, month, risk, adminStats] = await Promise.all([
+  const [today, month, risk] = await Promise.all([
     getOwnerToday(w).catch(() => null),
     getOwnerMonth(w).catch(() => null),
     getOwnerRisk(w, now).catch(() => null),
-    getAdminHome().catch(() => null),
   ]);
 
+  const salesPaise = today?.salesPaise ?? 0;
+  const bags = today?.bags ?? 0;
+  const marginPaise = month?.margin.paise ?? 0;
+  const salesDelta = month ? deltaPct(month.sales.paise, month.prevSales.paise) : null;
+
   return (
-    <div className="flex flex-col gap-4">
-      {/* Hero Business Status Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-950 p-4 text-white shadow-md dark:border dark:border-neutral-800">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <span className="text-xs font-medium uppercase tracking-wider text-neutral-400">Today&apos;s Sales</span>
-            <div className="mt-0.5 flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold tracking-tight">
-                {today ? money(today.salesPaise) : "₹—"}
-              </span>
-              {today && (
-                <span className="text-xs font-semibold text-emerald-400">
-                  {bagsText(today.bags)}
-                </span>
-              )}
-            </div>
-          </div>
-          {month && (
-            <div className="text-right">
-              <span className="text-xs font-medium uppercase tracking-wider text-neutral-400">Month Margin</span>
-              <p className="mt-0.5 text-sm font-bold text-emerald-400">
-                {money(month.margin.paise)}
-              </p>
-            </div>
-          )}
+    <div className="flex flex-col gap-4 font-sans">
+      {/* Top Today's Sales Hero Card (White rounded card with subtle shadow) */}
+      <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
+        <span className="text-xs font-semibold text-muted-foreground">Today&apos;s Sales:</span>
+        <div className="mt-1 flex flex-wrap items-baseline gap-2">
+          <span className="text-3xl font-black tracking-tight text-foreground">
+            {money(salesPaise)}
+          </span>
+          <span className="text-sm font-semibold text-muted-foreground">
+            ({num(bags)} bags)
+          </span>
         </div>
 
-        {today && (
-          <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2.5 text-xs text-neutral-300">
-            <span>
-              Collected Today: <strong className="text-white">{money(today.collected.totalPaise)}</strong>
-            </span>
-            <span className="text-[11px] text-neutral-400">
-              Cash {money(today.collected.cashPaise)} · Online {money(today.collected.onlinePaise)}
-            </span>
+        <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xs font-semibold text-muted-foreground">Month Margin:</span>
+            <span className="text-base font-extrabold text-foreground">{money(marginPaise)}</span>
           </div>
-        )}
+
+          {salesDelta !== null && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+              <TrendingUp className="size-3" />
+              {salesDelta >= 0 ? `+${salesDelta}%` : `${salesDelta}%`} vs prev
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* 4 Primary Big Action Cards */}
-      <div className="flex flex-col gap-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Quick Management Actions
-        </span>
-
-        <SimpleActionCard
-          href={`/reports/sales?from=${w.today}&to=${w.today}`}
-          title="Reports & Excel Export"
-          description="Detailed sales register, vehicle dispatches & CSV"
-          icon={FileSpreadsheet}
-          iconBgClass="bg-amber-500/15 text-amber-600 dark:text-amber-400"
-          badge="Live Register"
-          badgeTone="amber"
-        />
-
-        <SimpleActionCard
-          href="/suppliers"
-          title="Factory & Suppliers"
-          description="Prism Cement, plant purchases & factory balance"
-          icon={Building2}
-          iconBgClass="bg-teal-500/15 text-teal-600 dark:text-teal-400"
-        />
-
-        <SimpleActionCard
-          href="/retailers"
-          title="Shops & Credit Dues"
-          description="Retailer balances, credit limits & statements"
-          icon={Store}
-          iconBgClass="bg-blue-500/15 text-blue-600 dark:text-blue-400"
-          badge={risk ? `${risk.overduePct}% Overdue` : undefined}
-          badgeTone={risk && risk.overduePct > 20 ? "rose" : "neutral"}
-        />
-
-        <SimpleActionCard
-          href="/wallet"
-          title="Team Cash & Operations"
-          description="Staff cash-in-hand, approvals & stock"
-          icon={Wallet}
-          iconBgClass="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-          badge={adminStats && adminStats.approvals > 0 ? `${adminStats.approvals} Waiting` : undefined}
-          badgeTone="emerald"
-        />
-      </div>
-
-      {/* Market Risk Alert Strip */}
-      {risk && risk.outstandingPaise > 0 && (
+      {/* 4 Prominent High-Contrast Action Cards (2x2 Grid) */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* 1. Reports & Export (Orange Card) */}
         <Link
-          href="/ledger?show=overdue"
-          className="flex items-center justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-semibold text-rose-700 dark:text-rose-400 transition-colors hover:bg-rose-500/15"
+          href={`/reports/sales?from=${w.today}&to=${w.today}`}
+          className="group flex min-h-[140px] flex-col justify-between rounded-3xl bg-gradient-to-br from-orange-500 to-orange-600 p-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
         >
-          <div className="flex items-center gap-2">
-            <BadgeAlert className="size-4 shrink-0 text-rose-600 dark:text-rose-400" />
-            <span>Market Outstanding: <strong>{money(risk.outstandingPaise)}</strong></span>
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-xs transition-transform group-hover:scale-105">
+            <FileSpreadsheet className="size-6 text-white" strokeWidth={2.2} />
           </div>
-          <span className="flex items-center gap-0.5 underline">
-            View Overdue <ChevronRight className="size-3.5" />
-          </span>
+          <div>
+            <h3 className="text-base font-extrabold leading-snug">Reports &amp; Export</h3>
+            <p className="mt-1 text-xs font-medium text-white/85 leading-tight">
+              Sales register &amp; Excel CSV
+            </p>
+          </div>
         </Link>
-      )}
+
+        {/* 2. Factory Supplier (Amber Card) */}
+        <Link
+          href="/suppliers"
+          className="group flex min-h-[140px] flex-col justify-between rounded-3xl bg-gradient-to-br from-amber-500 to-amber-600 p-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+        >
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-xs transition-transform group-hover:scale-105">
+            <Building2 className="size-6 text-white" strokeWidth={2.2} />
+          </div>
+          <div>
+            <h3 className="text-base font-extrabold leading-snug">Factory Supplier</h3>
+            <p className="mt-1 text-xs font-medium text-white/85 leading-tight">
+              Prism Cement account &amp; balance
+            </p>
+          </div>
+        </Link>
+
+        {/* 3. Shops & Credit (Vibrant Blue Card) */}
+        <Link
+          href="/retailers"
+          className="group flex min-h-[140px] flex-col justify-between rounded-3xl bg-gradient-to-br from-blue-600 to-blue-700 p-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+        >
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-xs transition-transform group-hover:scale-105">
+            <Store className="size-6 text-white" strokeWidth={2.2} />
+          </div>
+          <div>
+            <h3 className="text-base font-extrabold leading-snug">Shops &amp; Credit</h3>
+            <p className="mt-1 text-xs font-medium text-white/85 leading-tight">
+              Retailer dues &amp; credit limits
+            </p>
+          </div>
+        </Link>
+
+        {/* 4. Team & Stock (Emerald Green Card) */}
+        <Link
+          href="/wallet"
+          className="group flex min-h-[140px] flex-col justify-between rounded-3xl bg-gradient-to-br from-emerald-600 to-emerald-700 p-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+        >
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-xs transition-transform group-hover:scale-105">
+            <Users className="size-6 text-white" strokeWidth={2.2} />
+          </div>
+          <div>
+            <h3 className="text-base font-extrabold leading-snug">Team &amp; Stock</h3>
+            <p className="mt-1 text-xs font-medium text-white/85 leading-tight">
+              Staff cash &amp; godown inventory
+            </p>
+          </div>
+        </Link>
+      </div>
+
+      {/* Risk & Collection Alert Card at bottom */}
+      <Link
+        href="/ledger?show=overdue"
+        className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40"
+      >
+        <div>
+          <span className="text-xs font-semibold text-muted-foreground">Risk &amp; Collection Alert</span>
+          <p className="mt-0.5 text-base font-extrabold text-foreground">
+            Market Dues: <span className="text-foreground">{risk ? short(risk.outstandingPaise) : "₹0"}</span>
+          </p>
+        </div>
+
+        {risk && risk.overduePct > 0 ? (
+          <span className="inline-flex items-center rounded-full bg-rose-500 px-2.5 py-1 text-xs font-bold text-white shadow-xs">
+            {risk.overduePct}% Overdue
+          </span>
+        ) : (
+          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+            All Clear
+          </span>
+        )}
+      </Link>
     </div>
   );
 }
 
-/* ----------------- 2. Sales Simple Home ----------------- */
+/* =========================================================================
+   2. SALES SCREEN (Exact Match to buildcity_mobile_app_mockup)
+   ========================================================================= */
 
 export async function SimpleSalesHome({ userId }: { userId: string }) {
   const [s, cash] = await Promise.all([
@@ -235,234 +195,316 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
   ]);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Hero Status Banner: Cash in Hand with 1-tap Handover */}
-      <div className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 p-4 text-white shadow-md">
+    <div className="flex flex-col gap-4 font-sans">
+      {/* Top Hero: Cash in Hand Card with Handover pill */}
+      <div className="flex items-center justify-between rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
         <div>
-          <span className="text-xs font-medium uppercase tracking-wider text-white/80">Cash in Hand</span>
-          <p className="text-2xl font-extrabold tracking-tight">{money(cash.heldPaise)}</p>
-          <p className="mt-0.5 text-xs text-white/80">
-            Collected today: <strong>{money(s.collectedTodayPaise)}</strong>
+          <span className="text-xs font-semibold text-muted-foreground">Cash in Hand:</span>
+          <p className="mt-0.5 text-3xl font-black tracking-tight text-foreground">
+            {money(cash.heldPaise)}
           </p>
+          {cash.pendingPaise > 0 && (
+            <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+              {money(cash.pendingPaise)} waiting handover approval
+            </p>
+          )}
         </div>
 
         <Link
           href="/wallet"
-          className="inline-flex items-center gap-1 rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-emerald-800 shadow-sm transition-transform active:scale-95 hover:bg-white/95"
+          className="inline-flex items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm font-bold text-primary transition-all duration-150 active:scale-95 hover:bg-primary/15"
         >
-          <HandCoins className="size-4" />
-          <span>Handover</span>
+          Handover
         </Link>
       </div>
 
-      {/* 3 Primary Big Action Cards */}
-      <div className="flex flex-col gap-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Sales Actions
-        </span>
+      {/* Quick Actions (3 Vibrant Vertical Cards) */}
+      <div>
+        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
+        <div className="grid grid-cols-3 gap-2.5">
+          {/* New Order (Orange Card) */}
+          <Link
+            href="/orders/new"
+            className="group flex min-h-[135px] flex-col justify-between rounded-3xl bg-gradient-to-b from-orange-500 to-orange-600 p-3.5 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-white/20 transition-transform group-hover:scale-105">
+              <ShoppingCart className="size-5 text-white" strokeWidth={2.4} />
+            </div>
+            <div>
+              <span className="text-sm font-black leading-tight block">New<br />Order</span>
+            </div>
+          </Link>
 
-        <SimpleActionCard
-          href="/orders/new"
-          title="New Order"
-          description="Select shop and book cement bags"
-          icon={ShoppingCart}
-          iconBgClass="bg-amber-500/15 text-amber-600 dark:text-amber-400"
-          badge="Book Cement"
-          badgeTone="amber"
-        />
+          {/* Collect Payment (Emerald Green Card) */}
+          <Link
+            href="/receipts/new"
+            className="group flex min-h-[135px] flex-col justify-between rounded-3xl bg-gradient-to-b from-emerald-500 to-emerald-600 p-3.5 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-white/20 transition-transform group-hover:scale-105">
+              <span className="text-lg font-black leading-none">₹</span>
+            </div>
+            <div>
+              <span className="text-sm font-black leading-tight block">Collect<br />Payment</span>
+            </div>
+          </Link>
 
-        <SimpleActionCard
-          href="/receipts/new"
-          title="Collect Payment"
-          description="Record cash or UPI payment from shop"
-          icon={Coins}
-          iconBgClass="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-          badge="Record"
-          badgeTone="emerald"
-        />
-
-        <SimpleActionCard
-          href="/ledger"
-          title="Shop Dues & Khata"
-          description={`${s.retailersWithDues} shops have dues · Total ${money(s.duesPaise)}`}
-          icon={Store}
-          iconBgClass="bg-blue-500/15 text-blue-600 dark:text-blue-400"
-        />
+          {/* Shop Dues (Blue Card) */}
+          <Link
+            href="/ledger"
+            className="group flex min-h-[135px] flex-col justify-between rounded-3xl bg-gradient-to-b from-blue-600 to-blue-700 p-3.5 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-white/20 transition-transform group-hover:scale-105">
+              <Store className="size-5 text-white" strokeWidth={2.4} />
+            </div>
+            <div>
+              <span className="text-sm font-black leading-tight block">Shop<br />Dues</span>
+            </div>
+          </Link>
+        </div>
       </div>
 
-      {/* Collect Today Quick List (Overdue preview) */}
-      {s.collect && s.collect.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Collect Today ({s.collect.length})
-            </span>
-            <Link href="/ledger?show=overdue" className="text-xs font-semibold text-primary hover:underline">
-              View All
-            </Link>
-          </div>
-          <ul className="flex flex-col gap-2">
-            {s.collect.slice(0, 3).map((r) => (
-              <li key={r.retailerId}>
-                <OverdueRow row={r} href={`/receipts/new?retailer=${r.retailerId}`} />
-              </li>
-            ))}
-          </ul>
+      {/* Recent Activity / Overdue Collection Feed */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">Collect Today</h2>
+          <Link href="/ledger?show=overdue" className="text-xs font-bold text-primary hover:underline">
+            View All
+          </Link>
         </div>
-      )}
+
+        {s.collect && s.collect.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {s.collect.slice(0, 3).map((r) => (
+              <Link
+                key={r.retailerId}
+                href={`/receipts/new?retailer=${r.retailerId}`}
+                className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex size-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                    <Store className="size-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{r.name}</p>
+                    <p className="text-xs text-muted-foreground">{r.place ?? "Retailer"}</p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-sm font-extrabold text-rose-600 dark:text-rose-400">{money(r.duePaise)}</p>
+                  <span className="text-[11px] font-semibold text-muted-foreground">Due</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No pending collections today
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/* ----------------- 3. Accounts Simple Home ----------------- */
+/* =========================================================================
+   3. ACCOUNTS SCREEN (Exact Match to buildcity_role_ui_mockup Screen 1)
+   ========================================================================= */
 
 export async function SimpleAccountsHome() {
   const s = await getAccountsHome();
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Hero Verification Strip */}
-      <div className="rounded-2xl bg-gradient-to-r from-sky-700 via-indigo-800 to-blue-900 p-4 text-white shadow-md">
-        <span className="text-xs font-medium uppercase tracking-wider text-white/80">Accounts Verification</span>
-        <div className="mt-1 flex items-baseline justify-between">
-          <p className="text-xl font-extrabold tracking-tight">
-            {s.approvals + s.unverifiedOnline + s.handoversToConfirm} Actions Pending
-          </p>
-          <span className="text-xs font-semibold text-sky-200">
-            Cash to verify: {money(s.cashToConfirmPaise)}
+    <div className="flex flex-col gap-3.5 font-sans">
+      {/* 1. Approve Orders (Emerald Green Card) */}
+      <Link
+        href="/approvals"
+        className="group relative flex min-h-[88px] items-center justify-between rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div>
+          <h3 className="text-lg font-black tracking-tight">Approve Orders</h3>
+          <span className="mt-1 inline-flex items-center rounded-full bg-emerald-950/40 px-2.5 py-0.5 text-xs font-bold text-emerald-200">
+            {s.approvals} Pending
           </span>
         </div>
-      </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-      {/* 3 Primary Big Action Cards */}
-      <div className="flex flex-col gap-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Pending Approvals
-        </span>
+      {/* 2. Verify Online / UPI (Blue Card) */}
+      <Link
+        href="/receipts/review"
+        className="group relative flex min-h-[88px] items-center justify-between rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div>
+          <h3 className="text-lg font-black tracking-tight">Verify Online / UPI</h3>
+          <span className="mt-1 inline-flex items-center rounded-full bg-blue-950/40 px-2.5 py-0.5 text-xs font-bold text-blue-200">
+            {s.unverifiedOnline > 0 ? `${s.unverifiedOnline} Waiting` : "All Verified"}
+          </span>
+        </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-        <SimpleActionCard
-          href="/approvals"
-          title="Approve Orders"
-          description="Orders awaiting credit limit or rate clearance"
-          icon={BadgeCheck}
-          iconBgClass="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-          badge={s.approvals > 0 ? `${s.approvals} Pending` : "None"}
-          badgeTone={s.approvals > 0 ? "amber" : "neutral"}
-        />
+      {/* 3. Cash Handovers (Purple Card) */}
+      <Link
+        href="/wallet"
+        className="group relative flex min-h-[88px] items-center justify-between rounded-2xl bg-gradient-to-r from-purple-600 to-purple-700 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div>
+          <h3 className="text-lg font-black tracking-tight">Cash Handovers</h3>
+          <span className="mt-1 inline-flex items-center rounded-full bg-purple-950/40 px-2.5 py-0.5 text-xs font-bold text-purple-200">
+            {s.handoversToConfirm} Requests ({money(s.cashToConfirmPaise)})
+          </span>
+        </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-        <SimpleActionCard
-          href="/receipts/review"
-          title="Verify Online / UPI"
-          description="Verify online payments against bank statement"
-          icon={Receipt}
-          iconBgClass="bg-blue-500/15 text-blue-600 dark:text-blue-400"
-          badge={s.unverifiedOnline > 0 ? `${s.unverifiedOnline} To Verify` : "Clear"}
-          badgeTone={s.unverifiedOnline > 0 ? "blue" : "neutral"}
-        />
+      {/* Pending Approvals Header & Quick Summary */}
+      <div className="mt-2 flex flex-col gap-2">
+        <h2 className="text-sm font-extrabold text-foreground">Pending Approvals</h2>
 
-        <SimpleActionCard
-          href="/wallet"
-          title="Cash Handovers"
-          description="Confirm cash submitted by sales team"
-          icon={Wallet}
-          iconBgClass="bg-purple-500/15 text-purple-600 dark:text-purple-400"
-          badge={s.handoversToConfirm > 0 ? `${s.handoversToConfirm} Requests` : "All Confirmed"}
-          badgeTone={s.handoversToConfirm > 0 ? "purple" : "neutral"}
-        />
+        <div className="flex flex-col gap-2">
+          <Link
+            href="/approvals"
+            className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40"
+          >
+            <div>
+              <p className="text-sm font-bold text-foreground">Orders Waiting Approval</p>
+              <p className="text-xs text-muted-foreground">Credit limit &amp; rate checks</p>
+            </div>
+            <div className="text-right">
+              <span className="text-base font-extrabold text-primary">{s.approvals}</span>
+              <span className="block text-[11px] text-muted-foreground">Orders</span>
+            </div>
+          </Link>
+
+          <Link
+            href="/wallet"
+            className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40"
+          >
+            <div>
+              <p className="text-sm font-bold text-foreground">Sales Staff Cash Waiting</p>
+              <p className="text-xs text-muted-foreground">Requires accounts receipt confirmation</p>
+            </div>
+            <div className="text-right">
+              <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
+                {money(s.cashToConfirmPaise)}
+              </span>
+              <span className="block text-[11px] text-muted-foreground">{s.handoversToConfirm} staff</span>
+            </div>
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ----------------- 4. Logistics Simple Home ----------------- */
+/* =========================================================================
+   4. LOGISTICS SCREEN (Exact Match to buildcity_role_ui_mockup Screen 2)
+   ========================================================================= */
 
 export async function SimpleLogisticsHome() {
   const now = new Date();
   const s = await getLogisticsHome(now);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Fleet & Godown Status Hero */}
-      <div className="rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 p-4 text-white shadow-md">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-xs font-medium uppercase tracking-wider text-white/80">Godown Stock</span>
-            <p className="text-2xl font-extrabold tracking-tight">{num(s.godown.bags)} Bags</p>
+    <div className="flex flex-col gap-3.5 font-sans">
+      {/* Top Status Pill: 3 Trucks Loaded · 4 Standing */}
+      <div className="flex items-center justify-center rounded-2xl border border-border/70 bg-card py-2.5 px-4 shadow-xs">
+        <span className="text-xs font-bold text-muted-foreground">
+          {s.trucks.length} Trucks Loaded · {num(s.godown.bags)} Bags in Godown
+        </span>
+      </div>
+
+      {/* 1. Dispatch Truck (Bold Orange Card) */}
+      <Link
+        href="/dispatch"
+        className="group relative flex min-h-[92px] items-center justify-between rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div className="flex items-center gap-3.5">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-white/20">
+            <Truck className="size-6 text-white" strokeWidth={2.4} />
           </div>
-          <div className="text-right">
-            <span className="text-xs font-medium uppercase tracking-wider text-white/80">Fleet</span>
-            <p className="text-base font-bold text-white">
-              {s.trucks.length} Loaded Trucks
-            </p>
+          <div>
+            <h3 className="text-lg font-black tracking-tight">Dispatch Truck</h3>
+            <span className="text-xs font-semibold text-white/90">
+              {s.ready} Ready to Send
+            </span>
           </div>
         </div>
-      </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-      {/* 3 Primary Big Action Cards */}
-      <div className="flex flex-col gap-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Logistics Operations
-        </span>
+      {/* 2. Factory Purchase (Teal Card) */}
+      <Link
+        href="/stock/purchase"
+        className="group relative flex min-h-[92px] items-center justify-between rounded-2xl bg-gradient-to-r from-teal-600 to-teal-700 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div className="flex items-center gap-3.5">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-white/20">
+            <Warehouse className="size-6 text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <h3 className="text-lg font-black tracking-tight">Factory Purchase</h3>
+            <span className="text-xs font-semibold text-white/90">Receive Cement</span>
+          </div>
+        </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-        <SimpleActionCard
-          href="/dispatch"
-          title="Dispatch Truck"
-          description="Assign vehicle, driver & send loaded cement"
-          icon={Truck}
-          iconBgClass="bg-orange-500/15 text-orange-600 dark:text-orange-400"
-          badge={s.ready > 0 ? `${s.ready} Ready` : "No Orders"}
-          badgeTone={s.ready > 0 ? "amber" : "neutral"}
-        />
+      {/* 3. Move Bags (Slate / Dark Navy Card) */}
+      <Link
+        href="/stock"
+        className="group relative flex min-h-[92px] items-center justify-between rounded-2xl bg-gradient-to-r from-slate-700 to-slate-800 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div className="flex items-center gap-3.5">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-white/20">
+            <Package className="size-6 text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <h3 className="text-lg font-black tracking-tight">Move Bags</h3>
+            <span className="text-xs font-semibold text-white/90">For internal warehouse transfers</span>
+          </div>
+        </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-        <SimpleActionCard
-          href="/stock/purchase"
-          title="Factory Purchase"
-          description="Receive fresh cement bags from factory/plant"
-          icon={PackagePlus}
-          iconBgClass="bg-teal-500/15 text-teal-600 dark:text-teal-400"
-          badge="Receive"
-          badgeTone="neutral"
-        />
+      {/* Ready for Dispatch Preview */}
+      <div className="mt-2 flex flex-col gap-2">
+        <h2 className="text-sm font-extrabold text-foreground">Ready for Dispatch</h2>
 
-        <SimpleActionCard
-          href="/stock"
-          title="Godown Stock & Transfers"
-          description="Check inventory balances & inter-godown transfers"
-          icon={Warehouse}
-          iconBgClass="bg-blue-500/15 text-blue-600 dark:text-blue-400"
-        />
-      </div>
-
-      {/* Loaded Trucks Preview */}
-      {s.trucks.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Currently Loaded Trucks
-          </span>
+        {s.trucks.length > 0 ? (
           <div className="flex flex-col gap-2">
-            {s.trucks.map((t) => (
+            {s.trucks.slice(0, 2).map((t) => (
               <Link
                 key={t.truck}
-                href="/stock"
-                className="flex items-center justify-between rounded-xl border border-border/80 bg-card p-3 text-xs shadow-xs hover:bg-muted/30"
+                href="/dispatch"
+                className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40"
               >
-                <div className="flex items-center gap-2">
-                  <Truck className="size-4 text-primary" />
-                  <span className="font-bold">{t.truck}</span>
+                <div>
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">Truck Registration</span>
+                  <p className="text-base font-black text-foreground">{t.truck}</p>
                 </div>
-                <div className="flex items-center gap-1.5 font-semibold text-muted-foreground">
-                  {t.products.map((p) => `${p.name}: ${p.bags} bags`).join(" · ")}
+                <div className="text-right">
+                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
+                    {t.products.reduce((acc, p) => acc + p.bags, 0)} bags
+                  </span>
                 </div>
               </Link>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex min-h-16 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No loaded trucks waiting
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/* ----------------- 5. Retailer Simple Home ----------------- */
+/* =========================================================================
+   5. RETAILER SCREEN (Exact Match to buildcity_role_ui_mockup Screen 3)
+   ========================================================================= */
 
 export async function SimpleRetailerHome({ userId }: { userId: string }) {
   const s = await getRetailerHome(userId);
@@ -471,66 +513,78 @@ export async function SimpleRetailerHome({ userId }: { userId: string }) {
   const isDue = s.balancePaise > 0;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Hero Balance Strip */}
-      <div
-        className={cn(
-          "flex items-center justify-between rounded-2xl p-4 text-white shadow-md",
-          isDue
-            ? "bg-gradient-to-r from-rose-600 via-rose-700 to-amber-700"
-            : "bg-gradient-to-r from-emerald-600 to-teal-700",
-        )}
-      >
+    <div className="flex flex-col gap-3.5 font-sans">
+      {/* Top Outstanding Dues Hero Card */}
+      <div className="flex items-center justify-between rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
         <div>
-          <span className="text-xs font-medium uppercase tracking-wider text-white/80">
-            {isDue ? "Outstanding Dues" : "Advance Balance"}
+          <span className="text-xs font-semibold text-muted-foreground">
+            {isDue ? "Outstanding Dues:" : "Advance Balance:"}
           </span>
-          <p className="text-2xl font-extrabold tracking-tight">{money(Math.abs(s.balancePaise))}</p>
+          <p className={cn("mt-0.5 text-3xl font-black tracking-tight", isDue ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
+            {money(Math.abs(s.balancePaise))}
+          </p>
         </div>
 
         <Link
           href="/receipts/new"
-          className="inline-flex items-center gap-1 rounded-xl bg-white px-3.5 py-2 text-xs font-bold text-neutral-900 shadow-sm transition-transform active:scale-95 hover:bg-white/95"
+          className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-xs transition-all duration-150 active:scale-95 hover:bg-emerald-700"
         >
-          <Coins className="size-4 text-emerald-600" />
-          <span>Pay Online</span>
+          Pay Online
         </Link>
       </div>
 
-      {/* 3 Primary Big Action Cards */}
-      <div className="flex flex-col gap-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          My Shop Actions
-        </span>
+      {/* 1. Order Cement (Coral / Vibrant Red-Orange Card) */}
+      <Link
+        href="/orders/new"
+        className="group relative flex min-h-[96px] items-center justify-between rounded-3xl bg-gradient-to-r from-orange-500 via-rose-500 to-rose-600 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-white/20">
+            <ShoppingCart className="size-6 text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <h3 className="text-xl font-black tracking-tight">Order Cement</h3>
+            <span className="text-xs font-semibold text-white/90">Book PPC / OPC Cement Bags</span>
+          </div>
+        </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-        <SimpleActionCard
-          href="/orders/new"
-          title="Order Cement"
-          description="Book fresh PPC or OPC cement delivery"
-          icon={ShoppingCart}
-          iconBgClass="bg-amber-500/15 text-amber-600 dark:text-amber-400"
-          badge="Book"
-          badgeTone="amber"
-        />
+      {/* 2. Track Delivery (Emerald Green Card) */}
+      <Link
+        href="/orders?show=open"
+        className="group relative flex min-h-[96px] items-center justify-between rounded-3xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-white/20">
+            <Truck className="size-6 text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <h3 className="text-xl font-black tracking-tight">Track Delivery</h3>
+            <span className="text-xs font-semibold text-white/90">
+              {s.openOrders > 0 ? `${s.openOrders} Truck Dispatched / Active` : "No active deliveries"}
+            </span>
+          </div>
+        </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
 
-        <SimpleActionCard
-          href="/orders?show=open"
-          title="Track Delivery"
-          description="Check order status & dispatched trucks"
-          icon={Truck}
-          iconBgClass="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-          badge={s.openOrders > 0 ? `${s.openOrders} Active` : "None"}
-          badgeTone={s.openOrders > 0 ? "emerald" : "neutral"}
-        />
-
-        <SimpleActionCard
-          href="/ledger"
-          title="My Khata / Ledger"
-          description="Complete statement of bills & payments"
-          icon={Store}
-          iconBgClass="bg-blue-500/15 text-blue-600 dark:text-blue-400"
-        />
-      </div>
+      {/* 3. My Khata / Ledger (Vibrant Blue Card) */}
+      <Link
+        href="/ledger"
+        className="group relative flex min-h-[96px] items-center justify-between rounded-3xl bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-white/20">
+            <Store className="size-6 text-white" strokeWidth={2.4} />
+          </div>
+          <div>
+            <h3 className="text-xl font-black tracking-tight">My Khata / Ledger</h3>
+            <span className="text-xs font-semibold text-white/90">Access ledger and financial statements</span>
+          </div>
+        </div>
+        <ChevronRight className="size-6 text-white/70 transition-transform group-hover:translate-x-1 group-hover:text-white" />
+      </Link>
     </div>
   );
 }
