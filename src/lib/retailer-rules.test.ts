@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  groupPickerRetailers,
+  retailerInScope,
   isValidIndianMobile,
   matchesRetailerSearch,
   normalizePhone,
@@ -294,5 +296,52 @@ describe("retailerMeta", () => {
   it("handles a shop with no place", () => {
     expect(retailerMeta({ place: "", active: false })).toBe("Off");
     expect(retailerMeta({ place: "", active: true })).toBe("");
+  });
+});
+
+describe("retailerInScope", () => {
+  it("Mine is the shops assigned to this person; All is every shop", () => {
+    expect(retailerInScope({ salesRepId: "me" }, "mine", "me")).toBe(true);
+    expect(retailerInScope({ salesRepId: "other" }, "mine", "me")).toBe(false);
+    expect(retailerInScope({ salesRepId: null }, "mine", "me")).toBe(false);
+    expect(retailerInScope({ salesRepId: null }, "all", "me")).toBe(true);
+    expect(retailerInScope({ salesRepId: "other" }, "all", "me")).toBe(true);
+  });
+});
+
+describe("groupPickerRetailers", () => {
+  const shops = [
+    { name: "zeta", place: "Patna", phone: "9000000001", mine: true },
+    { name: "Beta", place: "Gaya", phone: "9000000002", mine: false },
+    { name: "alpha", place: "Patna", phone: "9000000003", mine: false },
+    { name: "Gamma", place: "Ara", phone: "9000000004", mine: true },
+  ];
+  const names = (list: { name: string }[]) => list.map((s) => s.name);
+
+  it("puts own shops first, each group A to Z whatever the capitals", () => {
+    const { mine, other } = groupPickerRetailers(shops, "");
+    expect(names(mine)).toEqual(["Gamma", "zeta"]);
+    expect(names(other)).toEqual(["alpha", "Beta"]);
+  });
+
+  it("searches name, place and phone in any capitals, in both groups", () => {
+    const patna = groupPickerRetailers(shops, "PATNA");
+    expect(names(patna.mine)).toEqual(["zeta"]);
+    expect(names(patna.other)).toEqual(["alpha"]);
+    const phone = groupPickerRetailers(shops, "0000002");
+    expect(names(phone.mine)).toEqual([]);
+    expect(names(phone.other)).toEqual(["Beta"]);
+  });
+
+  it("is empty when nothing matches, and works without a phone", () => {
+    expect(groupPickerRetailers(shops, "zzz")).toEqual({ mine: [], other: [] });
+    expect(groupPickerRetailers([], "")).toEqual({ mine: [], other: [] });
+    expect(names(groupPickerRetailers([{ name: "A", place: "" }], "a").other)).toEqual(["A"]);
+  });
+
+  it("does not change the list it was given", () => {
+    const before = names(shops);
+    groupPickerRetailers(shops, "");
+    expect(names(shops)).toEqual(before);
   });
 });

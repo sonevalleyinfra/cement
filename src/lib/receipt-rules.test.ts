@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkChequeDate,
   checkReason,
   checkReceiptAmount,
+  isSafeProofImage,
   isUtrTaken,
+  MAX_PROOF_IMAGE_CHARS,
   MAX_RECEIPT_PAISE,
   normaliseUtr,
   PAYMENT_MODES,
@@ -100,6 +103,9 @@ describe("planReceipt", () => {
       onlineMethod: null,
       bankAccountId: null,
       payerName: "",
+      proofImage: null,
+      chequeDate: null,
+      chequeBank: null,
       receivedOn: TODAY,
       backdate: null,
       ledger: { retailerId: "R", kind: "receipt_credit", amountPaise: -10000000 },
@@ -123,6 +129,9 @@ describe("planReceipt", () => {
       onlineMethod: "upi",
       bankAccountId: ACCOUNT,
       payerName: "Ravi Kumar",
+      proofImage: null,
+      chequeDate: null,
+      chequeBank: null,
       receivedOn: TODAY,
       backdate: null,
       ledger: null,
@@ -131,8 +140,8 @@ describe("planReceipt", () => {
   });
   it("online needs a UTR", () => expect(planReceipt({ ...online, utr: "" }).ok).toBe(false));
   it("online needs a method and the account it came into", () => {
-    expect(planReceipt({ ...online, onlineMethod: undefined })).toEqual({ ok: false, error: "Pick UPI, NEFT, RTGS or IMPS." });
-    expect(planReceipt({ ...online, onlineMethod: "cheque" })).toEqual({ ok: false, error: "Pick UPI, NEFT, RTGS or IMPS." });
+    expect(planReceipt({ ...online, onlineMethod: undefined })).toEqual({ ok: false, error: "Pick UPI, NEFT, RTGS, IMPS or Cheque." });
+    expect(planReceipt({ ...online, onlineMethod: "cheque" }).ok).toBe(true);
     expect(planReceipt({ ...online, bankAccountId: null })).toEqual({ ok: false, error: "Pick the account it came into." });
     expect(planReceipt({ ...online, bankAccountId: "sbi" })).toEqual({ ok: false, error: "Pick the account it came into." });
     for (const m of ONLINE_METHODS) expect(planReceipt({ ...online, onlineMethod: m }).ok).toBe(true);
@@ -155,6 +164,86 @@ describe("planReceipt", () => {
     expect(planReceipt({ ...base, receivedOn: undefined })).toEqual({ ok: false, error: "Pick a date." });
     const p = planReceipt({ ...base, role: "admin", receivedOn: "2026-10-14", backdateReasonCode: "late_entry", backdateNote: " " });
     expect(p).toMatchObject({ ok: true, receivedOn: "2026-10-14", backdate: { code: "late_entry", note: "" } });
+  });
+  it("keeps only a small inline JPEG / PNG / WebP proof photo, for cash and online", () => {
+    for (const img of ["data:image/jpeg;base64,/9j/4AAQ", "data:image/png;base64,iVBORw0KGgo=", "data:image/webp;base64,UklGRg=="]) {
+      expect(planReceipt({ ...base, proofImage: img })).toMatchObject({ ok: true, proofImage: img });
+      expect(planReceipt({ ...online, proofImage: ` ${img} ` })).toMatchObject({ ok: true, proofImage: img });
+    }
+    for (const blank of [null, undefined, "", "   "]) expect(planReceipt({ ...base, proofImage: blank })).toMatchObject({ ok: true, proofImage: null });
+  });
+  it("refuses links and anything that is not a small inline photo", () => {
+    const error = { ok: false, error: "Attach the photo again (JPEG, PNG or WebP, under 450 KB)." };
+    for (const bad of [
+      "https://evil.example/x.jpg",
+      "http://evil.example/x.jpg",
+      "data:image/svg+xml;base64,PHN2Zz4=",
+      "javascript:alert(1)",
+      "data:image/jpeg;base64,abc def",
+      "data:text/html;base64,PGgxPg==",
+      "data:image/jpeg;base64," + "A".repeat(MAX_PROOF_IMAGE_CHARS),
+      42,
+    ]) {
+      expect(planReceipt({ ...base, proofImage: bad })).toEqual(error);
+      expect(planReceipt({ ...online, proofImage: bad })).toEqual(error);
+    }
+  });
+  it("checks the cheque date for cheques only", () => {
+    const cheque: ReceiptRequest = { ...online, onlineMethod: "cheque" };
+    for (const d of [TODAY, "2025-10-24", "2027-04-22"]) expect(planReceipt({ ...cheque, chequeDate: d })).toMatchObject({ ok: true, chequeDate: d });
+    for (const blank of [null, undefined, "", " "]) expect(planReceipt({ ...cheque, chequeDate: blank })).toMatchObject({ ok: true, chequeDate: null });
+    for (const bad of ["2026-13-01", "2026-02-30", "29/10/2026", "2026-10-29T00:00", "2025-10-23", "2027-04-23", 12345]) {
+      expect(planReceipt({ ...cheque, chequeDate: bad })).toEqual({
+        ok: false,
+        error: "Pick a cheque date within the last year or the next 6 months.",
+      });
+    }
+    expect(planReceipt({ ...online, chequeDate: "nonsense" })).toMatchObject({ ok: true, chequeDate: null });
+    expect(planReceipt({ ...base, chequeDate: 12345 })).toMatchObject({ ok: true, chequeDate: null });
+  });
+});
+
+describe("isSafeProofImage", () => {
+  it("accepts small inline JPEG, PNG and WebP photos", () => {
+    expect(isSafeProofImage("data:image/jpeg;base64,/9j/4AAQ")).toBe(true);
+    expect(isSafeProofImage("data:image/png;base64,iVBORw0KGgo=")).toBe(true);
+    expect(isSafeProofImage("data:image/webp;base64,UklGRg==")).toBe(true);
+    expect(isSafeProofImage("data:image/jpeg;base64," + "A".repeat(MAX_PROOF_IMAGE_CHARS - 23))).toBe(true);
+  });
+  it("refuses links, other types, bad characters, huge strings and non-strings", () => {
+    for (const bad of [
+      "https://evil.example/x.jpg",
+      "http://evil.example/x.jpg",
+      "data:image/svg+xml;base64,PHN2Zz4=",
+      "data:image/gif;base64,R0lGOD==",
+      "javascript:alert(1)",
+      "data:image/jpeg;base64,abc def",
+      "data:image/jpeg;base64,",
+      "data:text/html;base64,PGgxPg==",
+      "data:image/jpeg;base64," + "A".repeat(MAX_PROOF_IMAGE_CHARS),
+      null,
+      undefined,
+      42,
+    ]) {
+      expect(isSafeProofImage(bad)).toBe(false);
+    }
+  });
+});
+
+describe("checkChequeDate", () => {
+  const TODAY = "2026-10-29";
+  const error = { ok: false, error: "Pick a cheque date within the last year or the next 6 months." };
+  it("allows a year back to 6 months ahead (post-dated cheques), edges included", () => {
+    for (const d of [TODAY, "2025-10-29", "2027-04-27"]) expect(checkChequeDate(d, TODAY)).toEqual({ ok: true, date: d });
+    expect(checkChequeDate(" 2026-10-01 ", TODAY)).toEqual({ ok: true, date: "2026-10-01" });
+  });
+  it("empty means no date", () => {
+    for (const blank of [null, undefined, "", "  "]) expect(checkChequeDate(blank, TODAY)).toEqual({ ok: true, date: null });
+  });
+  it("refuses bad or out-of-range dates", () => {
+    for (const bad of ["2026-13-01", "2026-02-30", "29/10/2026", "2026-10-29T00:00", "2025-10-28", "2027-04-28", 12345, {}]) {
+      expect(checkChequeDate(bad, TODAY)).toEqual(error);
+    }
   });
 });
 

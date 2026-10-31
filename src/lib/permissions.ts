@@ -30,7 +30,7 @@ export const ACTION_ROLES = {
   /** Change a rate that is set, before the order is fully dispatched, with a reason. */
   changeRate: ["logistics"],
   /** Cancel the bags not dispatched yet, with a reason. */
-  cancelOrder: ["admin"],
+  cancelOrder: ["admin", "sales", "logistics"],
   // Money (docs/idea.md sections 5 and 6)
   /** Record a cash or online payment from a retailer. */
   recordReceipt: STAFF,
@@ -58,9 +58,9 @@ export const ACTION_ROLES = {
   viewStock: STAFF,
   manageStock: ["admin"],
   /** Enter a factory purchase (billed bags, truck details, waste, landed cost). */
-  recordPurchase: ["logistics"],
+  recordPurchase: ["admin", "logistics"],
   /** Move bags between two places (godown / vehicle). */
-  transferStock: ["logistics"],
+  transferStock: ["admin", "logistics"],
   /** Reverse a dispatch (bags back, full or part) or a purchase, with a reason (v2 B2, owner decision D3). */
   reverseStock: ["admin"],
   // Masters

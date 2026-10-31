@@ -6,6 +6,7 @@ import { retailers } from "@/db/schema";
 import { getProducts } from "@/lib/catalogue";
 import { toISTDateKey } from "@/lib/datetime";
 import { defaultOrderSource } from "@/lib/order-delivery-rules";
+import { hasScopeTabs } from "@/lib/order-filter-rules";
 import { pickPrefillRetailerId } from "@/lib/retailer-rules";
 import { isStaff, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
@@ -19,16 +20,20 @@ export default async function NewOrderPage({
   const { user } = await requireRole(...rolesFor("placeOrder"));
   // Staff pick any active shop and type the rate; a retailer orders for their own shop only.
   const retailerOnly = !isStaff(user.role);
-  const retailerRows = retailerOnly
-    ? await db
-        .select({ id: retailers.id, name: retailers.name, place: retailers.place })
-        .from(retailers)
-        .where(eq(retailers.userId, user.id))
-    : await db
-        .select({ id: retailers.id, name: retailers.name, place: retailers.place })
-        .from(retailers)
-        .where(eq(retailers.active, true))
-        .orderBy(asc(retailers.name));
+  const columns = {
+    id: retailers.id,
+    name: retailers.name,
+    place: retailers.place,
+    phone: retailers.phone,
+    address: retailers.address,
+    pincode: retailers.pincode,
+    salesRepId: retailers.salesRepId,
+  };
+  const shops = retailerOnly
+    ? await db.select(columns).from(retailers).where(eq(retailers.userId, user.id))
+    : await db.select(columns).from(retailers).where(eq(retailers.active, true)).orderBy(asc(retailers.name));
+  // The sales person's id stays on the server: the form only needs to know whether the shop is this person's.
+  const retailerRows = shops.map(({ salesRepId, ...shop }) => ({ ...shop, mine: salesRepId === user.id }));
   const empty = (title: string) => (
     <div className="flex flex-col gap-4">
       <PageHeader title="New order" back="/orders" />
@@ -55,6 +60,7 @@ export default async function NewOrderPage({
       askRate={!retailerOnly}
       defaultSource={retailerOnly ? null : defaultOrderSource(user.role)}
       todayKey={toISTDateKey(new Date())}
+      groupMine={hasScopeTabs(user.role)}
     />
   );
 }

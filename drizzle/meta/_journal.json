@@ -309,6 +309,34 @@
       "when": 1792858680880,
       "tag": "0043_reversals",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793200000000,
+      "tag": "0044_payment_proof_and_cheque",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793260000000,
+      "tag": "0045_cement_variants_and_grades",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793280000000,
+      "tag": "0046_update_ppc_grades_with_33",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793290000000,
+      "tag": "0047_exact_cement_products",
+      "breakpoints": true
     }
   ]
 }

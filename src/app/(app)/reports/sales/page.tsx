@@ -1,11 +1,12 @@
 import { EmptyState } from "@/components/app/empty-state";
 import { DataTable } from "@/components/app/data-table";
-import { formatDate } from "@/lib/datetime";
+import { formatDate, formatDateTime } from "@/lib/datetime";
+import { formatINR } from "@/lib/money";
 import { rolesFor } from "@/lib/permissions";
 import { previousRange } from "@/lib/report-compare";
 import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getSalesReport } from "@/lib/reports";
-import type { SalesLine } from "@/lib/sales-report";
+import { saleValuePaise, type SalesLine, type SaleRow } from "@/lib/sales-report";
 import { requireRole } from "@/lib/session";
 import { CompareNote, compareOf, money, num, ReportFrame, Section, Stats } from "../report-frame";
 
@@ -34,6 +35,46 @@ function Lines({
   );
 }
 
+function DispatchRegister({ dispatches }: { dispatches: SaleRow[] }) {
+  if (!dispatches || dispatches.length === 0) return null;
+  // Newest dispatches first
+  const sorted = [...dispatches].reverse();
+  return (
+    <>
+      <Section title="Dispatch register" />
+      <ul className="flex flex-col gap-3">
+        {sorted.map((d, i) => {
+          const value = saleValuePaise(d.bags, d.ratePaise);
+          const from = [d.driverName && `Driver ${d.driverName}`, d.fromPlaceName].filter(Boolean).join(" · ");
+          return (
+            <li key={i} className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
+                    {d.vehicleNumber || "Truck"}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</span>
+                </div>
+                <span className={`tabular shrink-0 text-sm font-bold ${d.bags < 0 ? "text-destructive" : ""}`}>
+                  {formatINR(value)}
+                </span>
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {d.retailerName}
+                {d.retailerPlace && <span className="font-normal text-muted-foreground"> · {d.retailerPlace}</span>}
+              </div>
+              <div className="tabular text-xs text-muted-foreground">
+                {d.productName} · {d.bags} bags @ {formatINR(d.ratePaise)}/bag
+              </div>
+              {from && <div className="text-xs text-muted-foreground">{from}</div>}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 export default async function SalesReportPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
@@ -53,6 +94,8 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
         <EmptyState title="No dispatches" />
       ) : (
         <>
+          <DispatchRegister dispatches={r.dispatches} />
+          <Lines title="By vehicle" label="Vehicle" lines={r.byVehicle} total={r} />
           <Lines title="By product" label="Product" lines={r.byProduct} total={r} />
           <Lines title="By retailer" label="Retailer" lines={r.byRetailer} total={r} />
           <Lines title="By sales person" label="Sales person" lines={r.bySalesPerson} total={r} />

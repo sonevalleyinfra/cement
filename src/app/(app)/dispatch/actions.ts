@@ -76,8 +76,11 @@ export async function dispatchOrder(input: {
     const debit = dispatchEntry(order, input.bags, plan.ratePaise);
     if (!debit.ok) return debit;
 
-    // The truck is found (or made) by its number; the driver goes on this dispatch only.
-    const vehicleId = await truckByNumber(tx, fields.vehicleNumber, me.id);
+    // The truck is found (or made) by its number; keeps the driver on both vehicle and dispatch.
+    const vehicleId = await truckByNumber(tx, fields.vehicleNumber, me.id, {
+      name: fields.driverName,
+      phone: fields.driverPhone,
+    });
     const load = `${input.bags} bags in ${fields.vehicleNumber}`;
     const source = placeColumns(placeKey(fields.from));
     const [sentRow] = await tx.insert(dispatches).values({

@@ -20,6 +20,7 @@ import {
   orderAmountSummary,
 } from "@/lib/order-access";
 import { DELIVER_TO_LABELS, notesForViewer, orderSourceLabel } from "@/lib/order-delivery-rules";
+import { orderBackHref } from "@/lib/order-filter-rules";
 import { canCancelOrder, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { reasonLabel } from "@/lib/reason-codes";
@@ -42,10 +43,18 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrderDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
   const { user } = await requireUser();
   if (!isUuid(id)) notFound();
+  // Back to the list as it was left (rebuilt from checked values, see orderBackHref).
+  const back = orderBackHref((await searchParams).from, user.role);
   // Staff see prices, every order and the staff note. The staff note is not even selected for anyone else.
   const showPrice = canSeePrice(user.role);
 
@@ -66,6 +75,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     salesRepId: orders.salesRepId,
     placedBy: orders.placedBy,
     retailer: retailers.name,
+    retailerAddress: retailers.address,
+    retailerPlace: retailers.place,
+    retailerPincode: retailers.pincode,
+    retailerPhone: retailers.phone,
     product: products.name,
   };
   const [o] = await db
@@ -152,26 +165,35 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={o.retailer} back="/orders" action={isOrderStatus(o.status) && <StatusChip status={o.status} />}>
+      <PageHeader title={o.retailer} back={back} action={isOrderStatus(o.status) && <StatusChip status={o.status} />}>
         <p>
           {o.product} · <span className="tabular">{bagsText(o.bags)}</span>
+          {showPrice && o.ratePaise !== null && (
+            <span className="tabular text-muted-foreground"> · @ {formatINR(o.ratePaise)}/bag</span>
+          )}
         </p>
         {cancelled && <p>{cancelled}</p>}
       </PageHeader>
       <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <Fact label="Deliver to">
-          {site ? `${DELIVER_TO_LABELS.site} · ${o.siteAddress ?? ""}` : DELIVER_TO_LABELS.shop}
+          {site
+            ? `${DELIVER_TO_LABELS.site} · ${o.siteAddress ?? ""}`
+            : `${DELIVER_TO_LABELS.shop}${
+                [o.retailerAddress, o.retailerPlace, o.retailerPincode].filter(Boolean).length > 0
+                  ? ` · ${[o.retailerAddress, o.retailerPlace, o.retailerPincode].filter(Boolean).join(", ")}`
+                  : ""
+              }`}
         </Fact>
-        {(o.receiverName || o.receiverPhone) && (
-          <Fact label="Receiver">
+        {(o.receiverName || o.receiverPhone || (!site && o.retailerPhone)) && (
+          <Fact label={site ? "Receiver" : "Contact"}>
             {o.receiverName}
-            {o.receiverName && o.receiverPhone && " · "}
-            {o.receiverPhone && (
+            {o.receiverName && (o.receiverPhone || (!site && o.retailerPhone)) && " · "}
+            {(o.receiverPhone || (!site && o.retailerPhone)) && (
               <a
-                href={`tel:${o.receiverPhone}`}
+                href={`tel:${o.receiverPhone || o.retailerPhone}`}
                 className="tabular -my-2 inline-flex min-h-12 items-center underline underline-offset-2"
               >
-                {o.receiverPhone}
+                {o.receiverPhone || o.retailerPhone}
               </a>
             )}
           </Fact>
@@ -206,7 +228,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             ) : (
             <li key={l.id} className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="tabular text-lg font-bold">{bagsText(l.bags)}</span>
+                <span className="tabular text-lg font-bold">
+                  {bagsText(l.bags)}
+                  {showPrice && l.ratePaise !== null && (
+                    <span className="text-sm font-normal text-muted-foreground"> · @ {formatINR(l.ratePaise)}/bag</span>
+                  )}
+                </span>
                 <span className="text-sm font-semibold">{l.vehicle}</span>
               </div>
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">

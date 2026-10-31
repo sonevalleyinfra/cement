@@ -6,6 +6,9 @@ import {
   checkClaimChange,
   checkPurchaseDetails,
   claimValuePaise,
+  DEFAULT_PURCHASE_SOURCES,
+  PURCHASE_NOTE_MAX,
+  purchaseNote,
 } from "./purchase-rules";
 
 const today = "2026-10-24";
@@ -120,5 +123,37 @@ describe("claims", () => {
     expect(claimValuePaise(12, 29_500)).toBe(354_000);
     expect(claimValuePaise(0, 29_500)).toBe(0);
     expect(() => claimValuePaise(1.5, 100)).toThrow();
+  });
+});
+
+describe("purchaseNote", () => {
+  it("names the source", () => {
+    expect(purchaseNote({ source: "Satna Plant", otherSource: "", note: "" })).toBe("Source: Satna Plant");
+  });
+
+  it("adds the trimmed note", () => {
+    expect(purchaseNote({ source: "RLJ Chunar", otherSource: "", note: "  late  " })).toBe("Source: RLJ Chunar · late");
+  });
+
+  it("uses the typed name for Other", () => {
+    expect(purchaseNote({ source: "Other", otherSource: " Maihar ", note: "" })).toBe("Source: Maihar");
+  });
+
+  it("says Other when the name is blank", () => {
+    expect(purchaseNote({ source: "Other", otherSource: "  ", note: "x" })).toBe("Source: Other · x");
+  });
+
+  it("drops an empty source", () => {
+    expect(purchaseNote({ source: "", otherSource: "", note: "x" })).toBe("x");
+  });
+});
+
+describe("PURCHASE_NOTE_MAX", () => {
+  it("keeps the longest source and note inside the 200-character note", () => {
+    const n = purchaseNote({ source: "Other", otherSource: "x".repeat(60), note: "y".repeat(PURCHASE_NOTE_MAX) });
+    expect(n.length).toBeLessThanOrEqual(200);
+    for (const source of DEFAULT_PURCHASE_SOURCES) {
+      expect(purchaseNote({ source, otherSource: "", note: "y".repeat(PURCHASE_NOTE_MAX) }).length).toBeLessThanOrEqual(200);
+    }
   });
 });

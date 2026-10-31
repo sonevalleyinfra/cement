@@ -10,6 +10,8 @@
  * - Anyone else (a shop's own login) gets "Open", "Done" and "All". Nothing in a tab shows a price.
  * - "Rate to fill" for a sales person is only their own shops' orders, the same number Home shows.
  *   Admin sees every shop's.
+ * - A sales person who is not admin gets Mine / All and status groups instead of these tabs (hasScopeTabs);
+ *   "Rate to fill" stays for them only as the focused list Home opens.
  */
 import type { OrderStatus } from "./order-rules";
 import { isStaff } from "./permissions";
@@ -49,8 +51,8 @@ export function orderFilterTabs(role: string | null | undefined): OrderFilter[] 
 
 /** The tab shown when the address has none: the person's own job, admin and anyone unknown "All". */
 export function defaultOrderFilter(role: string | null | undefined): OrderFilter {
-  if (isAdmin(role)) return "all";
-  return orderFilterTabs(role)[0];
+  const tabs = orderFilterTabs(role);
+  return (tabs as string[]).includes("all") ? "all" : (tabs[0] ?? "all");
 }
 
 /** The picked tab from the address: a tab this person has, else their default tab. */
@@ -134,12 +136,139 @@ export function parsePages(raw: unknown): number {
   return n >= 1 && n <= MAX_ORDER_PAGES ? n : 1;
 }
 
-/** "/orders" with the tab, the search and the pages loaded; empty or default parts are left out. */
-export function buildOrdersHref(show: string, q: string, n = 1): string {
+/** `?done=1`: the Done group is open. */
+export function parseDone(raw: unknown): boolean {
+  return first(raw) === "1";
+}
+
+/* ---------- Mine / All and the status groups (a sales person who is not admin) ---------- */
+
+/** Sales people choose between their own orders and shops and everyone's. Every other role keeps the tabs. */
+export function hasScopeTabs(role: string | null | undefined): boolean {
+  return hasRole(role, "sales") && !isAdmin(role);
+}
+
+export type OrderScope = "mine" | "all";
+
+/** Mine or All from `?scope=`: Mine unless "all". Other roles have no scope: always "all", and callers ignore it. */
+export function parseOrderScope(raw: unknown, role: string | null | undefined): OrderScope {
+  if (!hasScopeTabs(role)) return "all";
+  return first(raw) === "all" ? "all" : "mine";
+}
+
+/** The Retailers list's `?scope=` follows the same rule as the orders list. */
+export const parseRetailerScope = parseOrderScope;
+
+/** "/retailers", or "/retailers?scope=all". */
+export function buildRetailersHref(scope: OrderScope): string {
+  return scope === "all" ? "/retailers?scope=all" : "/retailers";
+}
+
+export const OPEN_ORDER_STATUSES = ["placed", "approved", "partly_dispatched"] as const satisfies readonly OrderStatus[];
+export const DONE_ORDER_STATUSES = ["dispatched", "rejected", "cancelled"] as const satisfies readonly OrderStatus[];
+/** Most open orders the grouped list loads at once. */
+export const OPEN_ORDER_LIMIT = 300;
+
+export const ORDER_GROUPS = ["rate", "approve", "send", "partly", "done"] as const;
+export type OrderGroup = (typeof ORDER_GROUPS)[number];
+
+/** The group an order sits in. A status the app does not know counts as finished. */
+export function orderGroupOf(status: string, ratePaise: number | null): OrderGroup {
+  switch (status) {
+    case "placed":
+      return ratePaise === null ? "rate" : "approve";
+    case "approved":
+      return "send";
+    case "partly_dispatched":
+      return "partly";
+    default:
+      return "done";
+  }
+}
+
+/** In All the missing rate is usually someone else's to fill, so it does not say "to fill". */
+export function orderGroupLabel(group: OrderGroup, scope: OrderScope): string {
+  switch (group) {
+    case "rate":
+      return scope === "mine" ? "Rate to fill" : "No rate yet";
+    case "approve":
+      return "To approve";
+    case "send":
+      return "To send";
+    case "partly":
+      return "Partly sent";
+    case "done":
+      return "Done";
+  }
+}
+
+/** Orders by group, in ORDER_GROUPS order (Done last), keeping their order inside a group. Empty groups are left out. */
+export function groupOrders<T extends { status: string; ratePaise: number | null }>(
+  rows: readonly T[],
+  scope: OrderScope,
+): { group: OrderGroup; label: string; rows: T[] }[] {
+  return ORDER_GROUPS.map((group) => ({
+    group,
+    label: orderGroupLabel(group, scope),
+    rows: rows.filter((r) => orderGroupOf(r.status, r.ratePaise) === group),
+  })).filter((g) => g.rows.length > 0);
+}
+
+/* ---------- The list's address ---------- */
+
+export type OrdersListState = {
+  /** The tab, "" for this person's default. For a sales person only "rate" (the focused list). */
+  show: string;
+  /** Set only for people with Mine / All. */
+  scope?: OrderScope;
+  q: string;
+  done: boolean;
+  n: number;
+};
+
+/**
+ * The list's state from address values, each one checked. Used for the list itself and for the way back
+ * from an order, so both agree. For a sales person, the focused "Rate to fill" list has no scope, search or
+ * Done, a search always shows Done, and pages only count while Done is showing.
+ */
+export function parseOrdersListState(raw: Record<string, unknown>, role: string | null | undefined): OrdersListState {
+  // Search is for staff; a shop's own login sees few orders.
+  const q = isStaff(role) ? parseOrderSearch(raw.q) : "";
+  const n = parsePages(raw.n);
+  if (!hasScopeTabs(role)) return { show: orderFilterValue(parseOrderFilter(raw.show, role), role), q, done: false, n };
+  if (first(raw.show) === "rate") return { show: "rate", q: "", done: false, n };
+  const done = !q && parseDone(raw.done);
+  return { show: "", scope: parseOrderScope(raw.scope, role), q, done, n: q || done ? n : 1 };
+}
+
+function ordersListQuery({ show, scope, q, done, n }: Partial<OrdersListState>): string {
   const params = new URLSearchParams();
   if (show) params.set("show", show);
+  if (scope === "all") params.set("scope", "all");
   if (q) params.set("q", q);
-  if (n > 1) params.set("n", String(n));
-  const query = params.toString();
+  if (done) params.set("done", "1");
+  if (n && n > 1) params.set("n", String(n));
+  return params.toString();
+}
+
+/** "/orders" with the list's state; empty or default parts are left out. */
+export function buildOrdersHref(state: Partial<OrdersListState>): string {
+  const query = ordersListQuery(state);
   return query ? `/orders?${query}` : "/orders";
+}
+
+/** An order's page, remembering the list it was opened from. */
+export function orderDetailHref(id: string, state: Partial<OrdersListState>): string {
+  const query = ordersListQuery(state);
+  return query ? `/orders/${id}?from=${encodeURIComponent(query)}` : `/orders/${id}`;
+}
+
+/**
+ * The way back from an order, from its `?from=`. Rebuilt from the parsed values and never the text itself,
+ * so a made-up `from` can only ever lead to the orders list.
+ */
+export function orderBackHref(from: unknown, role: string | null | undefined): string {
+  const value = first(from);
+  if (typeof value !== "string") return "/orders";
+  return buildOrdersHref(parseOrdersListState(Object.fromEntries(new URLSearchParams(value)), role));
 }

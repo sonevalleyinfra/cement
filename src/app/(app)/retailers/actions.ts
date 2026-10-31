@@ -19,6 +19,7 @@ import { checkSalesRepPick, movesWithSalesRep } from "@/lib/sales-rep-rules";
 import { geoCapturedAt, type ShopMasterForm } from "@/lib/shop-master-rules";
 import { requireRole } from "@/lib/session";
 import { planShopSwitch } from "@/lib/shop-off-rules";
+import { isShopCategory } from "@/lib/shop-lists";
 
 export type RetailerResult = { ok: true } | { ok: false; error: string };
 
@@ -226,10 +227,13 @@ export async function addRetailer(form: {
   phone: string;
   place: string;
   salesRepId: string;
+  category?: string;
 }): Promise<RetailerResult> {
   const session = await requireRole(...rolesFor("editRetailers"));
   const check = validateRetailer(form ?? {});
   if (!check.ok) return { ok: false, error: Object.values(check.errors)[0] ?? "Check the form" };
+  const category = form?.category || "retailer";
+  if (!isShopCategory(category)) return { ok: false, error: "Pick a category" };
   const rep = await checkPickedSalesRep(form?.salesRepId);
   if (!rep.ok) return rep;
   const { name, phone, place } = check.value;
@@ -240,7 +244,7 @@ export async function addRetailer(form: {
     await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(retailers)
-        .values({ name, phone, place, salesRepId: rep.id })
+        .values({ name, phone, place, salesRepId: rep.id, category })
         .returning({ id: retailers.id });
       await writeAudit(tx, {
         actorId: session.user.id,

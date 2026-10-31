@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { Camera, ChevronDown, ImageIcon, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
@@ -20,9 +20,11 @@ import { retailerMeta } from "@/lib/retailer-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import {
+  BAD_PROOF_IMAGE,
   checkOnlineDetails,
   checkReceivedOn,
   earliestReceivedOn,
+  isSafeProofImage,
   MAX_PAYER_NAME,
   MAX_REASON,
   MAX_UTR,
@@ -40,6 +42,41 @@ import { loadDues, saveReceipt } from "../actions";
 
 type RetailerRow = { id: string; name: string; place: string; active: boolean };
 type AccountRow = { id: string; label: string };
+
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIM = 1200;
+        let width = img.width;
+        let height = img.height;
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export function ReceiptForm({
   retailers,
@@ -70,6 +107,9 @@ export function ReceiptForm({
   // Picked for you when there is only one account.
   const [accountId, setAccountId] = useState<string | null>(accounts.length === 1 ? accounts[0].id : null);
   const [payer, setPayer] = useState("");
+  const [chequeDate, setChequeDate] = useState(today);
+  const [chequeBank, setChequeBank] = useState("");
+  const [proofImage, setProofImage] = useState<string | null>(null);
   const [receivedOn, setReceivedOn] = useState(today);
   const [backdateCode, setBackdateCode] = useState<string | null>(null);
   const [backdateNote, setBackdateNote] = useState("");
@@ -85,6 +125,9 @@ export function ReceiptForm({
     method,
     accountId,
     payer,
+    chequeDate,
+    chequeBank,
+    proofImage,
     receivedOn,
     backdateCode,
     backdateNote,
@@ -100,7 +143,7 @@ export function ReceiptForm({
 
   const online = mode === "online";
   const onlineError = online ? checkOnlineDetails({ onlineMethod: method, bankAccountId: accountId, payerName: payer }) : null;
-  const modeError = validateModeDetails(mode, { utr });
+  const modeError = validateModeDetails(mode, { utr, method });
   // Admin going further back than staff may: a reason is required.
   const older = admin && isDateKey(receivedOn) && daysBetween(receivedOn, today) > STAFF_BACKDATE_DAYS;
   const date = checkReceivedOn(admin ? "admin" : null, receivedOn, today, { code: backdateCode, note: backdateNote });
@@ -121,7 +164,7 @@ export function ReceiptForm({
     start(async () => {
       const res = await loadDues(r.id);
       if (res.ok) setDuesPaise(res.duesPaise);
-      else setError(res.error, [r.id, digits, mode, utr, note, method, accountId, payer, receivedOn, backdateCode, backdateNote]);
+      else setError(res.error, [r.id, digits, mode, utr, note, method, accountId, payer, chequeDate, chequeBank, proofImage, receivedOn, backdateCode, backdateNote]);
     });
   }
 
@@ -135,6 +178,18 @@ export function ReceiptForm({
     // Once on open: later picks load their own dues.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file);
+      if (isSafeProofImage(compressed)) setProofImage(compressed);
+      else setError(BAD_PROOF_IMAGE);
+    } catch {
+      setError("Could not process the selected image. Please try another.");
+    }
+  }
 
   function submit() {
     if (!retailer) return;
@@ -151,6 +206,9 @@ export function ReceiptForm({
           onlineMethod: online ? method : null,
           bankAccountId: online ? accountId : null,
           payerName: online ? payer : "",
+          proofImage: proofImage ?? null,
+          chequeDate: online && method === "cheque" ? chequeDate : null,
+          chequeBank: online && method === "cheque" ? chequeBank : null,
           backdateReasonCode: older ? backdateCode : null,
           backdateNote: older ? backdateNote : "",
           requestId,
@@ -230,14 +288,14 @@ export function ReceiptForm({
           <>
             <div className="flex flex-col gap-2">
               <Label id="method-label">Method</Label>
-              <div role="radiogroup" aria-labelledby="method-label" className="grid grid-cols-4 gap-2">
+              <div role="radiogroup" aria-labelledby="method-label" className="flex flex-wrap gap-2">
                 {ONLINE_METHODS.map((m) => (
                   <button
                     key={m}
                     type="button"
                     role="radio"
                     aria-checked={method === m}
-                    className={chipClass(method === m, "w-full px-2")}
+                    className={chipClass(method === m, "min-w-[4.5rem] px-3")}
                     onClick={() => setMethod(m)}
                   >
                     {ONLINE_METHOD_LABELS[m]}
@@ -246,7 +304,9 @@ export function ReceiptForm({
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <Label id="account-label">Into</Label>
+              <Label id="account-label">
+                {method === "cheque" ? "Deposit into account (फर्म का बैंक खाता)" : "Into"}
+              </Label>
               {accounts.length === 0 ? (
                 <div className="flex min-h-12 items-center justify-between gap-2">
                   <span className="text-sm text-muted-foreground">No bank account</span>
@@ -273,16 +333,124 @@ export function ReceiptForm({
                 </div>
               )}
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="utr">UTR / reference</Label>
-              <Input id="utr" value={utr} maxLength={MAX_UTR + 10} autoComplete="off" onChange={(e) => setUtr(e.target.value)} />
-            </div>
+
+            {method === "cheque" ? (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="utr">Cheque Number (चेक नंबर)</Label>
+                  <Input
+                    id="utr"
+                    placeholder="e.g. 000123"
+                    value={utr}
+                    maxLength={MAX_UTR}
+                    autoComplete="off"
+                    onChange={(e) => setUtr(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="cheque-date">Cheque Date (चेक की तारीख)</Label>
+                    <Input
+                      id="cheque-date"
+                      type="date"
+                      value={chequeDate}
+                      onChange={(e) => setChequeDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="cheque-bank">Issuing Bank (बैंक का नाम)</Label>
+                    <Input
+                      id="cheque-bank"
+                      placeholder="e.g. SBI, PNB, HDFC"
+                      value={chequeBank}
+                      maxLength={80}
+                      autoComplete="off"
+                      onChange={(e) => setChequeBank(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="utr">UTR / reference</Label>
+                <Input
+                  id="utr"
+                  placeholder="e.g. 12-digit UTR"
+                  value={utr}
+                  maxLength={MAX_UTR + 10}
+                  autoComplete="off"
+                  onChange={(e) => setUtr(e.target.value)}
+                />
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
               <Label htmlFor="payer">Payer name (optional)</Label>
-              <Input id="payer" value={payer} maxLength={MAX_PAYER_NAME} autoComplete="off" onChange={(e) => setPayer(e.target.value)} />
+              <Input
+                id="payer"
+                value={payer}
+                maxLength={MAX_PAYER_NAME}
+                autoComplete="off"
+                onChange={(e) => setPayer(e.target.value)}
+              />
             </div>
           </>
         )}
+
+        {/* Optional Proof / Cheque Image Upload */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="proof-image-input">
+              {method === "cheque"
+                ? "Cheque photo (optional)"
+                : "Payment screenshot / proof (optional)"}
+            </Label>
+            {proofImage && (
+              <button
+                type="button"
+                onClick={() => setProofImage(null)}
+                className="text-xs font-semibold text-destructive hover:underline"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
+          {proofImage ? (
+            <div className="relative flex items-center gap-3 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6">
+              <img
+                src={proofImage}
+                alt="Payment proof preview"
+                className="size-16 rounded-xl object-cover ring-1 ring-border"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-foreground">
+                  {method === "cheque" ? "Cheque photo attached" : "Proof photo attached"}
+                </span>
+                <span className="text-xs text-muted-foreground">Ready to save</span>
+              </div>
+            </div>
+          ) : (
+            <label
+              htmlFor="proof-image-input"
+              className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/30 px-4 py-4 text-center text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-muted/50"
+            >
+              <Camera className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+              <span>
+                {method === "cheque"
+                  ? "Take photo or upload cheque (Optional)"
+                  : "Upload screenshot / slip (Optional)"}
+              </span>
+              <input
+                id="proof-image-input"
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={handleFileSelect}
+              />
+            </label>
+          )}
+        </div>
+
         <div className="flex flex-col gap-2">
           <Label htmlFor="note">Note (optional)</Label>
           <Input id="note" value={note} maxLength={MAX_REASON} onChange={(e) => setNote(e.target.value)} />

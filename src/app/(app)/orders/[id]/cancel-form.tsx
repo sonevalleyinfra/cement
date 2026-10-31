@@ -9,7 +9,7 @@ import { reasonHint } from "@/lib/reason-codes";
 import { useFormError } from "@/lib/use-form-error";
 import { cancelOrder } from "../actions";
 
-/** Admin cancels the bags not dispatched yet (`notSent`); bags already sent stay billed. */
+/** Staff cancels the bags not dispatched yet (`notSent`); bags already sent stay billed. */
 export function CancelForm({ orderId, notSent, sent }: { orderId: string; notSent: number; sent: number }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
@@ -23,13 +23,15 @@ export function CancelForm({ orderId, notSent, sent }: { orderId: string; notSen
 
   if (!asking) {
     return (
-      <Button variant="outline" onClick={() => setAsking(true)}>
-        {label}
-      </Button>
+      <div id="cancel">
+        <Button variant="outline" className="w-full text-destructive hover:bg-destructive/10" onClick={() => setAsking(true)}>
+          {label}
+        </Button>
+      </div>
     );
   }
   return (
-    <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+    <div id="cancel" className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
       <p className="text-base font-semibold">{question}</p>
       <ReasonPicker
         action="cancel"

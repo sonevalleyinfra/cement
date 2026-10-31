@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { placesWithEnough, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
+import { formatINR } from "@/lib/money";
 import { stagger } from "@/lib/motion";
 import { isOrderStatus, remainingBags } from "@/lib/order-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -26,7 +27,12 @@ type OrderRow = {
   id: string;
   productId: string;
   retailer: string;
+  retailerAddress?: string | null;
+  retailerPlace: string;
+  retailerPincode?: string | null;
+  retailerPhone: string;
   product: string;
+  ratePaise?: number | null;
   bags: number;
   sent: number;
   status: string;
@@ -39,6 +45,10 @@ type OrderRow = {
   late: boolean;
   staffNote: string;
 };
+
+function formatShopAddress(address?: string | null, place?: string | null, pincode?: string | null): string {
+  return [address?.trim(), place?.trim(), pincode?.trim()].filter(Boolean).join(", ");
+}
 /** A stock place (`key` is "godown:<id>" or "vehicle:<id>"); `truck` is its number when the bags are on a truck. */
 type Place = { key: string; name: string; truck: string | null };
 type Balance = { productId: string; placeKey: string; bags: number };
@@ -73,13 +83,17 @@ export function DispatchView({
   function openSheet(o: OrderRow) {
     setOpen(o);
     setBags(String(remainingBags(o.bags, o.sent)));
-    // Start with the place holding the most bags of this product, and an empty truck box.
+    // Start with the place holding the most bags of this product, and auto-fill truck & driver if on a truck.
     const fullest = placesWithEnough(places, balances, o.productId, remainingBags(o.bags, o.sent)).sort(
       (a, b) => b.bagsHere - a.bagsHere,
     )[0];
-    pickPlace(fullest?.key ?? "", "", null);
-    setDriverName("");
-    setDriverPhone("");
+    const truckNo = fullest?.truck ?? null;
+    const chip = truckNo ? truckChips.find((c) => c.truck === truckNo) : null;
+    setFromPlace(fullest?.key ?? "");
+    setTruck(truckNo ?? "");
+    setAutoTruck(truckNo);
+    setDriverName(chip?.driverName ?? "");
+    setDriverPhone(chip?.driverPhone ?? "");
     clearError();
     renew();
   }
@@ -87,17 +101,25 @@ export function DispatchView({
   /** Bags already on a truck usually leave on that truck, so its number is filled in; a typed number stays. */
   function pickPlace(key: string, current = truck, auto = autoTruck) {
     setFromPlace(key);
-    const next = truckAfterPlacePick(current, auto, places.find((p) => p.key === key)?.truck ?? null);
+    const truckNo = places.find((p) => p.key === key)?.truck ?? null;
+    const next = truckAfterPlacePick(current, auto, truckNo);
     setTruck(next.truck);
     setAutoTruck(next.autoFilled);
+    if (next.autoFilled) {
+      const chip = truckChips.find((c) => c.truck === next.autoFilled);
+      if (chip) {
+        setDriverName(chip.driverName || "");
+        setDriverPhone(chip.driverPhone || "");
+      }
+    }
   }
 
   /** A chip fills the truck number and the driver; a number filled this way is a typed one (it stays). */
   function pickChip(c: TruckChip) {
     setTruck(c.truck);
     setAutoTruck(null);
-    setDriverName(c.driverName);
-    setDriverPhone(c.driverPhone);
+    setDriverName(c.driverName || "");
+    setDriverPhone(c.driverPhone || "");
   }
 
   // Only places holding enough of this product for the bags typed; a pick that no longer fits is dropped.
@@ -169,9 +191,17 @@ export function DispatchView({
                       <span>
                         {o.product} · <span className="tabular">{o.sent}</span> of{" "}
                         <span className="tabular">{o.bags}</span> {o.bags === 1 ? "bag" : "bags"} sent
+                        {o.ratePaise ? (
+                          <span className="tabular font-medium text-foreground"> · @ {formatINR(o.ratePaise)}/bag</span>
+                        ) : null}
                       </span>
                       {o.deliverTo === "site" && o.siteAddress && (
                         <span className="text-sm text-foreground">Site · {o.siteAddress}</span>
+                      )}
+                      {o.deliverTo === "shop" && (
+                        <span className="text-sm text-foreground">
+                          Shop · {formatShopAddress(o.retailerAddress, o.retailerPlace, o.retailerPincode) || o.retailerPlace || "Shop"}
+                        </span>
                       )}
                       {o.requiredByText && (
                         <span className={o.late ? "font-semibold text-caution-foreground" : undefined}>
@@ -182,7 +212,7 @@ export function DispatchView({
                     </div>
                   }
                 />
-                {o.receiverPhone && (
+                {o.receiverPhone ? (
                   <a
                     href={`tel:${o.receiverPhone}`}
                     className="flex min-h-12 items-center gap-1 border-t border-border px-4 text-sm text-muted-foreground"
@@ -192,7 +222,17 @@ export function DispatchView({
                       {o.receiverPhone}
                     </span>
                   </a>
-                )}
+                ) : o.retailerPhone ? (
+                  <a
+                    href={`tel:${o.retailerPhone}`}
+                    className="flex min-h-12 items-center gap-1 border-t border-border px-4 text-sm text-muted-foreground"
+                  >
+                    {"Shop Contact · "}
+                    <span className="tabular font-semibold text-foreground underline underline-offset-2">
+                      {o.retailerPhone}
+                    </span>
+                  </a>
+                ) : null}
               </li>
             );
           })}
@@ -204,8 +244,23 @@ export function DispatchView({
             <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
               <span>
                 {open.retailer} · {open.product} · {remainingBags(open.bags, open.sent)} bags left
+                {open.ratePaise ? ` · @ ${formatINR(open.ratePaise)}/bag` : ""}
               </span>
-              <TextLink href={`/orders/${open.id}`}>Order</TextLink>
+              <div className="flex items-center gap-2">
+                <TextLink href={`/orders/${open.id}#cancel`}>Cancel</TextLink>
+                <span>·</span>
+                <TextLink href={`/orders/${open.id}`}>Order</TextLink>
+              </div>
+            </div>
+            <div className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
+              <div className="font-semibold text-foreground">
+                📍 Delivery: {open.deliverTo === "site" && open.siteAddress ? `Site · ${open.siteAddress}` : `Shop · ${formatShopAddress(open.retailerAddress, open.retailerPlace, open.retailerPincode) || open.retailerPlace || "Shop"}`}
+              </div>
+              {(open.receiverName || open.receiverPhone || open.retailerPhone) && (
+                <div className="mt-0.5">
+                  Contact: {open.receiverName ? `${open.receiverName} · ` : ""}{open.receiverPhone || open.retailerPhone}
+                </div>
+              )}
             </div>
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Bags
@@ -224,7 +279,7 @@ export function DispatchView({
             {options.length === 0 && <p className="text-sm text-destructive">No place holds {Number(bags || 1)} bags.</p>}
             {truckChips.length > 0 && (
               <div className="flex flex-col gap-1">
-                <span className="text-sm font-semibold">Recent trucks</span>
+                <span className="text-sm font-semibold">Truck (Fleet & Recent)</span>
                 <div className="flex flex-wrap gap-2">
                   {truckChips.map((c) => (
                     <button
@@ -232,9 +287,16 @@ export function DispatchView({
                       type="button"
                       onClick={() => pickChip(c)}
                       aria-pressed={truck === c.truck}
-                      className={`tabular min-h-12 rounded-xl px-3 text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${truck === c.truck ? "bg-primary text-primary-foreground ring-primary" : "bg-card ring-foreground/10"}`}
+                      className={`tabular min-h-12 rounded-xl px-3 py-1.5 text-left text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${
+                        truck === c.truck
+                          ? "bg-primary text-primary-foreground ring-primary"
+                          : "bg-card ring-foreground/10 hover:bg-muted"
+                      }`}
                     >
-                      {c.truck}
+                      <span className="block font-semibold">{c.truck}</span>
+                      {c.driverName && (
+                        <span className="block text-xs font-normal opacity-85">{c.driverName}</span>
+                      )}
                     </button>
                   ))}
                 </div>

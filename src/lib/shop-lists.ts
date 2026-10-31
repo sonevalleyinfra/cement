@@ -35,3 +35,15 @@ export function isShopCategory(value: unknown): value is ShopCategory {
 export function isCreditStatus(value: unknown): value is CreditStatus {
   return typeof value === "string" && (CREDIT_STATUSES as readonly string[]).includes(value);
 }
+
+/** A shop's category, read safely: missing or unknown counts as a retailer. */
+export function shopCategoryOf(category: string | null | undefined): ShopCategory {
+  return isShopCategory(category) ? category : "retailer";
+}
+
+/** The shop list's filter tabs. Sub-dealers, builders and institutions show only under All. */
+export type CategoryFilter = "all" | "retailer" | "contractor";
+
+export function matchesCategoryFilter(category: string | null | undefined, filter: CategoryFilter): boolean {
+  return filter === "all" || shopCategoryOf(category) === filter;
+}
