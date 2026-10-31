@@ -16,9 +16,13 @@ import { DashboardViewToggle } from "./view-toggle";
 function SectionSkeleton() {
   return (
     <div className="flex flex-col gap-3">
-      <Skeleton className="h-28 rounded-2xl" />
-      <Skeleton className="h-20 rounded-2xl" />
-      <Skeleton className="h-20 rounded-2xl" />
+      <Skeleton className="h-28 rounded-3xl" />
+      <div className="grid grid-cols-3 gap-2.5">
+        <Skeleton className="h-32 rounded-3xl" />
+        <Skeleton className="h-32 rounded-3xl" />
+        <Skeleton className="h-32 rounded-3xl" />
+      </div>
+      <Skeleton className="h-24 rounded-2xl" />
     </div>
   );
 }
@@ -48,9 +52,8 @@ export default async function DashboardPage({
       case "retailer":
         return <SimpleRetailerHome userId={user.id} />;
       case "cash":
-        // For sales and admin, cash handovers & staff cash are already primary actions in their simple hero cards
-        if (user.role?.includes("sales") || user.role?.includes("admin")) return null;
-        return <MyCashHome userId={user.id} />;
+        // In simple mode, role home already integrates cash/handover seamlessly
+        return null;
     }
   };
 
