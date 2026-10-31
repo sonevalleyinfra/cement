@@ -132,7 +132,9 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
         </div>
 
         <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
-          <span>This Month: <strong className="text-foreground">{formatCount(s.bagsMonth)} bags</strong></span>
+          <span>
+            This Month: <strong className="text-foreground">{money(s.salesMonthPaise)}</strong> ({formatCount(s.bagsMonth)} bags)
+          </span>
           <span>{s.retailersWithDues} shops owe dues</span>
         </div>
       </div>

@@ -77,16 +77,27 @@ async function dispatchedBagsSince(since: Date, salesRepId?: string) {
   return n(row?.b);
 }
 
+async function dispatchedTotalsSince(since: Date, salesRepId?: string) {
+  const [row] = await db
+    .select({
+      b: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number),
+      p: sql<number>`coalesce(sum(${dispatches.bags} * ${dispatches.ratePaise}), 0)`.mapWith(Number),
+    })
+    .from(dispatches)
+    .where(and(gte(dispatches.createdAt, since), salesRepId ? eq(dispatches.salesRepId, salesRepId) : undefined));
+  return { bags: n(row?.b), salesPaise: n(row?.p) };
+}
+
 export async function getSalesHome(userId: string, now = new Date()) {
   const month = monthStartIST(now);
-  const [pendingRate, today, dues, collectedTodayPaise, collectedMonthPaise, bagsMonth, collect] = await Promise.all([
+  const [pendingRate, today, dues, collectedTodayPaise, collectedMonthPaise, dispatchedMonth, collect] = await Promise.all([
     // "Rate to fill": my shops' placed orders with no rate yet.
     countOrders(and(eq(orders.salesRepId, userId), eq(orders.status, "placed"), isNull(orders.ratePaise))),
     countOrders(and(eq(orders.salesRepId, userId), gte(orders.createdAt, istDayStart(now)))),
     dueRows(userId),
     receivedSince(userId, toISTDateKey(now)),
     receivedSince(userId, toISTDateKey(month)),
-    dispatchedBagsSince(month, userId),
+    dispatchedTotalsSince(month, userId),
     // null = the list failed to load; Home shows "Couldn't load" there and the rest still renders.
     getOverdueRows(now)
       .then((rows) => collectToday(rows, userId, 10))
@@ -99,7 +110,8 @@ export async function getSalesHome(userId: string, now = new Date()) {
     duesPaise: totalDuesPaise(dues),
     collectedTodayPaise,
     collectedMonthPaise,
-    bagsMonth,
+    bagsMonth: dispatchedMonth.bags,
+    salesMonthPaise: dispatchedMonth.salesPaise,
     collect,
   };
 }

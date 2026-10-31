@@ -147,6 +147,7 @@ export async function SalesHome({ userId }: { userId: string }) {
   const numbers = [
     { label: "Today", value: money(s.collectedTodayPaise) },
     { label: "This month", value: money(s.collectedMonthPaise) },
+    { label: "Sales (month)", value: money(s.salesMonthPaise) },
     { label: "Bags (month)", value: formatCount(s.bagsMonth) },
   ];
   return (
