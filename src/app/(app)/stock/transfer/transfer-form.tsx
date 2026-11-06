@@ -31,10 +31,12 @@ export function TransferForm({
   places,
   products,
   balances,
+  trucks = [],
 }: {
   places: PlaceOption[];
   products: ProductOption[];
   balances: Balance[];
+  trucks?: { number: string; driverName: string; driverPhone: string }[];
 }) {
   const router = useRouter();
   const { pending, run } = useSubmit();
@@ -116,7 +118,7 @@ export function TransferForm({
           { label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] },
         ]}
       />
-      {newTruck && <TruckFields value={truck} onChange={setTruck} phoneOptional />}
+      {newTruck && <TruckFields value={truck} onChange={setTruck} knownTrucks={trucks} phoneOptional />}
       <div className="tabular text-center text-4xl font-bold" aria-live="polite">
         {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
       </div>

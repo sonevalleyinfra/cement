@@ -72,7 +72,32 @@ describe("ledgerRowsForViewer", () => {
     }
     const v = ledgerRowsForViewer("accounts", rows);
     expect(v.map((r) => [r.amountPaise, r.balancePaise])).toEqual(rows.map((r) => [r.amountPaise, r.balancePaise]));
-    expect(v[1]).toMatchObject({ label: "Dispatch", what: "Prism Trade OPC 53 · 40 bags", note: "40 bags in BR01AB1234", actorId: "u1" });
+    expect(v[1]).toMatchObject({ label: "Dispatch", what: "Prism Trade OPC 53 · 40 bags @ ₹355.00/bag", note: "40 bags in BR01AB1234", actorId: "u1" });
+    expect(v.find((r) => r.id === "p")?.note).toBe("Payment #3 (Cash)");
+  });
+
+  it("labels cash payment explicitly when mode is cash", () => {
+    const cashRow: LedgerSourceRow = {
+      ...base,
+      id: "c1",
+      kind: "receipt_credit",
+      amountPaise: -1_000_000,
+      balancePaise: 500_000,
+      note: "Payment #2",
+      receiptMode: "cash",
+    };
+    const onlineRow: LedgerSourceRow = {
+      ...base,
+      id: "o1",
+      kind: "receipt_credit",
+      amountPaise: -200_000,
+      balancePaise: 300_000,
+      note: "Payment #3 (online)",
+      receiptMode: "online",
+    };
+    const v = ledgerRowsForViewer("sales", [cashRow, onlineRow]);
+    expect(v[0].note).toBe("Payment #2 (Cash)");
+    expect(v[1].note).toBe("Payment #3 (online)");
   });
 
   it("a retailer sees what came (product, bags) but no dispatch amount and no running balance", () => {

@@ -21,10 +21,12 @@ describe("salesRows", () => {
     loads: 1,
     bags: 10,
     valuePaise: 350_005,
+    byVehicle: [],
     byProduct: [{ ...line, label: "Prism OPC" }],
     byRetailer: [{ ...line, label: "=Evil" }],
     bySalesPerson: [{ ...line, label: "Ravi" }],
     byDay: [line],
+    dispatches: [],
   };
   it("has a title and header row per table, money in rupees and day keys", () => {
     const rows = salesRows(r);
@@ -32,7 +34,7 @@ describe("salesRows", () => {
     expect(rows).toContainEqual(["Product", "Bags", "Value (₹)"]);
     expect(rows).toContainEqual(["Prism OPC", 10, "3500.05"]);
     expect(rows).toContainEqual(["2026-04-02", 10, "3500.05"]);
-    expect(rows.filter((x) => x.length === 0)).toHaveLength(4);
+    expect(rows.filter((x) => x.length === 0)).toHaveLength(6);
     expect(toCsv(rows)).toContain("'=Evil");
   });
 });

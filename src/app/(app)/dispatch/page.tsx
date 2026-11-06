@@ -1,4 +1,5 @@
 import { asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
 import { dispatches, orders, products, retailers, vehicles } from "@/db/schema";
@@ -6,16 +7,17 @@ import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { truckChips } from "@/lib/dispatch-rules";
 import { byRequiredBy, isPastRequiredBy } from "@/lib/order-delivery-rules";
 import { getBalances } from "@/lib/stock";
-import { rolesFor } from "@/lib/permissions";
+import { can, rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
+import { getActiveTrucks } from "@/lib/trucks";
 import { DispatchView } from "./dispatch-view";
 
 export default async function DispatchPage() {
   const { user } = await requireRole(...rolesFor("dispatch"));
 
   // Every approved or partly dispatched order: any logistics person may send it.
-  const [rows, balances, recent] = await Promise.all([
+  const [rows, balances, recent, activeTrucks] = await Promise.all([
     db
       .select({
         id: orders.id,
@@ -30,7 +32,12 @@ export default async function DispatchPage() {
         // Logistics and admin only (this page is staff): the staff note helps loading.
         staffNote: orders.staffNote,
         retailer: retailers.name,
+        retailerAddress: retailers.address,
+        retailerPlace: retailers.place,
+        retailerPincode: retailers.pincode,
+        retailerPhone: retailers.phone,
         product: products.name,
+        ratePaise: orders.ratePaise,
         sent: sql<number>`coalesce((select sum(${dispatches.bags}) from ${dispatches} where ${dispatches.orderId} = ${orders.id}), 0)`.mapWith(Number),
       })
       .from(orders)
@@ -49,6 +56,7 @@ export default async function DispatchPage() {
       .where(gt(dispatches.bags, 0))
       .orderBy(desc(dispatches.createdAt))
       .limit(30),
+    getActiveTrucks(),
   ]);
   // The earliest "needed by" first (none last), then the oldest order first.
   const today = toISTDateKey(new Date());
@@ -58,11 +66,15 @@ export default async function DispatchPage() {
     late: isPastRequiredBy(r.requiredBy, today),
   }));
   // Places with stock history (godown still switched on), godowns first.
-  // Trucks are hired, so only the ones holding bags right now are listed.
+  // Trucks holding bags right now are listed under places.
   const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.placeKey));
   const chips = truckChips(
     [...loadedTrucks].map((k) => balances.find((b) => b.placeKey === k)?.placeName ?? ""),
-    recent,
+    [
+      ...activeTrucks.map((t) => ({ truck: t.number, driverName: t.driverName, driverPhone: t.driverPhone })),
+      ...recent,
+    ],
+    12,
   );
   const places = [
     ...new Map(
@@ -82,7 +94,16 @@ export default async function DispatchPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Dispatch" />
+      <PageHeader
+        title="Dispatch"
+        action={
+          can(user.role, "viewReports") ? (
+            <Link href="/reports/sales" className="text-sm font-medium text-primary hover:underline">
+              Sales report
+            </Link>
+          ) : undefined
+        }
+      />
       <DispatchView
         isAdmin={isAdmin(user.role)}
         orders={pending}

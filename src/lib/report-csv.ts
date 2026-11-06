@@ -9,7 +9,7 @@ import { toISTDateKey } from "./datetime";
 import { AGING_LABELS, type AgingBuckets, type DuesAging } from "./due-items";
 import { ledgerEntryLabel } from "./ledger-view-rules";
 import type { LossLine, LossReport, LossTotals } from "./loss-report";
-import type { SalesReport, SalesLine } from "./sales-report";
+import { saleValuePaise, type SalesReport, type SalesLine } from "./sales-report";
 import type { Statement } from "./statement-rules";
 import type { PlaceFlow, StockFlow } from "./stock-report";
 import type { PaymentsByMode } from "./staff-report";
@@ -20,16 +20,55 @@ type Row = (string | number)[];
 const section = (title: string): Row[] => [[], [title]];
 
 export function salesRows(r: SalesReport): Row[] {
-  const lines = (title: string, label: string, list: SalesLine[]): Row[] => [
+  const dispatchRegister: Row[] = (r.dispatches || []).map((d): Row => {
+    const dt = new Date(d.createdAt);
+    const dateStr = toISTDateKey(dt);
+    const timeStr = dt.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true });
+    const totalPaise = saleValuePaise(d.bags, d.ratePaise);
+    return [
+      dateStr,
+      timeStr,
+      d.vehicleNumber || "Unknown truck",
+      d.driverName || "",
+      d.driverPhone || "",
+      d.retailerName,
+      d.retailerPlace || "",
+      d.productName,
+      d.bags,
+      rupees(d.ratePaise),
+      rupees(totalPaise),
+      d.fromPlaceName || "",
+      d.salesRepName || "No sales person",
+    ];
+  });
+  const lines = (title: string, label: string, list: SalesLine[] = []): Row[] => [
     ...section(title),
     [label, "Bags", "Value (₹)"],
-    ...list.map((l): Row => [l.label, l.bags, rupees(l.valuePaise)]),
+    ...(list || []).map((l): Row => [l.label, l.bags, rupees(l.valuePaise)]),
     ["Total", r.bags, rupees(r.valuePaise)],
   ];
   return [
     ["Sales"],
     ["Dispatches", "Bags", "Value (₹)"],
     [r.loads, r.bags, rupees(r.valuePaise)],
+    ...section("Detailed Dispatch Register"),
+    [
+      "Date",
+      "Time",
+      "Vehicle No",
+      "Driver",
+      "Driver Phone",
+      "Retailer / Shop",
+      "Area / Place",
+      "Product",
+      "Bags",
+      "Rate (₹)",
+      "Total Amount (₹)",
+      "Dispatched From",
+      "Sales Person",
+    ],
+    ...dispatchRegister,
+    ...lines("By vehicle", "Vehicle", r.byVehicle),
     ...lines("By product", "Product", r.byProduct),
     ...lines("By retailer", "Retailer", r.byRetailer),
     ...lines("By sales person", "Sales person", r.bySalesPerson),

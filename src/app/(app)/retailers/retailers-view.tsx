@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ComponentProps, type FormEvent, type ReactNode, useState, useTransition } from "react";
+import { ChipCount, chipClass } from "@/components/app/chip";
 import { ConfirmStep } from "@/components/app/confirm-step";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
@@ -22,15 +23,20 @@ import { creditLimitText, effectiveCreditDays, parseCreditLimit, validateCreditD
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
 import { formatINR } from "@/lib/money";
+import { buildRetailersHref, type OrderScope } from "@/lib/order-filter-rules";
 import { reasonHint } from "@/lib/reason-codes";
-import { matchesRetailerSearch } from "@/lib/retailer-rules";
+import { matchesRetailerSearch, retailerInScope } from "@/lib/retailer-rules";
 import {
+  type CategoryFilter,
   CREDIT_STATUSES,
   CREDIT_STATUS_LABELS,
   type CreditStatus,
   isShopCategory,
+  matchesCategoryFilter,
   SHOP_CATEGORIES,
   SHOP_CATEGORY_LABELS,
+  type ShopCategory,
+  shopCategoryOf,
 } from "@/lib/shop-lists";
 import { ADDRESS_MAX, cleanGeo, geoErrorText, mapUrl, OWNER_NAME_MAX } from "@/lib/shop-master-rules";
 import { cn } from "@/lib/utils";
@@ -92,6 +98,17 @@ function MapLink({ lat, lng }: { lat: number; lng: number }) {
 
 const NO_LIMIT_CLASS = "text-amber-700";
 
+const CATEGORY_TABS: { value: CategoryFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "retailer", label: "Retailers" },
+  { value: "contractor", label: "Contractors" },
+];
+
+const SCOPE_TABS: { value: OrderScope; label: string }[] = [
+  { value: "mine", label: "Mine" },
+  { value: "all", label: "All" },
+];
+
 export function RetailersView({
   rows,
   canEdit,
@@ -102,6 +119,9 @@ export function RetailersView({
   onlyNoLimit = false,
   canRecordPayment = false,
   canOrder = false,
+  viewerId,
+  hasScopeTabs = false,
+  initialScope = "all",
 }: {
   rows: Row[];
   /** Admin: add, edit and turn off shops. */
@@ -119,19 +139,68 @@ export function RetailersView({
   /** Shortcuts in the shop sheet: record a payment / place an order with this shop filled in. */
   canRecordPayment?: boolean;
   canOrder?: boolean;
+  /** Who is looking, for Mine (with `hasScopeTabs`). */
+  viewerId?: string;
+  /** A sales person's Mine / All control. */
+  hasScopeTabs?: boolean;
+  /** From `?scope=`. */
+  initialScope?: OrderScope;
 }) {
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [adding, setAdding] = useState(false);
+  const [scope, setScope] = useState(initialScope);
+  // The address moved without this view switching (the menu's Retailers link): follow it.
+  const [seenScope, setSeenScope] = useState(initialScope);
+  if (seenScope !== initialScope) {
+    setSeenScope(initialScope);
+    setScope(initialScope);
+  }
+  const router = useRouter();
+  const [, startScopeChange] = useTransition();
   const detail = rows.find((r) => r.id === detailId) ?? null;
-  const shown = rows.filter((r) => matchesRetailerSearch(r, query));
+  const inScope = (r: Row, s: OrderScope) => !hasScopeTabs || retailerInScope(r, s, viewerId ?? "");
+  const scoped = rows.filter((r) => inScope(r, scope));
+  const shown = scoped.filter((r) => matchesCategoryFilter(r.category, categoryFilter) && matchesRetailerSearch(r, query));
   // Opened from a Home shortcut: back goes to the full list, and an empty list reads "None left".
   const fromHome = onlyNoRep || onlyNoLimit;
+  const mineView = hasScopeTabs && scope === "mine";
+
+  function switchScope(next: OrderScope) {
+    setScope(next);
+    startScopeChange(() => router.replace(buildRetailersHref(next), { scroll: false }));
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Retailers" back={fromHome ? "/retailers" : undefined} />
-      {rows.length > 0 && (
+      <PageHeader title="Retailers & Contractors" back={fromHome ? "/retailers" : undefined} />
+
+      {hasScopeTabs && (
+        <div className="grid grid-cols-2 gap-2">
+          {SCOPE_TABS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              aria-pressed={scope === t.value}
+              className={chipClass(scope === t.value, "w-full")}
+              onClick={() => switchScope(t.value)}
+            >
+              {t.label}
+              <ChipCount n={rows.filter((r) => inScope(r, t.value)).length} on={scope === t.value} />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="scroll-x-fade -mx-4 flex gap-2 px-4 pb-1">
+        {CATEGORY_TABS.map((t) => (
+          <button key={t.value} type="button" className={chipClass(categoryFilter === t.value)} onClick={() => setCategoryFilter(t.value)}>
+            {t.label}
+            <ChipCount n={scoped.filter((r) => matchesCategoryFilter(r.category, t.value)).length} on={categoryFilter === t.value} />
+          </button>
+        ))}
+      </div>
+      {scoped.length > 0 && (
         <Input
           type="search"
           value={query}
@@ -141,10 +210,24 @@ export function RetailersView({
           autoComplete="off"
         />
       )}
-      {rows.length === 0 ? (
-        <EmptyState title={fromHome ? "None left" : "No retailers"} />
+      {scoped.length === 0 ? (
+        <EmptyState title={fromHome ? "None left" : mineView ? "No shops assigned" : "No retailers"} />
       ) : shown.length === 0 ? (
-        <EmptyState title="No match" />
+        <EmptyState
+          title="No match"
+          action={
+            mineView &&
+            query.trim() && (
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center px-2 text-sm text-muted-foreground underline underline-offset-2"
+                onClick={() => switchScope("all")}
+              >
+                Search all
+              </button>
+            )
+          }
+        />
       ) : (
         <ul className="flex flex-col gap-3">
           {shown.map((r, i) => (
@@ -154,7 +237,12 @@ export function RetailersView({
                 title={r.name}
                 onClick={() => setDetailId(r.id)}
                 className={r.active ? undefined : "opacity-60"}
-                top={r.active ? undefined : <StatusChip status="cancelled" label="Off" />}
+                top={
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{SHOP_CATEGORY_LABELS[shopCategoryOf(r.category)]}</span>
+                    {!r.active && <StatusChip status="cancelled" label="Off" />}
+                  </div>
+                }
                 bottom={
                   <div className="flex w-full min-w-0 flex-col gap-0.5 text-xs text-muted-foreground">
                     <span>
@@ -162,7 +250,7 @@ export function RetailersView({
                       {r.place && ` · ${r.place}`}
                       {r.areaName && ` · ${r.areaName}`}
                     </span>
-                    {salesReps && <span>{r.salesRepName || "No sales person"}</span>}
+                    {(salesReps || (hasScopeTabs && scope === "all")) && <span>{r.salesRepName || "No sales person"}</span>}
                   </div>
                 }
               />
@@ -684,6 +772,7 @@ function ShopDetail({
 
 function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void }) {
   const [rep, setRep] = useState("");
+  const [category, setCategory] = useState<ShopCategory>("retailer");
   // The text fields are read with FormData, so the form's onInput clears the error.
   const { error, setError, clearError } = useFormError();
   const [pending, start] = useTransition();
@@ -700,6 +789,7 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
         phone: String(f.get("phone") ?? ""),
         place: String(f.get("place") ?? ""),
         salesRepId: rep,
+        category,
       });
       if (res.ok) onDone();
       else setError(res.error);
@@ -708,6 +798,22 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
 
   return (
     <form onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <Label>Customer type</Label>
+        <div className="flex gap-2">
+          {SHOP_CATEGORIES.filter((c) => c === "retailer" || c === "contractor").map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={category === c}
+              className={chipClass(category === c, "flex-1")}
+              onClick={() => setCategory(c)}
+            >
+              {SHOP_CATEGORY_LABELS[c]}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="add-name">Name</Label>
         <Input id="add-name" name="name" autoComplete="off" />

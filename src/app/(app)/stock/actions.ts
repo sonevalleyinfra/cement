@@ -210,13 +210,28 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     const picked = await pickProduct(tx, input);
     if (!picked.ok) return picked;
     // A typed-in truck is found (or made) by its number, so the same truck always has the same stock.
-    const place: PlaceRef = chosen === NEW_TRUCK_PLACE ? { kind: "vehicle", id: await truckByNumber(tx, truck.number, actorId) } : chosen;
+    const place: PlaceRef =
+      chosen === NEW_TRUCK_PLACE
+        ? { kind: "vehicle", id: await truckByNumber(tx, truck.number, actorId, { name: truck.driverName, phone: truck.driverPhone }) }
+        : chosen;
     const loc = await locate(tx, picked.productId, place);
     if (!loc.ok) return loc;
     if (chosen !== NEW_TRUCK_PLACE && chosen.kind === "vehicle") {
       const [v] = await tx.select({ number: vehicles.number }).from(vehicles).where(eq(vehicles.id, chosen.id));
       if (!v) return { ok: false, error: "Pick an active place." };
       truck = { ...truck, number: v.number };
+      if (truck.driverName || truck.driverPhone) {
+        await tx
+          .update(vehicles)
+          .set({
+            ...(truck.driverName ? { driverName: truck.driverName } : {}),
+            ...(truck.driverPhone ? { driverPhone: truck.driverPhone } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(vehicles.id, chosen.id));
+      }
+    } else if (truck.number) {
+      await truckByNumber(tx, truck.number, actorId, { name: truck.driverName, phone: truck.driverPhone });
     }
     const m = inMovement("purchase", loc.key, d.billedBags, note);
     if (!m.ok) return m;
@@ -474,7 +489,7 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
     const from = places.from;
     const to: PlaceRef =
       places.to === NEW_TRUCK_PLACE
-        ? { kind: "vehicle", id: await truckByNumber(tx, truck?.number ?? "", session.user.id) }
+        ? { kind: "vehicle", id: await truckByNumber(tx, truck?.number ?? "", session.user.id, { name: truck?.driverName, phone: truck?.driverPhone }) }
         : places.to;
     // The typed truck may be the very place the bags are on.
     if (placeKey(from) === placeKey(to)) return { ok: false, error: "Pick two different places." };

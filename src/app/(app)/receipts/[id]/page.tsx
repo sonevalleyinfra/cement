@@ -1,21 +1,27 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
+import { ProofModal } from "@/components/app/proof-modal";
 import { StatusChip } from "@/components/app/status-chip";
+import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
 import { bankAccounts, receipts, retailers, user as users } from "@/db/schema";
 import { bankAccountLabel } from "@/lib/bank-account-rules";
 import { formatDate, formatDateTime } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
+import { getBalance } from "@/lib/ledger";
+import { duesFrom } from "@/lib/ledger-rules";
 import { formatINR } from "@/lib/money";
 import { isRetailerOnly } from "@/lib/order-access";
 import { can } from "@/lib/permissions";
 import { reasonText } from "@/lib/reason-codes";
 import { canReverseReceipt } from "@/lib/receipt-reversal";
-import { canVerifyPayments, MODE_LABELS, ONLINE_METHOD_LABELS, receiptChip } from "@/lib/receipt-rules";
+import { canVerifyPayments, isSafeProofImage, MODE_LABELS, ONLINE_METHOD_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { istStartOf } from "@/lib/report-range";
 import { showStaffDetails } from "@/lib/receipt-view-rules";
 import { requireUser } from "@/lib/session";
+import { cn } from "@/lib/utils";
 import { ReasonAction, VerifyButton } from "../payment-actions";
 
 export default async function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -38,6 +44,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       accountName: bankAccounts.name,
       accountLast4: bankAccounts.last4,
       payerName: receipts.payerName,
+      proofImage: receipts.proofImage,
+      chequeDate: receipts.chequeDate,
+      chequeBank: receipts.chequeBank,
       receivedOn: receipts.receivedOn,
       backdateReasonCode: receipts.backdateReasonCode,
       backdateNote: receipts.backdateNote,
@@ -72,7 +81,11 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
     staffDetails && userId
       ? ((await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1))[0]?.name ?? null)
       : null;
-  const [checker, reverser] = await Promise.all([nameOf(r.checkedBy), nameOf(r.reversedBy)]);
+  const [checker, reverser, duesPaise] = await Promise.all([
+    nameOf(r.checkedBy),
+    nameOf(r.reversedBy),
+    !retailerView && can(user.role, "recordReceipt") ? getBalance(r.retailerId).then(duesFrom) : Promise.resolve(0),
+  ]);
 
   const toCheck = !retailerView && r.mode === "online" && r.status === "unverified" && canVerifyPayments(user.role);
   const showReverse = !retailerView && canReverseReceipt(user.role, r.status);
@@ -83,7 +96,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       ["Received on", formatDate(istStartOf(r.receivedOn))],
       ["Method", r.onlineMethod ? (ONLINE_METHOD_LABELS[r.onlineMethod] ?? r.onlineMethod) : ""],
       ["Into", r.accountName ? bankAccountLabel({ name: r.accountName, last4: r.accountLast4 }) : ""],
-      ["UTR", r.mode === "online" ? (r.utr ?? "") : ""],
+      [r.onlineMethod === "cheque" ? "Cheque Number" : "UTR", r.mode === "online" ? (r.utr ?? "") : ""],
+      ["Cheque Date", r.chequeDate ? formatDate(istStartOf(r.chequeDate)) : ""],
+      ["Cheque Bank", r.chequeBank ?? ""],
       ["Payer", r.payerName],
       ["Note", staffDetails ? r.note : ""],
       ["Backdated", staffDetails ? reasonText(r.backdateReasonCode, r.backdateNote, "backdate") : ""],
@@ -98,6 +113,18 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       </PageHeader>
       <div className="tabular text-3xl font-bold">{formatINR(r.totalPaise)}</div>
 
+      {duesPaise > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-caution-soft p-4 ring-1 ring-caution/30">
+          <div>
+            <div className="text-xs font-medium text-caution-foreground">Remaining due</div>
+            <div className="tabular text-xl font-bold text-caution-foreground">{formatINR(duesPaise)}</div>
+          </div>
+          <Link href={`/receipts/new?retailer=${r.retailerId}`} className={cn(buttonVariants({ size: "sm" }))}>
+            Collect more
+          </Link>
+        </div>
+      )}
+
       {/* Same facts block as the order page: 14px muted label, 16px semibold value, 32px rows. */}
       <dl className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         {details.map(([label, value]) => (
@@ -107,6 +134,18 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
           </div>
         ))}
       </dl>
+
+      {isSafeProofImage(r.proofImage) && (
+        <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {r.onlineMethod === "cheque" ? "Cheque Photo" : "Payment Proof"}
+          </span>
+          <ProofModal
+            imageUrl={r.proofImage}
+            title={r.onlineMethod === "cheque" ? "Cheque Photo" : "Payment Proof"}
+          />
+        </div>
+      )}
 
       {r.mode === "online" && ((checker && r.checkedAt) || (staffDetails && r.status === "rejected")) && (
         <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 text-sm shadow-card ring-1 ring-foreground/6">

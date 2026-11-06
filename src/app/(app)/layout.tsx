@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const { user } = await requireUser();
   const nav = navFor(user.role);
   return (
-    <AppShell headerLeft={<AppTitle />} headerRight={<NotificationBell />} nav={nav}>
+    <AppShell headerLeft={<AppTitle user={user} />} headerRight={<NotificationBell />} nav={nav}>
       {children}
     </AppShell>
   );

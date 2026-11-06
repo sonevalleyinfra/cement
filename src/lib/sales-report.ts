@@ -31,6 +31,12 @@ export type SaleRow = {
   retailerName: string;
   salesRepId: string | null;
   salesRepName: string | null;
+  vehicleId?: string | null;
+  vehicleNumber?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  retailerPlace?: string | null;
+  fromPlaceName?: string | null;
 };
 
 export type SalesLine = { key: string; label: string; bags: number; valuePaise: number; loads: number };
@@ -39,11 +45,13 @@ export type SalesReport = {
   loads: number;
   bags: number;
   valuePaise: number;
+  byVehicle: SalesLine[];
   byProduct: SalesLine[];
   byRetailer: SalesLine[];
   bySalesPerson: SalesLine[];
   /** Oldest day first; key = "YYYY-MM-DD" (India). */
   byDay: SalesLine[];
+  dispatches: SaleRow[];
 };
 
 /** Value of one dispatch: bags × rate, whole paise. */
@@ -67,6 +75,7 @@ const biggestFirst = (a: SalesLine, b: SalesLine) => b.valuePaise - a.valuePaise
 
 /** Groups the dispatches of a range. The groups each add up to the totals. */
 export function salesReport(rows: readonly SaleRow[]): SalesReport {
+  const vehicle = new Map<string, SalesLine>();
   const product = new Map<string, SalesLine>();
   const retailer = new Map<string, SalesLine>();
   const person = new Map<string, SalesLine>();
@@ -77,6 +86,8 @@ export function salesReport(rows: readonly SaleRow[]): SalesReport {
     const v = saleValuePaise(r.bags, r.ratePaise);
     bags += r.bags;
     value += v;
+    const vKey = r.vehicleNumber || "Unknown truck";
+    addTo(vehicle, vKey, vKey, r.bags, v);
     addTo(product, r.productId, r.productName, r.bags, v);
     addTo(retailer, r.retailerId, r.retailerName, r.bags, v);
     addTo(person, r.salesRepId ?? "none", r.salesRepId ? (r.salesRepName ?? "Unknown") : "No sales person", r.bags, v);
@@ -87,10 +98,12 @@ export function salesReport(rows: readonly SaleRow[]): SalesReport {
     loads: rows.filter((r) => r.bags > 0).length,
     bags,
     valuePaise: value,
+    byVehicle: [...vehicle.values()].sort(biggestFirst),
     byProduct: [...product.values()].sort(biggestFirst),
     byRetailer: [...retailer.values()].sort(biggestFirst),
     bySalesPerson: [...person.values()].sort(biggestFirst),
     byDay: [...day.values()].sort((a, b) => a.key.localeCompare(b.key)),
+    dispatches: [...rows],
   };
 }
 

@@ -39,6 +39,16 @@ export function productName(parts: {
   bagKg: number;
 }): string {
   const size = parts.bagKg === DEFAULT_BAG_KG ? "" : ` ${parts.bagKg}kg`;
+  if (parts.brand === "Prism") {
+    if (parts.grade === "Champion Plus") return `Prism Champion Plus${size}`;
+    if (parts.grade === "Champion") return `Prism Champion${size}`;
+    if (parts.grade === "All weather") return `Prism All weather${size}`;
+    if (parts.grade === "Duratech") return `Prism Duratech${size}`;
+    if (parts.grade === "NFR") return `Prism NFR${size}`;
+    if (parts.typeCode === "OPC" && parts.grade === "43") {
+      return parts.channel === "trade" ? `OPC 43${size}` : `Prism Non-trade OPC 43${size}`;
+    }
+  }
   return `${parts.brand} ${CHANNEL_LABELS[parts.channel]} ${parts.typeCode} ${parts.grade}${size}`;
 }
 

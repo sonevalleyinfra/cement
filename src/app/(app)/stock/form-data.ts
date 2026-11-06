@@ -4,13 +4,19 @@ import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { getBalances } from "@/lib/stock";
 import { getPlaces } from "@/lib/stock-places";
+import { getActiveTrucks } from "@/lib/trucks";
 
 /**
  * Shared by the stock forms: role check, all active places, products, balances (`data` goes to the form).
  */
 async function loadData(action: "manageStock" | "transferStock" | "recordPurchase") {
   await requireRole(...rolesFor(action));
-  const [places, prods, balances] = await Promise.all([getPlaces(), getProducts({ activeOnly: true }), getBalances()]);
+  const [places, prods, balances, trucks] = await Promise.all([
+    getPlaces(),
+    getProducts({ activeOnly: true }),
+    getBalances(),
+    getActiveTrucks(),
+  ]);
   const data = {
     places: places.map((p) => ({ key: p.key, kind: p.kind, name: p.name })),
     products: prods.map((p) => ({
@@ -23,6 +29,7 @@ async function loadData(action: "manageStock" | "transferStock" | "recordPurchas
       bagKg: p.bagKg,
     })),
     balances: balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags })),
+    trucks,
   };
   return { data };
 }

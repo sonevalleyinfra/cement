@@ -1,5 +1,7 @@
 /** Rules for the retailers master. Plain functions: no database, no request. */
 
+import { LOCALE } from "./locale";
+import type { OrderScope } from "./order-filter-rules";
 import { isValidIndianMobile, normalizePhone } from "./phone-rules";
 import { canLinkRetailerUser } from "./rate-rules";
 import { hasRole } from "./roles";
@@ -68,6 +70,25 @@ export function matchesRetailerSearch(
   if (terms.length === 0) return true;
   const haystack = `${shop.name} ${shop.place} ${shop.phone} ${shop.areaName ?? ""} ${shop.ownerName ?? ""}`.toLowerCase();
   return terms.every((t) => haystack.includes(t));
+}
+
+/** Whether a shop is in this person's Mine / All list: All is every shop, Mine the shops assigned to them. */
+export function retailerInScope(shop: { salesRepId: string | null }, scope: OrderScope, viewerId: string): boolean {
+  return scope === "all" || shop.salesRepId === viewerId;
+}
+
+/**
+ * The New order picker for a sales person: their own shops first, then the rest, each A to Z
+ * (capitals do not matter), keeping only those that match the search box.
+ */
+export function groupPickerRetailers<T extends { name: string; place: string; phone?: string | null; mine?: boolean }>(
+  shops: readonly T[],
+  query: string,
+): { mine: T[]; other: T[] } {
+  const sorted = shops
+    .filter((s) => matchesRetailerSearch({ ...s, phone: s.phone ?? "" }, query))
+    .sort((a, b) => a.name.localeCompare(b.name, LOCALE, { sensitivity: "base" }));
+  return { mine: sorted.filter((s) => s.mine), other: sorted.filter((s) => !s.mine) };
 }
 
 /** What admin changed in the shop sheet. Left out (undefined) = not touched. `userId` null = unlink the login. */

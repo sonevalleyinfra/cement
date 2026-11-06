@@ -78,7 +78,7 @@ describe("roles per transition", () => {
   ];
   for (const [from, to, owner] of cases) {
     for (const role of ROLES) {
-      const expected = role === "admin" || role === owner;
+      const expected = to === "cancelled" ? ["admin", "sales", "logistics"].includes(role) : role === "admin" || role === owner;
       it(`${role} ${expected ? "can" : "cannot"} move ${from} -> ${to}`, () => {
         expect(canUserTransition(role, from, to)).toBe(expected);
       });
@@ -99,9 +99,12 @@ describe("roles per transition", () => {
 });
 
 describe("canCancelOrder", () => {
-  it("admin only", () => {
+  it("admin, sales and logistics can cancel", () => {
     expect(canCancelOrder("admin", "approved")).toBe(true);
-    for (const role of ["sales", "accounts", "logistics", "retailer", "sales,accounts,logistics", null]) {
+    for (const role of ["admin", "sales", "logistics"]) {
+      expect(canCancelOrder(role, "approved")).toBe(true);
+    }
+    for (const role of ["accounts", "retailer", null]) {
       expect(canCancelOrder(role, "approved")).toBe(false);
     }
   });
@@ -140,9 +143,9 @@ describe("planCancel", () => {
       expect(planCancel({ ...base, status, dispatchedBags: 10 }).ok).toBe(false);
     }
   });
-  it("refuses everyone but admin", () => {
-    for (const role of ["sales", "accounts", "logistics", "retailer", null]) {
-      expect(planCancel({ ...base, role, status: "approved" })).toEqual({ ok: false, error: "Only admin can cancel an order." });
+  it("refuses unauthorised roles", () => {
+    for (const role of ["accounts", "retailer", null]) {
+      expect(planCancel({ ...base, role, status: "approved" })).toEqual({ ok: false, error: "You cannot cancel this order." });
     }
   });
   it("needs a reason code from the cancel list", () => {

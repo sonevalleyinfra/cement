@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   brands,
   dispatches,
+  godowns,
   ledgerEntries,
   orderEvents,
   orders,
@@ -13,6 +14,7 @@ import {
   stockMovements,
   supplierLedgerEntries,
   user,
+  vehicles,
   walletMovements,
 } from "@/db/schema";
 import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
@@ -69,6 +71,14 @@ async function salesQuery(range: ReportRange) {
       productName: products.name,
       retailerId: orders.retailerId,
       retailerName: retailers.name,
+      retailerPlace: retailers.place,
+      vehicleId: dispatches.vehicleId,
+      vehicleNumber: vehicles.number,
+      driverName: dispatches.driverName,
+      driverPhone: dispatches.driverPhone,
+      fromGodownId: dispatches.fromGodownId,
+      fromVehicleId: dispatches.fromVehicleId,
+      godownName: godowns.name,
       // The sales person saved on the dispatch (when the bags left), so a later change of the shop's
       // sales person does not move old sales.
       salesRepId: dispatches.salesRepId,
@@ -78,10 +88,16 @@ async function salesQuery(range: ReportRange) {
     .innerJoin(orders, eq(orders.id, dispatches.orderId))
     .innerJoin(products, eq(products.id, orders.productId))
     .innerJoin(retailers, eq(retailers.id, orders.retailerId))
+    .leftJoin(vehicles, eq(vehicles.id, dispatches.vehicleId))
+    .leftJoin(godowns, eq(godowns.id, dispatches.fromGodownId))
     .leftJoin(user, eq(user.id, dispatches.salesRepId))
     .where(and(gte(dispatches.createdAt, range.start), lt(dispatches.createdAt, range.end)))
     .orderBy(asc(dispatches.createdAt));
-  return rows;
+  return rows.map((r) => ({
+    ...r,
+    vehicleNumber: r.vehicleNumber || "Unknown truck",
+    fromPlaceName: r.godownName ? r.godownName : r.fromVehicleId ? "Truck Direct" : "Godown",
+  }));
 }
 
 export async function getSalesReport(range: ReportRange) {

@@ -43,6 +43,9 @@ export const receipts = pgTable(
     onlineMethod: text("online_method"),
     bankAccountId: uuid("bank_account_id").references(() => bankAccounts.id),
     payerName: text("payer_name").default("").notNull(),
+    proofImage: text("proof_image"),
+    chequeDate: text("cheque_date"),
+    chequeBank: text("cheque_bank"),
     /** "YYYY-MM-DD", India. */
     receivedOn: date("received_on", { mode: "string" })
       .default(sql`((now() at time zone 'Asia/Kolkata')::date)`)

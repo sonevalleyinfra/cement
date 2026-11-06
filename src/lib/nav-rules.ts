@@ -50,6 +50,7 @@ const MORE_GROUPS: MoreGroup[] = [
       { href: "/stock", label: "Stock", permission: "viewStock" },
       { href: "/dispatch", label: "Dispatch", permission: "dispatch" },
       { href: "/godowns", label: "Godowns", permission: "manageStock" },
+      { href: "/trucks", label: "Trucks", permission: "dispatch" },
       { href: "/catalogue", label: "Catalogue", permission: "manageCatalogue" },
     ],
   },

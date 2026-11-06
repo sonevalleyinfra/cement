@@ -51,7 +51,7 @@ export const AUDIT_ACTIONS = {
   product: ["create", "activate", "deactivate"],
   cement_type: ["create", "activate", "deactivate", "rename"],
   grade: ["create", "activate", "deactivate", "rename"],
-  vehicle: ["create"],
+  vehicle: ["create", "update", "activate", "deactivate"],
   // Report downloads (entityId = the report name; details: report, from, to, retailerId / brandId)
   report: ["export"],
 } as const;

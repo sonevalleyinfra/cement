@@ -67,6 +67,8 @@ export async function getEntries(retailerId: string) {
       backdated: ledgerBackdatedSql,
       product: products.name,
       bags: dispatches.bags,
+      ratePaise: dispatches.ratePaise,
+      receiptMode: receipts.mode,
     })
     .from(ledgerEntries)
     .leftJoin(receipts, eq(receipts.id, ledgerEntries.receiptId))
