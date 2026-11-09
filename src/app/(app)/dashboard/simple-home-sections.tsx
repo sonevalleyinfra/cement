@@ -9,12 +9,14 @@ import {
   Coins,
   FileSpreadsheet,
   HandCoins,
+  History,
   Package,
   PackagePlus,
   Receipt,
   ShoppingCart,
   Store,
   TrendingUp,
+  TriangleAlert,
   Truck,
   Users,
   Wallet,
@@ -32,12 +34,15 @@ import {
   getRetailerHome,
   getSalesHome,
 } from "@/lib/home-stats";
+import { NO_LIMIT_FILTER, NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR, formatINRCompact } from "@/lib/money";
-import { getCashWithStaff, getOwnerMonth, getOwnerRisk, getOwnerToday } from "@/lib/owner-home";
-import { deltaPct, homeWindows } from "@/lib/owner-home-rules";
+import { getCashWithStaff, getOwnerMonth, getOwnerRisk, getOwnerToday, getTopOverdue } from "@/lib/owner-home";
+import { cashAgePill, deltaPct, homeWindows, supplierValue } from "@/lib/owner-home-rules";
+import { overridesMonthText } from "@/lib/credit-check-rules";
+import { rangeQuery } from "@/lib/report-range";
 import { getSuppliers } from "@/lib/suppliers";
 import { cn } from "@/lib/utils";
-import { bagsText, formatCount } from "@/lib/words";
+import { bagsText, daysText, formatCount, shopsText } from "@/lib/words";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
@@ -566,20 +571,21 @@ export async function SimpleRetailerHome({ userId }: { userId: string }) {
 }
 
 /* =========================================================================
-   5. ADMIN / OWNER SCREEN (Detailed Accounts & Business Overview)
+   5. ADMIN / OWNER SCREEN (Detailed Accounts, Master Management & Operations)
    ========================================================================= */
 
 export async function SimpleAdminHome() {
   const now = new Date();
   const w = homeWindows(now);
 
-  const [today, month, risk, cashStaff, suppliersList, adminHome] = await Promise.all([
+  const [today, month, risk, cashStaff, suppliersList, adminHome, topOverdue] = await Promise.all([
     getOwnerToday(w).catch(() => null),
     getOwnerMonth(w).catch(() => null),
     getOwnerRisk(w, now).catch(() => null),
     getCashWithStaff(now).catch(() => []),
     getSuppliers().catch(() => []),
     getAdminHome().catch(() => null),
+    getTopOverdue(w).catch(() => []),
   ]);
 
   const salesPaise = today?.salesPaise ?? 0;
@@ -601,9 +607,15 @@ export async function SimpleAdminHome() {
   const totalSupplierPayable = suppliersList.reduce((acc, s) => acc + s.balancePaise, 0);
   const topSupplier = suppliersList[0];
 
+  const pendingApprovals = adminHome?.approvals ?? 0;
+  const pendingDispatch = adminHome?.toDispatch ?? 0;
+  const pendingOnline = adminHome?.unverifiedOnline ?? 0;
+  const unassignedShops = adminHome?.shopsWithoutSalesRep ?? 0;
+  const totalPendingWork = pendingApprovals + pendingDispatch + pendingOnline + unassignedShops;
+
   return (
-    <div className="flex flex-col gap-4 font-sans">
-      {/* Top Hero Card (Detailed Business & Accounts Overview) */}
+    <div className="flex flex-col gap-5 font-sans">
+      {/* 1. TOP HERO CARD (Detailed Business & 4 Key Accounts) */}
       <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
         {/* Today's Sales Header */}
         <div className="flex items-start justify-between">
@@ -725,7 +737,7 @@ export async function SimpleAdminHome() {
                 {money(month?.collected.onlinePaise ?? 0)}
               </span>
               <span className="mt-0.5 text-[11px] font-medium text-muted-foreground truncate">
-                {adminHome && adminHome.unverifiedOnline > 0 ? `${adminHome.unverifiedOnline} to verify` : "Month online"}
+                {pendingOnline > 0 ? `${pendingOnline} to verify` : "Month online"}
               </span>
             </Link>
           </div>
@@ -752,7 +764,79 @@ export async function SimpleAdminHome() {
         </div>
       </div>
 
-      {/* Quick Actions (Matching Image 2 style cards in a 2x2 grid with live stats) */}
+      {/* 2. PENDING TO-DO & ACTION QUEUE (Approvals, Dispatch, Verification) */}
+      {totalPendingWork > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+              Needs Attention ({totalPendingWork})
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {pendingApprovals > 0 && (
+              <Link
+                href="/approvals"
+                className="flex items-center justify-between rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 transition-colors hover:bg-amber-500/15"
+              >
+                <div>
+                  <span className="text-xs font-black text-amber-800 dark:text-amber-300">Approvals</span>
+                  <p className="text-[11px] text-muted-foreground">Credit &amp; rates</p>
+                </div>
+                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-black text-amber-950">
+                  {pendingApprovals}
+                </span>
+              </Link>
+            )}
+
+            {pendingDispatch > 0 && (
+              <Link
+                href="/dispatch"
+                className="flex items-center justify-between rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3 transition-colors hover:bg-blue-500/15"
+              >
+                <div>
+                  <span className="text-xs font-black text-blue-800 dark:text-blue-300">Dispatch</span>
+                  <p className="text-[11px] text-muted-foreground">Orders to send</p>
+                </div>
+                <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-black text-white">
+                  {pendingDispatch}
+                </span>
+              </Link>
+            )}
+
+            {pendingOnline > 0 && (
+              <Link
+                href="/receipts/review"
+                className="flex items-center justify-between rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-3 transition-colors hover:bg-indigo-500/15"
+              >
+                <div>
+                  <span className="text-xs font-black text-indigo-800 dark:text-indigo-300">Verify UPI</span>
+                  <p className="text-[11px] text-muted-foreground">Online receipts</p>
+                </div>
+                <span className="rounded-full bg-indigo-500 px-2 py-0.5 text-xs font-black text-white">
+                  {pendingOnline}
+                </span>
+              </Link>
+            )}
+
+            {unassignedShops > 0 && (
+              <Link
+                href={`/retailers?filter=${NO_REP_FILTER}`}
+                className="flex items-center justify-between rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 transition-colors hover:bg-rose-500/15"
+              >
+                <div>
+                  <span className="text-xs font-black text-rose-800 dark:text-rose-300">Unassigned</span>
+                  <p className="text-[11px] text-muted-foreground">No sales rep</p>
+                </div>
+                <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-black text-white">
+                  {unassignedShops}
+                </span>
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 3. QUICK ACTIONS (2x2 Grid from Prototype) */}
       <div>
         <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
         <div className="grid grid-cols-2 gap-3">
@@ -794,28 +878,288 @@ export async function SimpleAdminHome() {
         </div>
       </div>
 
-      {/* Risk & Collection Alert Card at bottom */}
-      <Link
-        href="/ledger?show=overdue"
-        className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40"
-      >
-        <div>
-          <span className="text-xs font-semibold text-muted-foreground">Risk &amp; Collection Alert</span>
-          <p className="mt-0.5 text-base font-extrabold text-foreground">
-            Market Dues: <span className="text-foreground">{short(marketDues)}</span>
-          </p>
+      {/* 4. RISK, RECOVERY & STOCK METRICS (4 Metric Cards + Risk Alerts) */}
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-sm font-extrabold text-foreground">Business Health &amp; Risk</h2>
+          <Link href="/ledger?show=overdue" className="text-xs font-bold text-primary hover:underline">
+            Ledger Audit
+          </Link>
         </div>
 
-        {overduePct > 0 ? (
-          <span className="inline-flex items-center rounded-full bg-rose-500 px-2.5 py-1 text-xs font-bold text-white shadow-xs">
-            {overduePct}% Overdue
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-            All Clear
-          </span>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link
+            href="/ledger"
+            className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
+          >
+            <span className="text-xs font-semibold text-muted-foreground">Market Dues</span>
+            <span className="mt-1 text-lg font-black text-foreground">{short(marketDues)}</span>
+            <span className="text-[11px] text-muted-foreground font-medium">All retail credit</span>
+          </Link>
+
+          <Link
+            href="/ledger?show=overdue"
+            className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
+          >
+            <span className="text-xs font-semibold text-muted-foreground">Overdue %</span>
+            <span className={cn("mt-1 text-lg font-black", overduePct > 20 ? "text-rose-600 dark:text-rose-400" : "text-foreground")}>
+              {overduePct}%
+            </span>
+            <span className="text-[11px] text-muted-foreground font-medium">Payments delayed</span>
+          </Link>
+
+          <div className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs">
+            <span className="text-xs font-semibold text-muted-foreground">DSO (Collection Speed)</span>
+            <span className="mt-1 text-lg font-black text-foreground">
+              {!risk || risk.dso === null ? "—" : daysText(risk.dso)}
+            </span>
+            <span className="text-[11px] text-muted-foreground font-medium">Average days</span>
+          </div>
+
+          <Link
+            href="/stock"
+            className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
+          >
+            <span className="text-xs font-semibold text-muted-foreground">Stock Value</span>
+            <span className="mt-1 text-lg font-black text-foreground">
+              {short(risk?.stock.valuePaise ?? 0)}
+            </span>
+            <span className="text-[11px] text-muted-foreground font-medium">
+              {risk?.stock && risk.stock.unvaluedBags > 0 ? `${formatCount(risk.stock.unvaluedBags)} bags no cost` : "Godown & trucks"}
+            </span>
+          </Link>
+        </div>
+
+        {/* Policy & Risk Alerts */}
+        {risk && risk.noLimitShops > 0 && (
+          <Link
+            href={`/retailers?filter=${NO_LIMIT_FILTER}`}
+            className="flex min-h-12 items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 transition-colors hover:bg-amber-500/15"
+          >
+            <TriangleAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <span className="flex-1">
+              {shopsText(risk.noLimitShops)} {risk.noLimitShops === 1 ? "has" : "have"} no credit limit set
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          </Link>
         )}
-      </Link>
+
+        {risk && risk.overrides.count > 0 && (
+          <Link
+            href={`/reports/overrides?${rangeQuery(w.mtd)}`}
+            className="flex min-h-12 items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 transition-colors hover:bg-amber-500/15"
+          >
+            <TriangleAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <span className="flex-1">{overridesMonthText(risk.overrides)}</span>
+            <ChevronRight className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          </Link>
+        )}
+      </div>
+
+      {/* 5. TOP OVERDUE SHOPS (Quick Call & Recovery Feed) */}
+      {topOverdue.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-extrabold text-foreground">Top Overdue Recovery</h2>
+            <Link href="/ledger?show=overdue" className="text-xs font-bold text-primary hover:underline">
+              View All ({topOverdue.length})
+            </Link>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {topOverdue.slice(0, 4).map((r) => (
+              <Link
+                key={r.retailerId}
+                href={`/ledger/${r.retailerId}`}
+                className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
+              >
+                <div>
+                  <p className="text-sm font-bold text-foreground">{r.name}</p>
+                  <p className="text-xs text-muted-foreground">{r.daysPastTerms} days overdue</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-black text-rose-600 dark:text-rose-400">
+                    {money(r.overduePaise)}
+                  </span>
+                  <span className="block text-[11px] font-semibold text-muted-foreground">Due</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 6. STAFF CASH WITH REPS */}
+      {cashStaff.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-extrabold text-foreground">Cash with Staff</h2>
+            <Link href="/wallet" className="text-xs font-bold text-primary hover:underline">
+              Handover ({cashStaff.length})
+            </Link>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {cashStaff.map((p) => {
+              const pill = cashAgePill(p.ageDays);
+              return (
+                <Link
+                  key={p.personId}
+                  href="/wallet"
+                  className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
+                >
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{p.name}</p>
+                    <span className="text-[11px] text-muted-foreground">Sales Staff</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-foreground">{money(p.heldPaise)}</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-extrabold",
+                        pill.tone === "risk"
+                          ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {pill.text}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 7. FACTORY / SUPPLIERS BALANCES */}
+      {suppliersList.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-extrabold text-foreground">Factory Suppliers</h2>
+            <Link href="/suppliers" className="text-xs font-bold text-primary hover:underline">
+              View All ({suppliersList.length})
+            </Link>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {suppliersList.slice(0, 3).map((sup) => (
+              <Link
+                key={sup.id}
+                href={`/suppliers/${sup.id}`}
+                className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
+              >
+                <div>
+                  <p className="text-sm font-bold text-foreground">{sup.name}</p>
+                  <p className="text-xs text-muted-foreground">{supplierValue(sup)}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-black text-foreground">
+                    {short(sup.balancePaise)}
+                  </span>
+                  <span className="block text-[11px] font-semibold text-muted-foreground">Balance</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 8. MASTER MANAGEMENT & SETTINGS (6 Touch-Friendly Control Cards) */}
+      <div>
+        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Master Management &amp; Settings</h2>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link
+            href="/users"
+            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Users className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-foreground">Staff &amp; Users</p>
+              <p className="text-[11px] text-muted-foreground truncate">Roles &amp; Logins</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/trucks"
+            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
+              <Truck className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-foreground">Transport Fleet</p>
+              <p className="text-[11px] text-muted-foreground truncate">Trucks &amp; Drivers</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/godowns"
+            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <Warehouse className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-foreground">Godowns</p>
+              <p className="text-[11px] text-muted-foreground truncate">Warehouses &amp; Stock</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/catalogue"
+            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Package className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-foreground">Catalogue &amp; Rates</p>
+              <p className="text-[11px] text-muted-foreground truncate">PPC, OPC &amp; Bags</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/bank-accounts"
+            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <Receipt className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-foreground">Bank &amp; QR</p>
+              <p className="text-[11px] text-muted-foreground truncate">UPI &amp; Accounts</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/activity"
+            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
+          >
+            <div className="flex size-10 items-center justify-center rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-400">
+              <History className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-foreground">Audit Trail</p>
+              <p className="text-[11px] text-muted-foreground truncate">Activity &amp; Changes</p>
+            </div>
+          </Link>
+        </div>
+
+        {/* Double-entry Books Integrity Check */}
+        <Link
+          href="/reports/books"
+          className="mt-2.5 flex items-center justify-between rounded-2xl border border-border/80 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          <span className="font-semibold flex items-center gap-2">
+            <BadgeCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
+            Double-Entry Books Integrity Check
+          </span>
+          <ChevronRight className="size-4" />
+        </Link>
+      </div>
     </div>
   );
 }

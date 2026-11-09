@@ -7,15 +7,15 @@ describe("navFor", () => {
     expect(thirdTab("admin").href).toBe("/retailers");
     expect(thirdTab("accounts")).toMatchObject({ href: "/receipts", label: "Payments", icon: "receipts" });
     expect(thirdTab("logistics")).toMatchObject({ href: "/stock", label: "Stock" });
-    expect(thirdTab("retailer")).toMatchObject({ href: "/ledger", label: "Dues" });
+    expect(thirdTab("retailer")).toMatchObject({ href: "/ledger", label: "Khata" });
     expect(thirdTab(null).href).toBe("/ledger");
   });
   it("first match wins for several roles", () => {
     expect(thirdTab("accounts,logistics").href).toBe("/receipts");
     expect(thirdTab("sales,accounts").href).toBe("/retailers");
   });
-  it("keeps Home, Orders and More around it", () => {
-    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/more"]);
+  it("keeps Home, Orders, Khata and More around it", () => {
+    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/ledger", "/more"]);
   });
 });
 

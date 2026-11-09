@@ -230,30 +230,120 @@ export function RetailersView({
         />
       ) : (
         <ul className="flex flex-col gap-3">
-          {shown.map((r, i) => (
+          {shown.map((r) => (
             <li key={r.id}>
-              <ListCard
-                index={i}
-                title={r.name}
-                onClick={() => setDetailId(r.id)}
-                className={r.active ? undefined : "opacity-60"}
-                top={
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{SHOP_CATEGORY_LABELS[shopCategoryOf(r.category)]}</span>
-                    {!r.active && <StatusChip status="cancelled" label="Off" />}
-                  </div>
-                }
-                bottom={
-                  <div className="flex w-full min-w-0 flex-col gap-0.5 text-xs text-muted-foreground">
-                    <span>
-                      <span className="tabular">{r.phone}</span>
-                      {r.place && ` · ${r.place}`}
-                      {r.areaName && ` · ${r.areaName}`}
+              <div
+                className={cn(
+                  "group rounded-3xl border border-border/70 bg-card p-4 shadow-xs space-y-3 transition-colors hover:bg-muted/40",
+                  !r.active && "opacity-60",
+                )}
+              >
+                <div
+                  className="flex justify-between items-start cursor-pointer"
+                  onClick={() => setDetailId(r.id)}
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-muted-foreground">
+                        {SHOP_CATEGORY_LABELS[shopCategoryOf(r.category)]}
+                      </span>
+                      {!r.active && <StatusChip status="cancelled" label="Off" />}
+                    </div>
+                    <h3 className="mt-0.5 text-base font-black text-foreground group-hover:text-primary transition-colors">
+                      {r.name}
+                    </h3>
+                    <span className="text-xs text-muted-foreground">
+                      {[r.ownerName, r.place, r.areaName].filter(Boolean).join(" · ")}
                     </span>
-                    {(salesReps || (hasScopeTabs && scope === "all")) && <span>{r.salesRepName || "No sales person"}</span>}
                   </div>
-                }
-              />
+                  {r.duesPaise !== null && (
+                    <div className="text-right">
+                      <span
+                        className={cn(
+                          "text-base font-black",
+                          r.duesPaise > 0
+                            ? "text-rose-600 dark:text-rose-400"
+                            : "text-emerald-600 dark:text-emerald-400",
+                        )}
+                      >
+                        {formatINR(Math.abs(r.duesPaise), { hidePaise: true })}
+                      </span>
+                      <span className="block text-[10px] font-bold uppercase text-muted-foreground">
+                        {r.duesPaise > 0 ? "Balance Due" : "Advance"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Credit limit progress bar if limit is set and shop owes dues */}
+                {r.credit?.limitPaise && r.credit.limitPaise > 0 && r.duesPaise !== null && r.duesPaise > 0 && (
+                  <div className="cursor-pointer" onClick={() => setDetailId(r.id)}>
+                    <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
+                      <span>Credit Limit: {formatINR(r.credit.limitPaise, { hidePaise: true })}</span>
+                      <span className="font-bold text-foreground">
+                        {Math.min(100, Math.round((r.duesPaise / r.credit.limitPaise) * 100))}% used
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          r.duesPaise / r.credit.limitPaise > 0.9
+                            ? "bg-rose-500"
+                            : r.duesPaise / r.credit.limitPaise > 0.7
+                              ? "bg-amber-500"
+                              : "bg-emerald-500",
+                        )}
+                        style={{
+                          width: `${Math.min(100, Math.round((r.duesPaise / r.credit.limitPaise) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* 3 Direct Actions Bar on card (Call, Collect, + Order) */}
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border/50 text-xs">
+                  <a
+                    href={`tel:${r.phone}`}
+                    className="inline-flex min-h-10 items-center justify-center rounded-xl bg-muted/60 hover:bg-muted font-bold text-foreground transition-all active:scale-95"
+                  >
+                    📞 Call
+                  </a>
+                  {canRecordPayment && r.active ? (
+                    <Link
+                      href={`/receipts/new?retailer=${r.id}`}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/20 hover:bg-emerald-500/25 font-bold text-emerald-700 dark:text-emerald-400 transition-all active:scale-95"
+                    >
+                      💰 Collect
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDetailId(r.id)}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-muted/40 font-bold text-muted-foreground"
+                    >
+                      Details
+                    </button>
+                  )}
+                  {canOrder && r.active ? (
+                    <Link
+                      href={`/orders/new?retailer=${r.id}`}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 font-bold shadow-xs transition-all active:scale-95"
+                    >
+                      🛒 + Order
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDetailId(r.id)}
+                      className="inline-flex min-h-10 items-center justify-center rounded-xl bg-muted/40 font-bold text-muted-foreground"
+                    >
+                      Manage
+                    </button>
+                  )}
+                </div>
+              </div>
             </li>
           ))}
         </ul>

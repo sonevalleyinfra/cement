@@ -40,7 +40,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
               >
                 <span
                   className={cn(
-                    "flex h-8 w-14 items-center justify-center rounded-full transition-[background-color,transform] duration-200 ease-out",
+                    "flex h-8 w-12 sm:w-14 items-center justify-center rounded-full transition-[background-color,transform] duration-200 ease-out",
                     active ? "bg-primary/12" : "bg-transparent",
                   )}
                 >

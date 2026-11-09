@@ -1,5 +1,5 @@
 import { eq, ilike, inArray, or, sql } from "drizzle-orm";
-import { ListCard } from "@/components/app/list-card";
+import Link from "next/link";
 import { StatusChip } from "@/components/app/status-chip";
 import { db } from "@/db";
 import { dispatches, orders, products, retailers } from "@/db/schema";
@@ -66,7 +66,7 @@ export function selectOrderCards() {
     .innerJoin(products, eq(orders.productId, products.id));
 }
 
-/** One order in a list. */
+/** One order in a list styled matching the modern prototype cards. */
 export function OrderCard({
   order: o,
   loads,
@@ -83,31 +83,44 @@ export function OrderCard({
   const own = loads.filter((l) => l.orderId === o.id);
   const value = orderValuePaise({ ...o, loads: own });
   const note = cancelledNote(o.status, o.bags, own.reduce((n, l) => n + l.bags, 0));
+  const orderNum = o.id.slice(0, 6).toUpperCase();
+
   return (
-    <ListCard
-      index={index}
+    <Link
       href={href}
-      title={o.retailer}
-      top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
-      bottom={
-        <>
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="tabular text-2xl font-bold">{bagsText(o.bags)}</span>
-              {showPrice && o.ratePaise !== null && (
-                <span className="tabular text-sm font-medium text-muted-foreground">@ {formatINR(o.ratePaise)}/bag</span>
-              )}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {o.product} · {formatDate(o.createdAt)}
-            </div>
-            {note && <div className="text-xs text-muted-foreground">{note}</div>}
-          </div>
+      className="group block rounded-3xl border border-border/70 bg-card p-4 shadow-xs transition-all duration-150 hover:bg-muted/40 hover:border-primary/30 active:scale-[0.99]"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+            #ORD-{orderNum}
+          </span>
+          <h3 className="mt-0.5 text-base font-black text-foreground group-hover:text-primary transition-colors">
+            {o.retailer}
+          </h3>
+          <span className="text-xs text-muted-foreground">{formatDate(o.createdAt)}</span>
+        </div>
+        {isOrderStatus(o.status) && <StatusChip status={o.status} />}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between rounded-2xl bg-muted/30 p-3 text-xs border border-border/50">
+        <div>
+          <span className="text-sm font-black text-foreground">{bagsText(o.bags)}</span>
+          <span className="block text-[11px] text-muted-foreground font-medium">{o.product}</span>
+        </div>
+        <div className="text-right">
           {showPrice && value !== null && (
-            <div className="tabular text-lg font-semibold">{formatINR(value, { hidePaise: true })}</div>
+            <span className="text-sm font-black text-foreground">{formatINR(value, { hidePaise: true })}</span>
           )}
-        </>
-      }
-    />
+          {showPrice && o.ratePaise !== null && (
+            <span className="block text-[11px] text-muted-foreground font-medium">
+              @ {formatINR(o.ratePaise)}/bag
+            </span>
+          )}
+        </div>
+      </div>
+
+      {note && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400 font-semibold">{note}</div>}
+    </Link>
   );
 }
