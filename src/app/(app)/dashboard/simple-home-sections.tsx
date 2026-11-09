@@ -314,7 +314,7 @@ export async function SimpleLogisticsHome() {
           />
 
           <QuickActionTile
-            href="/stock"
+            href="/stock/transfer"
             line1="Move"
             line2="Bags"
             sub="Transfer"
@@ -336,24 +336,32 @@ export async function SimpleLogisticsHome() {
         {s.trucks.length > 0 ? (
           <div className="flex flex-col gap-2">
             {s.trucks.map((t) => (
-              <Link
+              <div
                 key={t.truck}
-                href="/dispatch"
-                className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
               >
-                <div>
+                <div className="min-w-0">
                   <span className="text-[11px] font-semibold uppercase text-muted-foreground">Truck Registration</span>
                   <p className="text-base font-black text-foreground">{t.truck}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  <p className="mt-0.5 text-xs text-muted-foreground truncate">
                     {t.products.map((p) => `${p.bags} bags ${p.name}`).join(", ")}
                   </p>
                 </div>
-                <div className="text-right">
-                  <span className="rounded-full bg-blue-500/15 px-3 py-1 text-xs font-extrabold text-blue-700 dark:text-blue-400">
-                    {t.products.reduce((acc, p) => acc + p.bags, 0)} bags
-                  </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Link
+                    href="/stock/transfer"
+                    className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-muted/60 px-2.5 py-1 text-xs font-bold text-foreground transition-all duration-150 hover:bg-muted active:scale-95"
+                  >
+                    Unload
+                  </Link>
+                  <Link
+                    href="/dispatch"
+                    className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-all duration-150 hover:bg-primary/20 active:scale-95"
+                  >
+                    Dispatch
+                  </Link>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         ) : (
