@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { ArrowDownLeft, ArrowUpRight, Calendar, CreditCard, RotateCcw, Truck, Wallet } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
 import { FilterTabs } from "@/components/app/filter-tabs";
 import { PageHeader } from "@/components/app/page-header";
@@ -34,6 +34,7 @@ export default async function RetailerLedgerPage({
   searchParams?: Search;
 }) {
   const { user } = await requireUser();
+  if (!can(user.role, "viewLedger")) redirect("/dashboard");
   const { retailerId } = await params;
   if (!isUuid(retailerId)) notFound();
   if (!(await mayViewLedger(user, retailerId))) notFound();
