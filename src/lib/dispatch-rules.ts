@@ -108,10 +108,29 @@ type StockPlace = { key: string; name: string; truck: string | null };
 type StockBalance = { productId: string; placeKey: string; bags: number };
 
 /**
+ * Places holding at least 1 bag of this product, with available stock bagsHere.
+ * Never drops places that hold partial stock so the user can see where every bag is.
+ */
+export function placesWithStock<P extends StockPlace>(
+  places: readonly P[],
+  balances: readonly StockBalance[],
+  productId: string,
+): (P & { bagsHere: number })[] {
+  return places
+    .map((p) => ({
+      ...p,
+      bagsHere: balances.filter((b) => b.productId === productId && b.placeKey === p.key).reduce((s, b) => s + b.bags, 0),
+    }))
+    .filter((p) => p.bagsHere > 0)
+    .sort((a, b) => b.bagsHere - a.bagsHere);
+}
+
+/**
  * The "Take from" list for one product: only places holding at least `bags` of it
  * (a place with 0 bags, or fewer than asked, could never cover the dispatch).
  * `bags` below 1 counts as 1, so an empty box still hides empty places.
  */
+
 export function placesWithEnough<P extends StockPlace>(
   places: readonly P[],
   balances: readonly StockBalance[],

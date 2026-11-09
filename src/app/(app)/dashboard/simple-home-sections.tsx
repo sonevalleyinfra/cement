@@ -324,12 +324,12 @@ export async function SimpleLogisticsHome() {
         </div>
       </div>
 
-      {/* Ready for Dispatch List */}
+      {/* Loaded Trucks (Stock on Wheels) */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">Ready for Dispatch</h2>
-          <Link href="/dispatch" className="text-xs font-bold text-primary hover:underline">
-            View All ({s.ready})
+          <h2 className="text-sm font-extrabold text-foreground">Loaded Trucks (Stock on Wheels)</h2>
+          <Link href="/trucks?tab=loaded" className="text-xs font-bold text-primary hover:underline">
+            Fleet View ({s.trucks.length})
           </Link>
         </div>
 
@@ -344,9 +344,12 @@ export async function SimpleLogisticsHome() {
                 <div>
                   <span className="text-[11px] font-semibold uppercase text-muted-foreground">Truck Registration</span>
                   <p className="text-base font-black text-foreground">{t.truck}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t.products.map((p) => `${p.bags} bags ${p.name}`).join(", ")}
+                  </p>
                 </div>
                 <div className="text-right">
-                  <span className="rounded-full bg-orange-500/15 px-3 py-1 text-xs font-extrabold text-orange-700 dark:text-orange-400">
+                  <span className="rounded-full bg-blue-500/15 px-3 py-1 text-xs font-extrabold text-blue-700 dark:text-blue-400">
                     {t.products.reduce((acc, p) => acc + p.bags, 0)} bags
                   </span>
                 </div>

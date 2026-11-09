@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDispatchFields, isDispatchable, planDispatch, placesWithEnough, truckAfterPlacePick, truckChips } from "./dispatch-rules";
+import { checkDispatchFields, isDispatchable, planDispatch, placesWithEnough, placesWithStock, truckAfterPlacePick, truckChips } from "./dispatch-rules";
 import { orderTotalPaise } from "./order-rules";
 
 describe("isDispatchable", () => {
@@ -116,6 +116,30 @@ describe("placesWithEnough", () => {
   });
   it("lists nothing for a product with no stock", () => {
     expect(placesWithEnough(places, balances, "p9", 1)).toEqual([]);
+  });
+});
+
+describe("placesWithStock", () => {
+  const places = [
+    { key: "g1", name: "Main Godown", truck: null },
+    { key: "v1", name: "Truck 1", truck: "BR01" },
+    { key: "v2", name: "Truck 2", truck: "BR02" },
+  ];
+  const balances = [
+    { productId: "p1", placeKey: "g1", bags: 50 },
+    { productId: "p1", placeKey: "v1", bags: 200 },
+    { productId: "p1", placeKey: "v2", bags: 0 },
+  ];
+  it("includes partial places and sorts fullest first", () => {
+    const res = placesWithStock(places, balances, "p1");
+    expect(res).toHaveLength(2);
+    expect(res[0]).toEqual({ key: "v1", name: "Truck 1", truck: "BR01", bagsHere: 200 });
+    expect(res[1]).toEqual({ key: "g1", name: "Main Godown", truck: null, bagsHere: 50 });
+  });
+  it("never filters out a place because required bags is higher than place stock", () => {
+    // If order needs 300 bags, placesWithStock still keeps v1 (200 bags) so partial dispatch can happen
+    const res = placesWithStock(places, balances, "p1");
+    expect(res.map((r) => r.key)).toContain("v1");
   });
 });
 

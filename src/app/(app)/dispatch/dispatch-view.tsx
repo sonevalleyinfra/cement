@@ -11,7 +11,7 @@ import { StatusChip } from "@/components/app/status-chip";
 import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { placesWithEnough, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
+import { placesWithStock, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
 import { formatINR } from "@/lib/money";
@@ -82,11 +82,12 @@ export function DispatchView({
 
   function openSheet(o: OrderRow) {
     setOpen(o);
-    setBags(String(remainingBags(o.bags, o.sent)));
-    // Start with the place holding the most bags of this product, and auto-fill truck & driver if on a truck.
-    const fullest = placesWithEnough(places, balances, o.productId, remainingBags(o.bags, o.sent)).sort(
-      (a, b) => b.bagsHere - a.bagsHere,
-    )[0];
+    const stockPlaces = placesWithStock(places, balances, o.productId);
+    const fullest = stockPlaces[0];
+    const left = remainingBags(o.bags, o.sent);
+    // Suggest the bags to send: if the fullest place has less than remaining, suggest what's in stock
+    const suggestedBags = fullest ? Math.min(left, fullest.bagsHere) : left;
+    setBags(String(suggestedBags));
     const truckNo = fullest?.truck ?? null;
     const chip = truckNo ? truckChips.find((c) => c.truck === truckNo) : null;
     setFromPlace(fullest?.key ?? "");
@@ -101,7 +102,14 @@ export function DispatchView({
   /** Bags already on a truck usually leave on that truck, so its number is filled in; a typed number stays. */
   function pickPlace(key: string, current = truck, auto = autoTruck) {
     setFromPlace(key);
-    const truckNo = places.find((p) => p.key === key)?.truck ?? null;
+    const picked = options.find((p) => p.key === key);
+    const truckNo = picked?.truck ?? null;
+    if (picked && open) {
+      const left = remainingBags(open.bags, open.sent);
+      if (Number(bags || 0) > picked.bagsHere) {
+        setBags(String(Math.min(left, picked.bagsHere)));
+      }
+    }
     const next = truckAfterPlacePick(current, auto, truckNo);
     setTruck(next.truck);
     setAutoTruck(next.autoFilled);
@@ -122,9 +130,12 @@ export function DispatchView({
     setDriverPhone(c.driverPhone || "");
   }
 
-  // Only places holding enough of this product for the bags typed; a pick that no longer fits is dropped.
-  const options = open ? placesWithEnough(places, balances, open.productId, Number(bags || 0)) : [];
-  const chosenPlace = options.some((p) => p.key === fromPlace) ? fromPlace : "";
+  // All places holding stock of this product, sorted with fullest first. Never hides partial trucks.
+  const options = open ? placesWithStock(places, balances, open.productId) : [];
+  const chosenPlace = options.some((p) => p.key === fromPlace) ? fromPlace : (options[0]?.key ?? "");
+  const chosenPlaceObj = options.find((p) => p.key === chosenPlace);
+  const requestedBags = Number(bags || 0);
+  const exceedsStock = chosenPlaceObj ? requestedBags > chosenPlaceObj.bagsHere : false;
 
   function submit() {
     if (!open) return;
@@ -274,9 +285,19 @@ export function DispatchView({
               label="Take from"
               value={chosenPlace}
               onChange={(key) => pickPlace(key)}
-              options={options.map((p) => ({ value: p.key, label: `${p.name} (${p.bagsHere} bags)` }))}
+              options={options.map((p) => ({
+                value: p.key,
+                label: `${p.name} (${p.bagsHere} bags in stock)`,
+              }))}
             />
-            {options.length === 0 && <p className="text-sm text-destructive">No place holds {Number(bags || 1)} bags.</p>}
+            {options.length === 0 && (
+              <p className="text-sm text-destructive">No godown or truck has stock of this product.</p>
+            )}
+            {chosenPlaceObj && exceedsStock && (
+              <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                Only {chosenPlaceObj.bagsHere} bags available in {chosenPlaceObj.name}. (You entered {requestedBags} bags)
+              </p>
+            )}
             {truckChips.length > 0 && (
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-semibold">Truck (Fleet & Recent)</span>
@@ -337,8 +358,12 @@ export function DispatchView({
                   [!phoneOk, "Enter the driver mobile"],
                 ])}
               </FormHint>
-              <Button className="w-full" onClick={submit} disabled={pending || Number(bags || 0) < 1 || chosenPlace === "" || !phoneOk}>
-                Dispatch {bagsText(Number(bags || 0))}
+              <Button
+                className="w-full"
+                onClick={submit}
+                disabled={pending || requestedBags < 1 || !chosenPlace || exceedsStock || !phoneOk}
+              >
+                Dispatch {bagsText(requestedBags)}
               </Button>
             </div>
           </div>
