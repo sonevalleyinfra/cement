@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { ArrowDownLeft, ArrowUpRight, Calendar, CreditCard, RotateCcw, Truck } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Calendar, CreditCard, RotateCcw, Truck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState } from "@/components/app/empty-state";
@@ -70,9 +70,9 @@ export default async function RetailerLedgerPage({
   const period = typeof sp.period === "string" ? sp.period : "all";
 
   const todayKey = toISTDateKey(new Date());
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayKey = toISTDateKey(yesterday);
+  const [y, m, d] = todayKey.split("-").map(Number);
+  const prevDay = new Date(Date.UTC(y, m - 1, d - 1));
+  const yesterdayKey = prevDay.toISOString().slice(0, 10);
   const currentMonthPrefix = todayKey.slice(0, 7);
   const currentYearPrefix = todayKey.slice(0, 4);
 
@@ -94,18 +94,24 @@ export default async function RetailerLedgerPage({
 
   for (const e of filteredEntries) {
     const src = sourceById.get(e.id);
-    if (e.amountPaise !== null) {
-      if (e.amountPaise > 0) {
-        periodDispatchedPaise += e.amountPaise;
-      } else if (e.amountPaise < 0) {
-        periodPaymentsPaise += Math.abs(e.amountPaise);
-      }
-    }
-    if (src?.kind === "order_debit" && src.bags) {
-      periodBags += src.bags;
+    if (!src) continue;
+
+    if (src.kind === "order_debit") {
+      if (src.amountPaise > 0) periodDispatchedPaise += src.amountPaise;
+      if (src.bags) periodBags += src.bags;
       dispatchCount++;
-    } else if (src?.kind === "receipt_credit" || src?.kind === "receipt_reversal") {
-      paymentCount++;
+    } else if (src.kind === "dispatch_reversal") {
+      periodDispatchedPaise += src.amountPaise;
+      if (src.bags) periodBags += src.bags;
+    } else if (src.kind === "receipt_credit") {
+      if (src.amountPaise < 0) {
+        periodPaymentsPaise += Math.abs(src.amountPaise);
+        paymentCount++;
+      } else {
+        periodPaymentsPaise -= src.amountPaise;
+      }
+    } else if (src.kind === "receipt_reversal") {
+      periodPaymentsPaise -= src.amountPaise;
     }
   }
 
@@ -239,7 +245,7 @@ export default async function RetailerLedgerPage({
 
       {/* Day by Day Transactions List */}
       {filteredEntries.length === 0 ? (
-        <EmptyState title="No transactions in this period" />
+        <EmptyState title={period === "all" || !period ? "No entries yet" : "No transactions in this period"} />
       ) : (
         <div className="flex flex-col gap-5">
           {dayGroups.map((group) => (
@@ -256,15 +262,32 @@ export default async function RetailerLedgerPage({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] tabular">
-                  {group.dayDebitPaise > 0 && (
-                    <span className="font-semibold text-rose-600">
-                      +{formatINR(group.dayDebitPaise)}
-                    </span>
-                  )}
-                  {group.dayCreditPaise > 0 && (
-                    <span className="font-semibold text-emerald-600">
-                      -{formatINR(group.dayCreditPaise)}
-                    </span>
+                  {staff ? (
+                    <>
+                      {group.dayDebitPaise > 0 && (
+                        <span className="font-semibold text-rose-600">
+                          +{formatINR(group.dayDebitPaise)}
+                        </span>
+                      )}
+                      {group.dayCreditPaise > 0 && (
+                        <span className="font-semibold text-emerald-600">
+                          -{formatINR(group.dayCreditPaise)}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {group.dayBags > 0 && (
+                        <span className="font-medium text-foreground/80">
+                          {group.dayBags} bags
+                        </span>
+                      )}
+                      {group.dayCreditPaise > 0 && (
+                        <span className="font-semibold text-emerald-600">
+                          -{formatINR(group.dayCreditPaise)}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -294,6 +317,16 @@ export default async function RetailerLedgerPage({
                               <RotateCcw className="h-3 w-3" />
                               {e.label}
                             </span>
+                          ) : src?.kind === "receipt_reversal" ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                              <RotateCcw className="h-3 w-3" />
+                              {e.label}
+                            </span>
+                          ) : src?.kind === "opening" ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-500/10 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              <Wallet className="h-3 w-3" />
+                              {e.label}
+                            </span>
                           ) : isDebit ? (
                             <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-600 dark:text-blue-400">
                               <ArrowUpRight className="h-3 w-3" />
@@ -312,7 +345,7 @@ export default async function RetailerLedgerPage({
                             )}
                           >
                             {isCredit
-                              ? `-${formatINR(Math.abs(e.amountPaise))}`
+                              ? formatINR(e.amountPaise)
                               : `+${formatINR(e.amountPaise)}`}
                           </span>
                         )}
