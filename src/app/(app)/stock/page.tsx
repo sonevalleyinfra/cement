@@ -1,4 +1,4 @@
-import { ArrowLeftRight, PackageOpen, PackagePlus, SlidersHorizontal, Truck, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, PackageOpen, PackagePlus, SlidersHorizontal, Truck, Warehouse, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { IconTile } from "@/components/app/icon-tile";
 import { PageHeader } from "@/components/app/page-header";
@@ -45,6 +45,7 @@ export default async function StockPage() {
         ]
       : []),
     ...(can(session.user.role, "transferStock") ? [{ href: "/stock/transfer", label: "Move bags", icon: ArrowLeftRight }] : []),
+    { href: "/godowns", label: "Godowns", icon: Warehouse },
   ];
 
   return (
@@ -52,7 +53,7 @@ export default async function StockPage() {
       <PageHeader title="Stock" />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Godown" value={`${formatCount(godownBags)} bags`} className="rounded-2xl bg-primary/10 p-3 text-primary ring-1 ring-primary/20" />
+        <Link href="/godowns" className="transition-transform active:scale-[0.98]"><Stat label="Godown" value={`${formatCount(godownBags)} bags`} className="rounded-2xl bg-primary/10 p-3 text-primary ring-1 ring-primary/20" /></Link>
         <Link href="/trucks?tab=standing" className="transition-transform active:scale-[0.98]"><Stat label="Standing" value={formatCount(standing)} className={counterClass} /></Link>
         <Link href="/trucks?tab=loaded" className="transition-transform active:scale-[0.98]"><Stat label="Loaded" value={formatCount(loaded)} className={counterClass} /></Link>
         <Stat label="Sent today" value={formatCount(sentToday)} className={counterClass} />

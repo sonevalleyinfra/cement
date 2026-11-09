@@ -1,12 +1,13 @@
 import { asc, desc, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { godowns, stockMovements } from "@/db/schema";
-import { rolesFor } from "@/lib/permissions";
+import { can, rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { GodownsView } from "./godowns-view";
 
 export default async function GodownsPage() {
-  await requireRole(...rolesFor("manageStock"));
+  const session = await requireRole(...rolesFor("viewStock"));
+  const canManage = can(session.user.role, "manageStock");
   const [rows, totals] = await Promise.all([
     db
       .select({ id: godowns.id, name: godowns.name, address: godowns.address, active: godowns.active })
@@ -23,5 +24,5 @@ export default async function GodownsPage() {
       .groupBy(stockMovements.godownId),
   ]);
   const bagsOf = (id: string) => totals.find((t) => t.godownId === id)?.bags ?? 0;
-  return <GodownsView rows={rows.map((r) => ({ ...r, bags: bagsOf(r.id) }))} />;
+  return <GodownsView rows={rows.map((r) => ({ ...r, bags: bagsOf(r.id) }))} canManage={canManage} />;
 }

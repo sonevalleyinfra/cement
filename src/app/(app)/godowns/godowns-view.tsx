@@ -18,7 +18,7 @@ import { saveGodown, setGodownActive } from "./actions";
 
 type Row = { id: string; name: string; address: string; active: boolean; bags: number };
 
-export function GodownsView({ rows }: { rows: Row[] }) {
+export function GodownsView({ rows, canManage = true }: { rows: Row[]; canManage?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -75,7 +75,7 @@ export function GodownsView({ rows }: { rows: Row[] }) {
               <ListCard
                 index={i}
                 title={r.name}
-                onClick={() => openSheet(r)}
+                onClick={canManage ? () => openSheet(r) : undefined}
                 className={r.active ? undefined : "opacity-60"}
                 top={
                   <>
@@ -91,9 +91,11 @@ export function GodownsView({ rows }: { rows: Row[] }) {
           ))}
         </ul>
       )}
-      <PinnedAction>
-        <Button onClick={() => openSheet(null)}>Add godown</Button>
-      </PinnedAction>
+      {canManage && (
+        <PinnedAction>
+          <Button onClick={() => openSheet(null)}>Add godown</Button>
+        </PinnedAction>
+      )}
       <Sheet
         open={open}
         onOpenChange={(o) => {

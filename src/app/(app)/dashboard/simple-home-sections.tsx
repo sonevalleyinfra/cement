@@ -126,14 +126,26 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
 
         {/* Sales & Collection Breakdown */}
         <div className="mt-3.5 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 text-xs">
-          <div className="flex flex-col rounded-xl bg-muted/30 p-2.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Collected Today</span>
+          <Link
+            href="/receipts"
+            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[11px] font-semibold">Collected Today</span>
+              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+            </div>
             <span className="mt-0.5 text-sm font-black text-foreground">{money(s.collectedTodayPaise)}</span>
-          </div>
-          <div className="flex flex-col rounded-xl bg-muted/30 p-2.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">My Shops Due</span>
+          </Link>
+          <Link
+            href="/ledger"
+            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[11px] font-semibold">My Shops Due</span>
+              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+            </div>
             <span className="mt-0.5 text-sm font-black text-rose-600 dark:text-rose-400">{money(s.duesPaise)}</span>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
@@ -251,14 +263,26 @@ export async function SimpleLogisticsHome() {
 
         {/* Stock & Fleet Breakdown */}
         <div className="mt-3.5 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 text-xs">
-          <div className="flex flex-col rounded-xl bg-muted/30 p-2.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Godown Stock</span>
+          <Link
+            href="/stock"
+            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[11px] font-semibold">Godown Stock</span>
+              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+            </div>
             <span className="mt-0.5 text-sm font-black text-foreground">{num(s.godown.bags)} bags</span>
-          </div>
-          <div className="flex flex-col rounded-xl bg-muted/30 p-2.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Ready to Dispatch</span>
+          </Link>
+          <Link
+            href="/dispatch"
+            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[11px] font-semibold">Ready to Dispatch</span>
+              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+            </div>
             <span className="mt-0.5 text-sm font-black text-orange-600 dark:text-orange-400">{s.ready} orders</span>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
@@ -369,14 +393,26 @@ export async function SimpleAccountsHome() {
 
         {/* Accounts Pending Breakdown */}
         <div className="mt-3.5 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 text-xs">
-          <div className="flex flex-col rounded-xl bg-muted/30 p-2.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Staff Cash to Verify</span>
+          <Link
+            href="/wallet"
+            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[11px] font-semibold">Staff Cash to Verify</span>
+              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+            </div>
             <span className="mt-0.5 text-sm font-black text-emerald-600 dark:text-emerald-400">{money(s.cashToConfirmPaise)}</span>
-          </div>
-          <div className="flex flex-col rounded-xl bg-muted/30 p-2.5">
-            <span className="text-[11px] font-semibold text-muted-foreground">Online to Reconcile</span>
+          </Link>
+          <Link
+            href="/receipts/review"
+            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[11px] font-semibold">Online to Reconcile</span>
+              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+            </div>
             <span className="mt-0.5 text-sm font-black text-blue-600 dark:text-blue-400">{s.unverifiedOnline} payments</span>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
@@ -487,13 +523,6 @@ export async function SimpleRetailerHome({ userId }: { userId: string }) {
               {money(Math.abs(s.balancePaise))}
             </p>
           </div>
-
-          <Link
-            href="/receipts/new"
-            className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-xs transition-all duration-150 active:scale-95 hover:bg-emerald-700"
-          >
-            Pay Online
-          </Link>
         </div>
 
         {/* Payments Summary */}
