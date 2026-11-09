@@ -14,6 +14,7 @@ import { firstMissing } from "@/lib/form-rules";
 import { NEW_TRUCK_PLACE } from "@/lib/stock-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
+import { cn } from "@/lib/utils";
 import { transferStock } from "../actions";
 import { TruckFields, type TruckInput } from "../truck-fields";
 
@@ -23,10 +24,6 @@ type Balance = { productId: string; placeKey: string; bags: number };
 
 const NO_TRUCK: TruckInput = { number: "", driverName: "", driverPhone: "" };
 
-/**
- * Move bags between places. "To" also offers "New truck…" (a hired truck typed here, like a purchase),
- * so bags can be loaded onto a truck even with only one godown.
- */
 export function TransferForm({
   places,
   products,
@@ -45,54 +42,61 @@ export function TransferForm({
   const router = useRouter();
   const { pending, run } = useSubmit();
 
-  // Find places that currently have loaded stock
-  const placesWithAnyStock = places.filter((p) =>
-    balances.some((b) => b.placeKey === p.key && b.bags > 0),
+  const godownPlaces = places.filter((p) => p.kind === "godown");
+  const vehiclePlaces = places.filter((p) => p.kind === "vehicle");
+
+  // Which trucks currently hold bags
+  const loadedVehicles = vehiclePlaces.filter((v) =>
+    balances.some((b) => b.placeKey === v.key && b.bags > 0),
   );
 
-  // If initialFrom is provided and valid, use it; else if a vehicle has stock, prefer that for unloading; else places[0]
-  const startingFrom =
-    (initialFrom && places.some((p) => p.key === initialFrom) ? initialFrom : null) ||
-    placesWithAnyStock.find((p) => p.kind === "vehicle")?.key ||
-    places[0]?.key ||
-    "";
+  // Direction mode: Unload truck to godown vs Load godown to truck
+  const initialMode =
+    initialTo?.startsWith("godown:") || (initialFrom?.startsWith("vehicle:") ?? false) || loadedVehicles.length > 0
+      ? "unload"
+      : "load";
 
-  const [from, setFrom] = useState(startingFrom);
+  const [mode, setMode] = useState<"unload" | "load">(initialMode);
 
-  // Determine initial product that actually has stock at 'from'
-  const inStockAtStart = balances.filter((b) => b.placeKey === startingFrom && b.bags > 0);
-  const bestInitialProd = inStockAtStart[0]
-    ? products.find((p) => p.id === inStockAtStart[0].productId)
+  // Determine starting source & destination
+  const defaultFrom = () => {
+    if (initialFrom && places.some((p) => p.key === initialFrom)) return initialFrom;
+    if (mode === "unload") {
+      return loadedVehicles[0]?.key || vehiclePlaces[0]?.key || places[0]?.key || "";
+    }
+    return godownPlaces[0]?.key || places[0]?.key || "";
+  };
+
+  const defaultTo = (fromKey: string) => {
+    if (initialTo && places.some((p) => p.key === initialTo && p.key !== fromKey)) return initialTo;
+    if (mode === "unload") {
+      return godownPlaces.find((g) => g.key !== fromKey)?.key || godownPlaces[0]?.key || "";
+    }
+    return vehiclePlaces.find((v) => v.key !== fromKey)?.key || NEW_TRUCK_PLACE;
+  };
+
+  const [from, setFrom] = useState(defaultFrom());
+  const [toPick, setTo] = useState(defaultTo(defaultFrom()));
+  const to = toPick !== from ? toPick : (places.find((p) => p.key !== from)?.key ?? NEW_TRUCK_PLACE);
+
+  // Auto-pick the product that has stock at 'from'
+  const inStockAtFrom = balances.filter((b) => b.placeKey === from && b.bags > 0);
+  const bestProd = inStockAtFrom[0]
+    ? products.find((p) => p.id === inStockAtFrom[0].productId)
     : products[0];
 
   const brands = [...new Map(products.map((p) => [p.brandId, { id: p.brandId, name: p.brand }])).values()];
-  const [brandPick, setBrandPick] = useState(bestInitialProd?.brandId ?? products[0]?.brandId ?? "");
+  const [brandPick, setBrandPick] = useState(bestProd?.brandId ?? products[0]?.brandId ?? "");
   const brandId = startBrand(brands, brandPick);
   const brandProducts = products.filter((p) => p.brandId === brandId);
 
-  const [productPick, setProductPick] = useState(bestInitialProd?.id ?? products[0]?.id ?? "");
+  const [productPick, setProductPick] = useState(bestProd?.id ?? products[0]?.id ?? "");
   const productId = brandProducts.some((p) => p.id === productPick) ? productPick : (brandProducts[0]?.id ?? "");
 
-  // Another place when there is one, else a new hired truck.
-  // If 'from' is a vehicle, prefer godown as destination
-  const defaultToPlace = () => {
-    if (initialTo && places.some((p) => p.key === initialTo && p.key !== startingFrom)) {
-      return initialTo;
-    }
-    const otherPlaces = places.filter((p) => p.key !== startingFrom);
-    const startObj = places.find((p) => p.key === startingFrom);
-    if (startObj?.kind === "vehicle") {
-      const godown = otherPlaces.find((p) => p.kind === "godown");
-      if (godown) return godown.key;
-    }
-    return otherPlaces[0]?.key ?? NEW_TRUCK_PLACE;
-  };
-
-  const [toPick, setTo] = useState(defaultToPlace());
-  const to = toPick !== from ? toPick : (places.find((p) => p.key !== from)?.key ?? NEW_TRUCK_PLACE);
-
   const [truck, setTruck] = useState(NO_TRUCK);
-  const [digits, setDigits] = useState("");
+  const [digits, setDigits] = useState(
+    inStockAtFrom[0] ? String(inStockAtFrom[0].bags) : ""
+  );
   const [note, setNote] = useState("");
   const [done, setDone] = useState("");
   const { error, setError, clearError } = useFormError([productId, from, to, truck, digits, note]);
@@ -106,22 +110,48 @@ export function TransferForm({
   const fromObj = places.find((p) => p.key === from);
   const toObj = places.find((p) => p.key === to);
 
+  function switchMode(newMode: "unload" | "load") {
+    setMode(newMode);
+    clearError();
+    if (newMode === "unload") {
+      const nextFrom = loadedVehicles[0]?.key || vehiclePlaces[0]?.key || "";
+      const nextTo = godownPlaces[0]?.key || "";
+      setFrom(nextFrom);
+      setTo(nextTo);
+      const stock = balances.filter((b) => b.placeKey === nextFrom && b.bags > 0);
+      if (stock.length > 0) {
+        const prod = products.find((p) => p.id === stock[0].productId);
+        if (prod) {
+          setBrandPick(prod.brandId);
+          setProductPick(prod.id);
+          setDigits(String(stock[0].bags));
+        }
+      }
+    } else {
+      const nextFrom = godownPlaces[0]?.key || "";
+      const nextTo = vehiclePlaces[0]?.key || NEW_TRUCK_PLACE;
+      setFrom(nextFrom);
+      setTo(nextTo);
+      setDigits("");
+    }
+  }
+
   function handleFromChange(newFrom: string) {
     setFrom(newFrom);
-    // Auto-select product that has stock at this new location
+    clearError();
     const inStock = balances.filter((b) => b.placeKey === newFrom && b.bags > 0);
     if (inStock.length > 0) {
-      const currentStock = inStock.find((b) => b.productId === productId)?.bags ?? 0;
-      if (currentStock === 0) {
+      const currentHasStock = inStock.some((b) => b.productId === productId);
+      if (!currentHasStock) {
         const fullest = inStock.sort((a, b) => b.bags - a.bags)[0];
         const match = products.find((p) => p.id === fullest.productId);
         if (match) {
           setBrandPick(match.brandId);
           setProductPick(match.id);
+          setDigits(String(fullest.bags));
         }
       }
     }
-    // If To matches From, switch To to another place (prefer godown if newFrom is vehicle)
     if (newFrom === toPick || newFrom === to) {
       const others = places.filter((p) => p.key !== newFrom);
       const isVehicle = places.find((p) => p.key === newFrom)?.kind === "vehicle";
@@ -187,8 +217,39 @@ export function TransferForm({
     );
   }
 
+  const fromLabel = mode === "unload" ? "From (Truck)" : "From (Source Place)";
+  const toLabel = mode === "unload" ? "To (Godown)" : "To (Destination)";
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 font-sans">
+      {/* Direction Switcher */}
+      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-muted/60 p-1">
+        <button
+          type="button"
+          onClick={() => switchMode("unload")}
+          className={cn(
+            "flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-black transition-all",
+            mode === "unload"
+              ? "bg-card text-foreground shadow-xs ring-1 ring-foreground/10"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <span>🚛 Unload to Godown</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => switchMode("load")}
+          className={cn(
+            "flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-black transition-all",
+            mode === "load"
+              ? "bg-card text-foreground shadow-xs ring-1 ring-foreground/10"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <span>🏢 Load onto Truck</span>
+        </button>
+      </div>
+
       {hasManyBrands(brands) && (
         <SelectField
           label="Brand"
@@ -199,7 +260,7 @@ export function TransferForm({
       )}
       <SelectField label="Product" value={productId} onChange={setProductPick} groups={productGroups(brandProducts)} />
 
-      <SelectField label="From (Source)" value={from} onChange={handleFromChange} groups={placeOptionsWithStock(places)} />
+      <SelectField label={fromLabel} value={from} onChange={handleFromChange} groups={placeOptionsWithStock(places)} />
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>
@@ -217,7 +278,7 @@ export function TransferForm({
       </div>
 
       <SelectField
-        label="To (Destination)"
+        label={toLabel}
         value={to}
         onChange={setTo}
         groups={[
@@ -255,8 +316,10 @@ export function TransferForm({
         <FormHint>{hint}</FormHint>
         <Button onClick={submit} disabled={pending || hint !== null}>
           {fromObj?.kind === "vehicle" && toObj?.kind === "godown"
-            ? `Unload to ${toObj.name}`
-            : "Move bags"}
+            ? `Unload ${bags > 0 ? `${bags} bags ` : ""}from ${fromObj.name} into ${toObj.name}`
+            : fromObj?.kind === "godown" && toObj?.kind === "vehicle"
+              ? `Load ${bags > 0 ? `${bags} bags ` : ""}into ${toObj.name}`
+              : "Move bags"}
         </Button>
       </PinnedAction>
     </div>

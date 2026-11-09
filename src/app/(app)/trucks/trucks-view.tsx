@@ -1,3 +1,4 @@
+import Link from "next/link";
 "use client";
 
 import { Plus } from "lucide-react";
@@ -143,7 +144,18 @@ function TruckCard({ truck: r }: { truck: TruckRow }) {
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        {error ? <p className="text-sm text-destructive">{error}</p> : <span />}
+        {r.bags > 0 ? (
+          <Link
+            href={`/stock/transfer?from=vehicle:${r.id}`}
+            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95"
+          >
+            Unload to Godown
+          </Link>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : (
+          <span />
+        )}
         <Button type="button" variant="outline" size="sm" disabled={pending} onClick={toggle}>
           {r.active ? "Switch off" : "Switch on"}
         </Button>

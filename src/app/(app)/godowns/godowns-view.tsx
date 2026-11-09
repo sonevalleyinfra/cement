@@ -1,3 +1,4 @@
+import Link from "next/link";
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -85,7 +86,20 @@ export function GodownsView({ rows, canManage = true }: { rows: Row[]; canManage
                     </span>
                   </>
                 }
-                bottom={r.address ? <div className="text-xs text-muted-foreground">{r.address}</div> : undefined}
+                bottom={
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40">
+                    <span className="text-xs text-muted-foreground">{r.address || "Main depot"}</span>
+                    {r.active && (
+                      <Link
+                        href={`/stock/transfer?to=godown:${r.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95"
+                      >
+                        Unload Truck Here
+                      </Link>
+                    )}
+                  </div>
+                }
               />
             </li>
           ))}

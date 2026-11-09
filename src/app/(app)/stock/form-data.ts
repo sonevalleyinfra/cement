@@ -17,8 +17,26 @@ async function loadData(action: "manageStock" | "transferStock" | "recordPurchas
     getBalances(),
     getActiveTrucks(),
   ]);
+  const placesMap = new Map<string, { key: string; kind: "godown" | "vehicle"; name: string }>();
+
+  for (const p of places) {
+    const formattedName = p.kind === "vehicle" && !p.name.startsWith("Truck ") ? `Truck ${p.name}` : p.name;
+    placesMap.set(p.key, { key: p.key, kind: p.kind, name: formattedName });
+  }
+
+  // Guarantee that every loaded vehicle from balances is included as a place
+  for (const b of balances) {
+    if (b.kind === "vehicle" && (b.bags > 0 || b.placeActive) && !placesMap.has(b.placeKey)) {
+      placesMap.set(b.placeKey, {
+        key: b.placeKey,
+        kind: "vehicle",
+        name: `Truck ${b.placeName}`,
+      });
+    }
+  }
+
   const data = {
-    places: places.map((p) => ({ key: p.key, kind: p.kind, name: p.name })),
+    places: [...placesMap.values()],
     products: prods.map((p) => ({
       id: p.id,
       name: p.name,
