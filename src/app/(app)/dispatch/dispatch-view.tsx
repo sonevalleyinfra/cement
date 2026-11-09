@@ -303,212 +303,120 @@ export function DispatchView({
                 </div>
               )}
             </div>
-            {/* Step 1: Stock Source Selection */}
-            <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card p-3.5 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  📦 1. Mal Kahan Se Niklega (Stock Source)
-                </span>
-                {chosenPlaceObj && (
-                  <span className="text-xs font-semibold text-primary">
-                    Stock: {chosenPlaceObj.bagsHere} bags
-                  </span>
-                )}
-              </div>
-
-              {options.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {options.map((p) => {
-                    const isSelected = p.key === chosenPlace;
-                    const isTruck = Boolean(p.truck);
-                    const chip = p.truck ? truckChips.find((c) => c.truck === p.truck) : null;
-                    return (
-                      <button
-                        key={p.key}
-                        type="button"
-                        onClick={() => pickPlace(p.key)}
-                        className={`group flex items-center justify-between rounded-xl p-3 text-left transition-all duration-150 active:scale-[0.99] ring-1 ${
-                          isSelected
-                            ? "bg-primary/10 ring-primary text-foreground"
-                            : "bg-muted/30 ring-border/50 hover:bg-muted/60 text-card-foreground"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex size-10 shrink-0 items-center justify-center rounded-xl text-lg font-bold ${
-                              isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {isTruck ? "🚛" : "🏢"}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-bold leading-tight">{p.name}</span>
-                            {isTruck && chip?.driverName ? (
-                              <span className="text-xs text-muted-foreground">
-                                Driver: {chip.driverName} {chip.driverPhone ? `(${chip.driverPhone})` : ""}
-                              </span>
-                            ) : !isTruck ? (
-                              <span className="text-xs text-muted-foreground">Godown Depot</span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end">
-                          <span
-                            className={`text-sm font-black tabular ${
-                              isSelected ? "text-primary" : "text-foreground"
-                            }`}
-                          >
-                            {p.bagsHere} bags
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">in stock</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-destructive py-2">Is product ka stock kisi godown ya truck me nahi hai.</p>
-              )}
-            </div>
-
-            {/* Bags to Dispatch */}
-            <div className="flex flex-col gap-1.5 rounded-2xl border border-border/70 bg-card p-3.5 shadow-xs">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-semibold">Bags to Dispatch</span>
-                {open && (
-                  <span className="text-xs text-muted-foreground">
-                    Order left: <strong className="text-foreground">{remainingBags(open.bags, open.sent)} bags</strong>
-                  </span>
-                )}
-              </div>
+            <label className="flex flex-col gap-1 text-sm font-semibold">
+              Bags
               <Input
                 inputMode="numeric"
                 value={bags}
                 onChange={(e) => setBags(e.target.value.replace(/\D/g, ""))}
-                className="text-base font-bold"
               />
-              {chosenPlaceObj && exceedsStock && (
-                <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                  ⚠️ {chosenPlaceObj.name} me sirf {chosenPlaceObj.bagsHere} bags available hain (Aapne {requestedBags} dale hain).
-                </p>
-              )}
-            </div>
+            </label>
+            <SelectField
+              label="Take from"
+              value={chosenPlace}
+              onChange={(key) => pickPlace(key)}
+              options={options.map((p) => ({
+                value: p.key,
+                label: `${p.name} (${p.bagsHere} bags in stock)`,
+              }))}
+            />
+            {options.length === 0 && (
+              <p className="text-sm text-destructive">No godown or truck has stock of this product.</p>
+            )}
+            {chosenPlaceObj && exceedsStock && (
+              <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                Only {chosenPlaceObj.bagsHere} bags available in {chosenPlaceObj.name}. (You entered {requestedBags} bags)
+              </p>
+            )}
+            {truckChips.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-semibold">Truck (Fleet & Recent)</span>
+                <div className="flex flex-wrap gap-2">
+                  {truckChips.map((c) => {
+                    const matchingPlace = options.find((p) => p.truck === c.truck);
+                    const stockInTruck = matchingPlace?.bagsHere ?? 0;
+                    const isSelected = truck === c.truck;
+                    return (
+                      <button
+                        key={c.truck}
+                        type="button"
+                        onClick={() => pickChip(c)}
+                        aria-pressed={isSelected}
+                        className={`tabular min-h-12 rounded-xl px-3 py-1.5 text-left text-sm font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${
+                          isSelected
+                            ? "bg-primary text-primary-foreground ring-primary"
+                            : "bg-card ring-foreground/10 hover:bg-muted"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold">{c.truck}</span>
+                          {stockInTruck > 0 && (
+                            <span
+                              className={`rounded px-1 text-[10px] font-bold ${
+                                isSelected
+                                  ? "bg-primary-foreground/20 text-primary-foreground"
+                                  : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                              }`}
+                            >
+                              {stockInTruck} bags
+                            </span>
+                          )}
+                        </div>
+                        {c.driverName && (
+                          <span className="block text-xs font-normal opacity-85">{c.driverName}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-            {/* Step 2: Delivery Vehicle & Driver */}
-            <div className="flex flex-col gap-2.5 rounded-2xl border border-border/70 bg-card p-3.5 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  🚚 2. Delivery Gaadi & Driver
-                </span>
-                {chosenPlaceObj?.truck ? (
-                  <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                    ✅ Direct from Loaded Truck
+            {/* Delivery Source Notice */}
+            {truck && chosenPlaceObj && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-foreground">
+                {chosenPlaceObj.truck === truck ? (
+                  <span>
+                    ✅ <strong>Direct Truck Dispatch:</strong> Maal truck <strong>{truck}</strong> ({driverName || "Driver"}) se direct deliver hoga. (Stock: <strong>{chosenPlaceObj.bagsHere} bags</strong>)
+                  </span>
+                ) : !chosenPlaceObj.truck ? (
+                  <span>
+                    ℹ️ <strong>Godown se Dispatch:</strong> Maal godown <strong>{chosenPlaceObj.name}</strong> se nikal kar delivery gaadi <strong>{truck}</strong> ({driverName || "Driver"}) me load hoga.
                   </span>
                 ) : (
-                  <span className="text-xs text-muted-foreground font-medium">
-                    Godown Loading
+                  <span>
+                    ℹ️ Maal <strong>{chosenPlaceObj.name}</strong> se deliver hoga via gaadi <strong>{truck}</strong>.
                   </span>
                 )}
               </div>
+            )}
 
-              {truckChips.length > 0 && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-muted-foreground">Select delivery truck:</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    {truckChips.map((c) => {
-                      const matchingPlace = options.find((p) => p.truck === c.truck);
-                      const stockInTruck = matchingPlace?.bagsHere ?? 0;
-                      const isSelected = truck === c.truck;
-                      return (
-                        <button
-                          key={c.truck}
-                          type="button"
-                          onClick={() => pickChip(c)}
-                          aria-pressed={isSelected}
-                          className={`tabular rounded-xl p-2.5 text-left text-xs transition-all duration-150 active:scale-[0.98] ring-1 ${
-                            isSelected
-                              ? "bg-primary text-primary-foreground ring-primary"
-                              : "bg-muted/40 ring-border/50 hover:bg-muted text-card-foreground"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-sm">{c.truck}</span>
-                            {stockInTruck > 0 ? (
-                              <span
-                                className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                                  isSelected
-                                    ? "bg-primary-foreground/20 text-primary-foreground"
-                                    : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                }`}
-                              >
-                                ★ {stockInTruck} bags
-                              </span>
-                            ) : (
-                              <span
-                                className={`text-[10px] ${
-                                  isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
-                                }`}
-                              >
-                                Empty
-                              </span>
-                            )}
-                          </div>
-                          {c.driverName && (
-                            <span className="block mt-0.5 text-xs opacity-90 truncate">{c.driverName}</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Delivery Source Notice */}
-              {truck && (
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-foreground">
-                  {chosenPlaceObj?.truck === truck ? (
-                    <span>
-                      ✅ <strong>Direct Dispatch:</strong> Mal truck <strong>{truck}</strong> se direct deliver hoga (is truck me <strong>{chosenPlaceObj.bagsHere} bags</strong> loaded hain).
-                    </span>
-                  ) : chosenPlaceObj && !chosenPlaceObj.truck ? (
-                    <span>
-                      ℹ️ <strong>Godown se Dispatch:</strong> Mal godown <strong>{chosenPlaceObj.name}</strong> se nikal kar delivery truck <strong>{truck}</strong> me load hoga.
-                    </span>
-                  ) : (
-                    <span>
-                      ℹ️ Mal <strong>{chosenPlaceObj?.name}</strong> se deliver hoga via gaadi <strong>{truck}</strong>.
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <label className="flex flex-col gap-1 text-sm font-semibold">
-                Truck number
-                <Input
-                  value={truck}
-                  onChange={(e) => setTruck(e.target.value.toUpperCase())}
-                  placeholder="BR01AB1234"
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  maxLength={14}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm font-semibold">
-                Driver name
-                <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1 text-sm font-semibold">
-                Driver phone
-                <Input
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={14}
-                  value={driverPhone}
-                  onChange={(e) => setDriverPhone(e.target.value)}
-                />
-              </label>
-            </div>
+            <label className="flex flex-col gap-1 text-sm font-semibold">
+              Truck number
+              <Input
+                value={truck}
+                onChange={(e) => setTruck(e.target.value.toUpperCase())}
+                placeholder="BR01AB1234"
+                autoCapitalize="characters"
+                autoComplete="off"
+                maxLength={14}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-semibold">
+              Driver name
+              <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-semibold">
+              Driver phone
+              <Input
+                type="tel"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={14}
+                value={driverPhone}
+                onChange={(e) => setDriverPhone(e.target.value)}
+              />
+            </label>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div>
               <FormHint>
