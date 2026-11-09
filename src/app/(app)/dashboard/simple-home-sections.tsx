@@ -254,17 +254,17 @@ export async function SimpleLogisticsHome() {
           </div>
 
           <Link
-            href="/stock"
+            href="/godowns"
             className="inline-flex items-center justify-center rounded-2xl border border-border bg-muted/60 px-4 py-2.5 text-sm font-bold text-foreground transition-all duration-150 active:scale-95 hover:bg-muted"
           >
-            Godown
+            Godowns ({num(s.godown.bags)} bags)
           </Link>
         </div>
 
         {/* Stock & Fleet Breakdown */}
         <div className="mt-3.5 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 text-xs">
           <Link
-            href="/stock"
+            href="/godowns"
             className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
           >
             <div className="flex items-center justify-between text-muted-foreground">

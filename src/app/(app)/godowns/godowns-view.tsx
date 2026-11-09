@@ -1,6 +1,6 @@
-import Link from "next/link";
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { ConfirmStep } from "@/components/app/confirm-step";
@@ -17,7 +17,8 @@ import { useFormError } from "@/lib/use-form-error";
 import { bagsText } from "@/lib/words";
 import { saveGodown, setGodownActive } from "./actions";
 
-type Row = { id: string; name: string; address: string; active: boolean; bags: number };
+type GodownProduct = { id: string; name: string; bags: number };
+type Row = { id: string; name: string; address: string; active: boolean; bags: number; products?: GodownProduct[] };
 
 export function GodownsView({ rows, canManage = true }: { rows: Row[]; canManage?: boolean }) {
   const router = useRouter();
@@ -87,17 +88,34 @@ export function GodownsView({ rows, canManage = true }: { rows: Row[]; canManage
                   </>
                 }
                 bottom={
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40">
-                    <span className="text-xs text-muted-foreground">{r.address || "Main depot"}</span>
-                    {r.active && (
-                      <Link
-                        href={`/stock/transfer?to=godown:${r.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95"
-                      >
-                        Unload Truck Here
-                      </Link>
-                    )}
+                  <div className="flex flex-col gap-2 pt-1 border-t border-border/40">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">{r.address || "Main depot"}</span>
+                      {r.active && (
+                        <Link
+                          href={`/stock/transfer?to=godown:${r.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95"
+                        >
+                          Unload Truck Here
+                        </Link>
+                      )}
+                    </div>
+                    {r.products && r.products.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {r.products.map((p) => (
+                          <span
+                            key={p.id}
+                            className="inline-flex items-center gap-1 rounded-lg bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground ring-1 ring-border/50"
+                          >
+                            <span>{p.name}:</span>
+                            <strong className="font-bold text-primary">{p.bags} bags</strong>
+                          </span>
+                        ))}
+                      </div>
+                    ) : r.active ? (
+                      <span className="text-[11px] italic text-muted-foreground">Empty (0 bags in godown)</span>
+                    ) : null}
                   </div>
                 }
               />
