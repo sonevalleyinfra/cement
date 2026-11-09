@@ -14,8 +14,14 @@ describe("navFor", () => {
     expect(thirdTab("accounts,logistics").href).toBe("/receipts");
     expect(thirdTab("sales,accounts").href).toBe("/retailers");
   });
-  it("keeps Home, Orders, Khata and More around it", () => {
-    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/ledger", "/more"]);
+  it("includes Ledger only for roles with viewLedger permission", () => {
+    // logistics does not have viewLedger permission:
+    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/more"]);
+    // roles with viewLedger permission:
+    expect(navFor("sales").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/ledger", "/more"]);
+    expect(navFor("accounts").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/receipts", "/ledger", "/more"]);
+    expect(navFor("admin").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/ledger", "/more"]);
+    expect(navFor("retailer").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/ledger", "/more"]);
   });
 });
 

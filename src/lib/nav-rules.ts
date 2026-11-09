@@ -2,7 +2,7 @@
  * The bottom tabs per role, as plain functions (no database, no request).
  * Home, Orders and More are the same for everyone; the third tab is the role's own job:
  * sales and admin Retailers, accounts Payments, logistics Stock, a shop its own Dues.
- * In addition, Khata (Ledger) is available directly in the bottom navigation for instant 1-tap access.
+ * In addition, Ledger is available directly in the bottom navigation for roles with viewLedger permission.
  * A person with several staff roles gets the first match in that order.
  */
 import type { NavItem } from "@/components/app/bottom-nav";
@@ -23,7 +23,7 @@ export function navFor(role: string | null | undefined): NavItem[] {
     { href: "/orders", label: "Orders", icon: "orders" },
     third,
   ];
-  if (third.href !== "/ledger") {
+  if (third.href !== "/ledger" && can(role, "viewLedger")) {
     items.push({ href: "/ledger", label: "Ledger", icon: "money" });
   }
   items.push({ href: "/more", label: "More", icon: "more" });

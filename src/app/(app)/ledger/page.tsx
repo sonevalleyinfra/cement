@@ -27,6 +27,7 @@ import {
   overdueSummary,
   shopScope,
 } from "@/lib/overdue-rules";
+import { can } from "@/lib/permissions";
 import { param } from "@/lib/report-range";
 import { hasAnyRole, hasRole } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
@@ -39,6 +40,7 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function LedgerPage({ searchParams }: { searchParams: Search }) {
   const { user } = await requireUser();
+  if (!can(user.role, "viewLedger")) redirect("/dashboard");
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
   const isRetailer = hasRole(user.role, "retailer");
   const header = <PageHeader title={staff ? "Dues" : "Ledger"} />;
@@ -48,7 +50,6 @@ export default async function LedgerPage({ searchParams }: { searchParams: Searc
       <EmptyState title={title} />
     </div>
   );
-  if (!staff && !isRetailer) return empty("No access");
 
   const sp = await searchParams;
   const scope = staff ? shopScope(user.role, user.id) : null;
