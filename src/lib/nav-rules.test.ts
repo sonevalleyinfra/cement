@@ -7,7 +7,7 @@ describe("navFor", () => {
     expect(thirdTab("admin").href).toBe("/retailers");
     expect(thirdTab("accounts")).toMatchObject({ href: "/receipts", label: "Payments", icon: "receipts" });
     expect(thirdTab("logistics")).toMatchObject({ href: "/stock", label: "Stock" });
-    expect(thirdTab("retailer")).toMatchObject({ href: "/ledger", label: "Khata" });
+    expect(thirdTab("retailer")).toMatchObject({ href: "/ledger", label: "Ledger" });
     expect(thirdTab(null).href).toBe("/ledger");
   });
   it("first match wins for several roles", () => {

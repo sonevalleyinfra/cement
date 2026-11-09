@@ -13,7 +13,7 @@ export function thirdTab(role: string | null | undefined): NavItem {
   if (isAdmin(role) || hasRole(role, "sales")) return { href: "/retailers", label: "Retailers", icon: "retailers" };
   if (hasRole(role, "accounts")) return { href: "/receipts", label: "Payments", icon: "receipts" };
   if (hasRole(role, "logistics")) return { href: "/stock", label: "Stock", icon: "stock" };
-  return { href: "/ledger", label: "Khata", icon: "money" };
+  return { href: "/ledger", label: "Ledger", icon: "money" };
 }
 
 export function navFor(role: string | null | undefined): NavItem[] {
@@ -24,7 +24,7 @@ export function navFor(role: string | null | undefined): NavItem[] {
     third,
   ];
   if (third.href !== "/ledger") {
-    items.push({ href: "/ledger", label: "Khata", icon: "money" });
+    items.push({ href: "/ledger", label: "Ledger", icon: "money" });
   }
   items.push({ href: "/more", label: "More", icon: "more" });
   return items;

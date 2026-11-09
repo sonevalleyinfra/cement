@@ -154,7 +154,7 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
             line2="Order"
             sub="Book cement"
             icon={ShoppingCart}
-            gradient="bg-gradient-to-b from-orange-500 to-orange-600"
+            gradient="bg-gradient-to-b from-blue-600 to-indigo-700"
           />
 
           <QuickActionTile
@@ -277,7 +277,7 @@ export async function SimpleLogisticsHome() {
             line2="Truck"
             sub={`${s.ready} ready`}
             icon={Truck}
-            gradient="bg-gradient-to-b from-orange-500 to-orange-600"
+            gradient="bg-gradient-to-b from-blue-600 to-indigo-700"
           />
 
           <QuickActionTile
@@ -515,7 +515,7 @@ export async function SimpleRetailerHome({ userId }: { userId: string }) {
             line2="Cement"
             sub="PPC / OPC"
             icon={ShoppingCart}
-            gradient="bg-gradient-to-b from-orange-500 to-orange-600"
+            gradient="bg-gradient-to-b from-blue-600 to-indigo-700"
           />
 
           <QuickActionTile
@@ -530,8 +530,8 @@ export async function SimpleRetailerHome({ userId }: { userId: string }) {
           <QuickActionTile
             href="/ledger"
             line1="My"
-            line2="Khata"
-            sub="Ledger & Bills"
+            line2="Ledger"
+            sub="Statement & Bills"
             icon={Store}
             gradient="bg-gradient-to-b from-blue-600 to-blue-700"
           />
@@ -846,7 +846,7 @@ export async function SimpleAdminHome() {
             line2="Export"
             sub="Register & CSV"
             icon={FileSpreadsheet}
-            gradient="bg-gradient-to-br from-orange-500 to-orange-600"
+            gradient="bg-gradient-to-br from-blue-600 to-indigo-700"
           />
 
           <QuickActionTile
@@ -855,7 +855,7 @@ export async function SimpleAdminHome() {
             line2="Supplier"
             sub={topSupplier ? `${topSupplier.name}` : "Prism Cement"}
             icon={Building2}
-            gradient="bg-gradient-to-br from-amber-500 to-amber-600"
+            gradient="bg-gradient-to-br from-sky-600 to-blue-700"
           />
 
           <QuickActionTile
@@ -1086,7 +1086,7 @@ export async function SimpleAdminHome() {
             href="/trucks"
             className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
           >
-            <div className="flex size-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
               <Truck className="size-5" />
             </div>
             <div className="min-w-0 flex-1">
