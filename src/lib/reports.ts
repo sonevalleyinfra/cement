@@ -18,6 +18,7 @@ import {
   walletMovements,
 } from "@/db/schema";
 import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
+import { toISTDateKey } from "@/lib/datetime";
 import { duesAging } from "@/lib/due-items";
 import { ledgerBackdatedSql, ledgerMomentSql, ledgerReversesAtSql } from "@/lib/ledger";
 import { lossReport } from "@/lib/loss-report";
@@ -93,11 +94,53 @@ async function salesQuery(range: ReportRange) {
     .leftJoin(user, eq(user.id, dispatches.salesRepId))
     .where(and(gte(dispatches.createdAt, range.start), lt(dispatches.createdAt, range.end)))
     .orderBy(asc(dispatches.createdAt));
-  return rows.map((r) => ({
-    ...r,
-    vehicleNumber: r.vehicleNumber || "Unknown truck",
-    fromPlaceName: r.godownName ? r.godownName : r.fromVehicleId ? "Truck Direct" : "Godown",
-  }));
+
+  const vehicleNumbers = [...new Set(rows.map((r) => r.vehicleNumber).filter(Boolean))] as string[];
+  const truckPurchases =
+    vehicleNumbers.length > 0
+      ? await db
+          .select({
+            truckNumber: purchases.truckNumber,
+            invoiceDate: purchases.invoiceDate,
+            createdAt: purchases.createdAt,
+          })
+          .from(purchases)
+          .where(inArray(purchases.truckNumber, vehicleNumbers))
+          .orderBy(asc(purchases.createdAt))
+      : [];
+
+  const purchaseMap = new Map<string, { invoiceDate: string }>();
+  for (const p of truckPurchases) {
+    const key = p.truckNumber.toUpperCase().replace(/\s+/g, "");
+    purchaseMap.set(key, p);
+  }
+
+  return rows.map((r) => {
+    const vKey = (r.vehicleNumber || "").toUpperCase().replace(/\s+/g, "");
+    const pur = purchaseMap.get(vKey);
+    const isDirectTruck = !!r.fromVehicleId;
+    const isGodown = !!r.fromGodownId;
+    const movementType = isDirectTruck
+      ? "Direct Plant Truck"
+      : isGodown
+        ? "Godown Delivery"
+        : "Direct";
+    const fromPlaceName = r.godownName
+      ? r.godownName
+      : isDirectTruck
+        ? `Truck ${r.vehicleNumber || ""}`
+        : "Godown";
+    const purchaseSource = isDirectTruck ? "Plant Direct" : r.godownName ? "Godown Stock" : "Plant / Factory";
+
+    return {
+      ...r,
+      vehicleNumber: r.vehicleNumber || "Unknown truck",
+      fromPlaceName,
+      movementType,
+      purchaseDate: pur?.invoiceDate || (isDirectTruck ? toISTDateKey(new Date(r.createdAt)) : "Stock"),
+      purchaseSource,
+    };
+  });
 }
 
 export async function getSalesReport(range: ReportRange) {

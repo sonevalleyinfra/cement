@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ArrowDownLeft, ArrowUpRight, Calendar, CreditCard, RotateCcw, Truck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { TextLink } from "@/components/app/text-link";
 import { buttonVariants } from "@/components/ui/button";
 import { db } from "@/db";
-import { retailers, user as users, walletMovements } from "@/db/schema";
+import { receipts, retailers, user as users, walletMovements } from "@/db/schema";
 import { formatDate, formatDateTime, toISTDateKey } from "@/lib/datetime";
 import { isUuid } from "@/lib/ids";
 import { getEntries } from "@/lib/ledger";
@@ -52,7 +52,23 @@ export default async function RetailerLedgerPage({
     cashInHandPaise = walletBalance(movements).balancePaise;
   }
 
-  const rows = await getEntries(retailerId);
+  const [rows, unverifiedList] = await Promise.all([
+    getEntries(retailerId),
+    db
+      .select({
+        id: receipts.id,
+        receiptNo: receipts.receiptNo,
+        totalPaise: receipts.totalPaise,
+        mode: receipts.mode,
+        utr: receipts.utr,
+        note: receipts.note,
+        createdAt: receipts.createdAt,
+        receivedBy: receipts.receivedBy,
+      })
+      .from(receipts)
+      .where(and(eq(receipts.retailerId, retailerId), eq(receipts.status, "unverified"))),
+  ]);
+  const unverifiedTotalPaise = unverifiedList.reduce((acc, r) => acc + r.totalPaise, 0);
   const actors = new Map(
     (await db.select({ id: users.id, name: users.name }).from(users)).map((u) => [u.id, u.name]),
   );
@@ -185,6 +201,23 @@ export default async function RetailerLedgerPage({
         <div className="tabular text-3xl font-bold">{formatINR(balanceLine(balance).amountPaise)}</div>
       </div>
 
+      {unverifiedTotalPaise > 0 && (
+        <div className="flex flex-col gap-1.5 rounded-2xl bg-amber-500/10 p-3.5 border border-amber-500/30">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-200">
+              ⏳ Unverified Payments Pending: {unverifiedList.length}
+            </span>
+            <span className="tabular text-xs font-black text-amber-900 dark:text-amber-200">
+              {formatINR(unverifiedTotalPaise)}
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90">
+            Awaiting accounts confirmation. Effective balance once verified:{" "}
+            <strong className="tabular">{formatINR(Math.max(0, balance - unverifiedTotalPaise))}</strong>
+          </p>
+        </div>
+      )}
+
       <LedgerActions
         retailerId={retailerId}
         canOpen={can(user.role, "setOpeningBalance") && !hasOpening}
@@ -241,6 +274,57 @@ export default async function RetailerLedgerPage({
               {paymentCount} {paymentCount === 1 ? "payment" : "payments"}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Unverified Payments Section */}
+      {unverifiedList.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1 border-b border-amber-500/30 pb-1">
+            <span className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+              ⏳ Pending Verification (Unverified Payments)
+            </span>
+            <span className="text-xs font-bold tabular text-amber-700 dark:text-amber-400">
+              -{formatINR(unverifiedTotalPaise)}
+            </span>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {unverifiedList.map((u) => (
+              <li
+                key={u.id}
+                className="flex flex-col gap-1.5 rounded-2xl bg-card p-3 shadow-card ring-1 ring-amber-500/30 border-l-4 border-l-amber-500"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/20 px-2 py-0.5 text-xs font-bold text-amber-800 dark:text-amber-300">
+                      ⏳ Unverified Payment
+                    </span>
+                    <span className="text-xs text-muted-foreground uppercase">
+                      #{u.receiptNo} · {u.mode}
+                    </span>
+                  </div>
+                  <span className="tabular text-sm font-bold text-amber-600 dark:text-amber-400">
+                    -{formatINR(u.totalPaise)}
+                  </span>
+                </div>
+                {u.utr && (
+                  <div className="text-xs font-medium text-foreground/80 pl-0.5">
+                    UTR / Ref: <span className="font-mono font-bold">{u.utr}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground pt-0.5 border-t border-border/30">
+                  <span className="truncate">
+                    {formatDateTime(u.createdAt)}
+                    {u.note ? ` · ${u.note}` : ""}
+                    {u.receivedBy ? ` · ${actors.get(u.receivedBy) ?? ""}` : ""}
+                  </span>
+                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                    Pending Accounts Verification
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

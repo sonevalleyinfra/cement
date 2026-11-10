@@ -25,7 +25,11 @@ function refresh() {
  * A staff member asks to hand over some of the cash they hold. Accounts are told.
  * `requestId` is the form's one-time id: a second tap asks nothing more (request-rules.ts).
  */
-export async function requestHandover(input: { amountPaise: number; requestId: string }): Promise<WalletResult> {
+export async function requestHandover(input: {
+  amountPaise: number;
+  recipientName?: string;
+  requestId: string;
+}): Promise<WalletResult> {
   const session = await requireRole(...rolesFor("useWallet"));
   const amount = Number(input?.amountPaise);
   const form = checkRequestId(input?.requestId);
@@ -39,12 +43,14 @@ export async function requestHandover(input: { amountPaise: number; requestId: s
     const balance = walletBalance(rows);
     const check = validateHandoverRequest(amount, balance.availablePaise, balance.pendingPaise);
     if (!check.ok) return check;
+    const cleanRecipient = input.recipientName ? input.recipientName.trim().slice(0, 100) : "";
     const [request] = await tx
       .insert(walletMovements)
       .values({
         collectorId: session.user.id,
         kind: "handover_request",
         amountPaise: amount,
+        note: cleanRecipient ? `Handed to: ${cleanRecipient}` : "",
         actorId: session.user.id,
       })
       .returning({ id: walletMovements.id });
@@ -53,7 +59,11 @@ export async function requestHandover(input: { amountPaise: number; requestId: s
       entity: "handover",
       entityId: request.id,
       action: "request",
-      details: { collectorId: session.user.id, amountPaise: amount },
+      details: {
+        collectorId: session.user.id,
+        amountPaise: amount,
+        ...(cleanRecipient ? { recipientName: cleanRecipient } : {}),
+      },
     });
     await notifyMoney(tx, {
       event: "handover_requested",

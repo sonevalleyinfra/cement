@@ -37,6 +37,9 @@ export type SaleRow = {
   driverPhone?: string | null;
   retailerPlace?: string | null;
   fromPlaceName?: string | null;
+  movementType?: string | null;
+  purchaseDate?: string | null;
+  purchaseSource?: string | null;
 };
 
 export type SalesLine = { key: string; label: string; bags: number; valuePaise: number; loads: number };

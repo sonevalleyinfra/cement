@@ -38,6 +38,9 @@ export function salesRows(r: SalesReport): Row[] {
       rupees(d.ratePaise),
       rupees(totalPaise),
       d.fromPlaceName || "",
+      d.movementType || (d.fromPlaceName?.includes("Truck") ? "Direct Plant Truck" : "Godown Delivery"),
+      d.purchaseDate || "Stock",
+      d.purchaseSource || (d.fromPlaceName?.includes("Truck") ? "Direct Factory/Plant" : "Godown Stock"),
       d.salesRepName || "No sales person",
     ];
   });
@@ -65,6 +68,9 @@ export function salesRows(r: SalesReport): Row[] {
       "Rate (₹)",
       "Total Amount (₹)",
       "Dispatched From",
+      "Dispatch Type / Movement",
+      "Truck Purchase Date",
+      "Source (Plant / Godown)",
       "Sales Person",
     ],
     ...dispatchRegister,

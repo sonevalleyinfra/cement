@@ -19,7 +19,8 @@ import { answerHandover, requestHandover } from "./actions";
 
 type Mine = { balancePaise: number; pendingPaise: number; availablePaise: number };
 type Holder = { id: string; name: string; balancePaise: number; pendingPaise: number };
-type Request = { id: string; collector: string; amountPaise: number; own: boolean };
+type Request = { id: string; collector: string; amountPaise: number; own: boolean; note?: string };
+type Collection = { id: string; receiptNo: number; amountPaise: number; retailerName: string; createdAt: Date };
 
 const rupees = (paise: number) => (paise / 100).toFixed(2);
 
@@ -27,16 +28,19 @@ export function WalletView({
   mine,
   holders,
   requests,
+  collections = [],
   isAccounts,
 }: {
   mine: Mine;
   holders: Holder[];
   requests: Request[];
+  collections?: Collection[];
   isAccounts: boolean;
 }) {
   const router = useRouter();
   const [handOpen, setHandOpen] = useState(false);
   const [amount, setAmount] = useState("");
+  const [recipientName, setRecipientName] = useState("");
   // The handover request accounts are answering (null = sheet closed).
   const [answering, setAnswering] = useState<Request | null>(null);
   const [received, setReceived] = useState("");
@@ -45,7 +49,7 @@ export function WalletView({
   const [confirming, setConfirming] = useState(false);
   // Rejecting a handover asks "are you sure?" first too.
   const [rejecting, setRejecting] = useState(false);
-  const { error, setError, clearError } = useFormError([handOpen, amount, answering?.id, received, reason]);
+  const { error, setError, clearError } = useFormError([handOpen, amount, recipientName, answering?.id, received, reason]);
   const [pending, start] = useTransition();
   const handover = useSubmit();
 
@@ -59,13 +63,14 @@ export function WalletView({
     if (handoverPaise === null || handoverPaise <= 0) return;
     clearError();
     handover.run(
-      (requestId) => requestHandover({ amountPaise: handoverPaise, requestId }),
+      (requestId) => requestHandover({ amountPaise: handoverPaise, recipientName, requestId }),
       (res) => {
         if (res.ok) {
           clearError();
           setConfirming(false);
           setHandOpen(false);
           setAmount("");
+          setRecipientName("");
           router.refresh();
         } else {
           // Back to the amount, with what went wrong.
@@ -114,6 +119,7 @@ export function WalletView({
                 clearError();
                 setConfirming(false);
                 setAmount(rupees(mine.availablePaise));
+                setRecipientName("");
                 setHandOpen(true);
               }}
             >
@@ -122,6 +128,28 @@ export function WalletView({
           </>
         }
       />
+
+      {collections && collections.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-foreground">Cash Collections by Shop</h3>
+            <span className="text-xs text-muted-foreground">{collections.length} recent</span>
+          </div>
+          <ul className="flex flex-col gap-2 divide-y divide-border/30">
+            {collections.map((c) => (
+              <li key={c.id} className="flex items-center justify-between pt-2 first:pt-0">
+                <div>
+                  <span className="text-sm font-semibold text-foreground">{c.retailerName}</span>
+                  <span className="block text-[11px] text-muted-foreground">Receipt #{c.receiptNo}</span>
+                </div>
+                <span className="tabular text-sm font-bold text-emerald-600">
+                  {formatINR(c.amountPaise)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {isAccounts && (
         <>
@@ -135,6 +163,7 @@ export function WalletView({
                   <ListCard
                     index={i}
                     title={r.collector}
+                    top={r.note ? <span className="text-xs text-primary font-semibold">{r.note}</span> : undefined}
                     bottom={
                       <>
                         <span className="tabular text-lg font-bold">{formatINR(r.amountPaise, { hidePaise: true })}</span>
@@ -205,6 +234,16 @@ export function WalletView({
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="handover">Amount (₹)</Label>
                 <Input id="handover" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="recipient">Handed over to (Office Person Name)</Label>
+                <Input
+                  id="recipient"
+                  placeholder="e.g. Ramesh (Cashier / Office staff)"
+                  value={recipientName}
+                  onChange={(e) => setRecipientName(e.target.value)}
+                  maxLength={100}
+                />
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <div>
