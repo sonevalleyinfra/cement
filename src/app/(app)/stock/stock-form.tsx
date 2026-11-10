@@ -108,8 +108,12 @@ export function StockForm({
 }) {
   const router = useRouter();
   const { pending, run } = useSubmit();
+  const purchase = mode === "purchase";
+  const availablePlaces = purchase ? places.filter((p) => p.kind === "vehicle") : places;
   const [pick, setPick] = useState({ brandId: products[0]?.brandId ?? "", channel: "", typeId: "", gradeId: "" });
-  const [place, setPlace] = useState(places[0]?.key ?? (mode === "purchase" ? NEW_TRUCK_PLACE : ""));
+  const [place, setPlace] = useState(
+    purchase ? (availablePlaces[0]?.key ?? NEW_TRUCK_PLACE) : (places[0]?.key ?? "")
+  );
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
@@ -123,7 +127,6 @@ export function StockForm({
   const [truck, setTruck] = useState(NO_TRUCK);
   const [purchaseSource, setPurchaseSource] = useState<string>(DEFAULT_PURCHASE_SOURCES[0]);
   const [otherSource, setOtherSource] = useState("");
-  const purchase = mode === "purchase";
   const newTruck = purchase && place === NEW_TRUCK_PLACE;
   // A purchase into a truck already in the list keeps that truck's number.
   const placeTruck = purchase && place.startsWith("vehicle:") ? places.find((p) => p.key === place)?.name : undefined;
@@ -275,12 +278,12 @@ export function StockForm({
         </div>
       )}
       <SelectField
-        label="Place"
+        label={purchase ? "Truck" : "Place"}
         value={place}
         onChange={setPlace}
         groups={[
-          ...placeGroups(places),
-          ...(mode === "purchase" ? [{ label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] }] : []),
+          ...placeGroups(availablePlaces),
+          ...(purchase ? [{ label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] }] : []),
         ]}
       />
       {!newTruck && <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>}

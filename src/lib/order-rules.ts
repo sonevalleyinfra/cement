@@ -130,6 +130,31 @@ export function isValidBags(bags: number): boolean {
   return Number.isInteger(bags) && bags > 0;
 }
 
+/**
+ * Can order bags/quantity be edited?
+ * Allowed while order is active: 'placed', 'approved', or 'partly_dispatched'.
+ */
+export function canEditOrderBags(role: string | null | undefined, status: string): boolean {
+  if (!isOrderStatus(status)) return false;
+  if (!["placed", "approved", "partly_dispatched"].includes(status)) return false;
+  return hasAnyRole(role, ["admin", "sales", "logistics", "accounts"]);
+}
+
+export function checkEditOrderBags(
+  currentBags: number,
+  dispatchedBags: number,
+  newBags: number,
+): { ok: true; newBags: number } | { ok: false; error: string } {
+  if (!isValidBags(newBags)) return { ok: false, error: "Bags must be a whole number above zero." };
+  if (newBags < dispatchedBags) {
+    return { ok: false, error: `Already dispatched ${bagsText(dispatchedBags)}. Quantity cannot be less than sent bags.` };
+  }
+  if (newBags === currentBags) {
+    return { ok: false, error: `Quantity is already ${bagsText(currentBags)}.` };
+  }
+  return { ok: true, newBags };
+}
+
 export function remainingBags(orderedBags: number, dispatchedBags: number): number {
   return Math.max(0, orderedBags - dispatchedBags);
 }

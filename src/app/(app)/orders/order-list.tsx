@@ -81,46 +81,80 @@ export function OrderCard({
   showPrice: boolean;
 }) {
   const own = loads.filter((l) => l.orderId === o.id);
+  const sentBags = own.reduce((n, l) => n + l.bags, 0);
+  const remaining = Math.max(0, o.bags - sentBags);
   const value = orderValuePaise({ ...o, loads: own });
-  const note = cancelledNote(o.status, o.bags, own.reduce((n, l) => n + l.bags, 0));
+  const note = cancelledNote(o.status, o.bags, sentBags);
   const orderNum = o.id.slice(0, 6).toUpperCase();
 
+  const canDispatch = (o.status === "approved" || o.status === "partly_dispatched") && remaining > 0;
+  const canApprove = o.status === "placed" && o.ratePaise !== null;
+  const needsRate = o.status === "placed" && o.ratePaise === null;
+
   return (
-    <Link
-      href={href}
-      className="group block rounded-3xl border border-border/70 bg-card p-4 shadow-xs transition-all duration-150 hover:bg-muted/40 hover:border-primary/30 active:scale-[0.99]"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-            #ORD-{orderNum}
-          </span>
-          <h3 className="mt-0.5 text-base font-black text-foreground group-hover:text-primary transition-colors">
-            {o.retailer}
-          </h3>
-          <span className="text-xs text-muted-foreground">{formatDate(o.createdAt)}</span>
-        </div>
-        {isOrderStatus(o.status) && <StatusChip status={o.status} />}
-      </div>
-
-      <div className="mt-3 flex items-center justify-between rounded-2xl bg-muted/30 p-3 text-xs border border-border/50">
-        <div>
-          <span className="text-sm font-black text-foreground">{bagsText(o.bags)}</span>
-          <span className="block text-[11px] text-muted-foreground font-medium">{o.product}</span>
-        </div>
-        <div className="text-right">
-          {showPrice && value !== null && (
-            <span className="text-sm font-black text-foreground">{formatINR(value, { hidePaise: true })}</span>
-          )}
-          {showPrice && o.ratePaise !== null && (
-            <span className="block text-[11px] text-muted-foreground font-medium">
-              @ {formatINR(o.ratePaise)}/bag
+    <div className="group block rounded-3xl border border-border/70 bg-card p-4 shadow-xs transition-all duration-150 hover:bg-muted/40 hover:border-primary/30">
+      <Link href={href} className="block">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+              #ORD-{orderNum}
             </span>
+            <h3 className="mt-0.5 text-base font-black text-foreground group-hover:text-primary transition-colors">
+              {o.retailer}
+            </h3>
+            <span className="text-xs text-muted-foreground">{formatDate(o.createdAt)}</span>
+          </div>
+          {isOrderStatus(o.status) && <StatusChip status={o.status} />}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between rounded-2xl bg-muted/30 p-3 text-xs border border-border/50">
+          <div>
+            <span className="text-sm font-black text-foreground">{bagsText(o.bags)}</span>
+            <span className="block text-[11px] text-muted-foreground font-medium">{o.product}</span>
+          </div>
+          <div className="text-right">
+            {showPrice && value !== null && (
+              <span className="text-sm font-black text-foreground">{formatINR(value, { hidePaise: true })}</span>
+            )}
+            {showPrice && o.ratePaise !== null && (
+              <span className="block text-[11px] text-muted-foreground font-medium">
+                @ {formatINR(o.ratePaise)}/bag
+              </span>
+            )}
+          </div>
+        </div>
+
+        {note && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400 font-semibold">{note}</div>}
+      </Link>
+
+      {showPrice && (canDispatch || canApprove || needsRate) && (
+        <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/40 pt-2.5">
+          {canDispatch && (
+            <Link
+              href={`/dispatch?orderId=${o.id}`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-xs hover:opacity-90 transition-opacity"
+            >
+              🚚 Dispatch ({bagsText(remaining)} left)
+            </Link>
+          )}
+          {canApprove && (
+            <Link
+              href={href}
+              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition-colors"
+            >
+              ✓ Approve Order
+            </Link>
+          )}
+          {needsRate && (
+            <Link
+              href={href}
+              className="inline-flex items-center gap-1 rounded-xl bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 hover:bg-amber-500/25 transition-colors"
+            >
+              ⚡ Set Rate & Approve
+            </Link>
           )}
         </div>
-      </div>
-
-      {note && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400 font-semibold">{note}</div>}
-    </Link>
+      )}
+    </div>
   );
 }

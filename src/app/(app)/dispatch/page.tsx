@@ -13,8 +13,14 @@ import { requireRole } from "@/lib/session";
 import { getActiveTrucks } from "@/lib/trucks";
 import { DispatchView } from "./dispatch-view";
 
-export default async function DispatchPage() {
+export default async function DispatchPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ orderId?: string }>;
+}) {
   const { user } = await requireRole(...rolesFor("dispatch"));
+  const sp = searchParams ? await searchParams : {};
+  const initialOrderId = sp?.orderId ?? null;
 
   // Every approved or partly dispatched order: any logistics person may send it.
   const [rows, balances, recent, activeTrucks] = await Promise.all([
@@ -110,6 +116,7 @@ export default async function DispatchPage() {
         places={places}
         truckChips={chips}
         balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
+        initialOrderId={initialOrderId}
       />
     </div>
   );

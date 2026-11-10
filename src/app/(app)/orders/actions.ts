@@ -10,7 +10,7 @@ import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { isBagsInRange, resolveOrderRetailer, validatePlaceOrder } from "@/lib/order-access";
 import { checkDelivery, checkNotes, orderSourceFor } from "@/lib/order-delivery-rules";
-import { planCancel } from "@/lib/order-rules";
+import { canEditOrderBags, checkEditOrderBags, planCancel } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
 import {
   canChangeRate,
@@ -384,6 +384,80 @@ export async function cancelOrder(orderId: string, reasonCode: string, note: str
     await notify(tx, orderId, "cancelled", me.id, plan.cancelledBags);
     return { ok: true };
   });
+  if (result.ok) refresh(orderId);
+  return result;
+}
+
+/**
+ * Update order bags (quantity edit / "add more bags").
+ * Allowed for staff on active orders (placed, approved, partly_dispatched).
+ * New quantity must be >= already dispatched bags.
+ */
+export async function updateOrderBags(
+  orderId: string,
+  newBags: number,
+  note?: string,
+): Promise<PlaceOrderResult> {
+  const session = await requireRole("admin", "sales", "logistics", "accounts");
+  const me = session.user;
+  if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
+
+  const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
+    const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
+    if (!o) return { ok: false, error: "Order not found." };
+    if (!canEditOrderBags(me.role, o.status)) {
+      return { ok: false, error: "The quantity of this order cannot be changed." };
+    }
+    const [sent] = await tx
+      .select({ bags: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number) })
+      .from(dispatches)
+      .where(eq(dispatches.orderId, orderId));
+    const dispatchedBags = sent?.bags ?? 0;
+    const check = checkEditOrderBags(o.bags, dispatchedBags, newBags);
+    if (!check.ok) return check;
+
+    let newStatus = o.status;
+    if (dispatchedBags > 0 && newBags > dispatchedBags) {
+      newStatus = "partly_dispatched";
+    }
+
+    await tx
+      .update(orders)
+      .set({
+        bags: check.newBags,
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId));
+
+    const cleanNote = note ? note.trim().slice(0, 200) : "";
+    const eventReason = cleanNote
+      ? `Quantity updated: ${o.bags} → ${check.newBags} bags (${cleanNote})`
+      : `Quantity updated: ${o.bags} → ${check.newBags} bags`;
+
+    await tx.insert(orderEvents).values({
+      orderId,
+      fromStatus: o.status,
+      toStatus: newStatus,
+      actorId: me.id,
+      reason: eventReason,
+    });
+
+    await writeAudit(tx, {
+      actorId: me.id,
+      entity: "order",
+      entityId: orderId,
+      action: "change_bags",
+      details: {
+        ...orderFacts(o),
+        bags: { before: o.bags, after: check.newBags },
+        ...(cleanNote ? { note: cleanNote } : {}),
+      },
+    });
+
+    return { ok: true };
+  });
+
   if (result.ok) refresh(orderId);
   return result;
 }

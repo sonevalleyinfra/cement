@@ -177,6 +177,9 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const cost = checkCostPerBag(input.costPerBagPaise);
   if (!cost.ok) return cost;
   const chosen = p.place;
+  if (chosen !== NEW_TRUCK_PLACE && chosen.kind !== "vehicle") {
+    return { ok: false, error: "Purchases must be received directly into a truck." };
+  }
   // The truck: an existing truck place keeps its own number (read below), else the typed one is needed.
   const typed = input.truck ?? {};
   let truck: Truck;

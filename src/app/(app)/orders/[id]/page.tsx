@@ -21,7 +21,7 @@ import {
 } from "@/lib/order-access";
 import { DELIVER_TO_LABELS, notesForViewer, orderSourceLabel } from "@/lib/order-delivery-rules";
 import { orderBackHref } from "@/lib/order-filter-rules";
-import { canCancelOrder, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
+import { canCancelOrder, canEditOrderBags, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { reasonLabel } from "@/lib/reason-codes";
 import { isReversibleOrderStatus, reversedByLoad } from "@/lib/reversal-rules";
@@ -30,7 +30,10 @@ import { requireUser } from "@/lib/session";
 import { getPlaces } from "@/lib/stock-places";
 import { placeKey } from "@/lib/stock-rules";
 import { bagsText } from "@/lib/words";
+import Link from "next/link";
 import { CancelForm } from "./cancel-form";
+import { DirectApprove } from "./direct-approve";
+import { EditBagsForm } from "./edit-bags-form";
 import { RateForm } from "./rate-form";
 
 /** One row of the facts block: a muted label on the left, the value on the right. */
@@ -148,6 +151,9 @@ export default async function OrderDetailPage({
   const site = o.deliverTo === "site";
 
   const canCancel = canCancelOrder(user.role, o.status);
+  const canEditBags = canEditOrderBags(user.role, o.status);
+  const canApprove = can(user.role, "decideOrder") && o.status === "placed" && o.ratePaise !== null;
+  const canDispatchOrder = can(user.role, "dispatch") && (o.status === "approved" || o.status === "partly_dispatched") && notSent > 0;
   // Admin only (v2 B2): loads with bags left to reverse get a "Reverse" link; places are read only then.
   const reversed = reversedByLoad(loads);
   const leftOf = (l: (typeof loads)[number]) => (l.bags > 0 ? l.bags - (reversed.get(l.id) ?? 0) : 0);
@@ -174,6 +180,20 @@ export default async function OrderDetailPage({
         </p>
         {cancelled && <p>{cancelled}</p>}
       </PageHeader>
+      {(canEditBags || canDispatchOrder) && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {canEditBags && <EditBagsForm orderId={o.id} currentBags={o.bags} sentBags={sentBags} />}
+          {canDispatchOrder && (
+            <Link
+              href={`/dispatch?orderId=${o.id}`}
+              className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-sm hover:opacity-90 transition-opacity ml-auto"
+            >
+              🚚 Dispatch Order ({bagsText(notSent)} left)
+            </Link>
+          )}
+        </div>
+      )}
+      {canApprove && <DirectApprove orderId={o.id} ratePaise={o.ratePaise!} />}
       <div className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
         <Fact label="Deliver to">
           {site

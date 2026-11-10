@@ -27,7 +27,7 @@ import { SUPPLIER_KINDS } from "./supplier-rules";
 /** Every kind of record the log knows, with the actions allowed on it. */
 export const AUDIT_ACTIONS = {
   // Orders and dispatch (spec section 3)
-  order: ["place", "fill_rate", "change_rate", "approve", "reject", "cancel"],
+  order: ["place", "fill_rate", "change_rate", "change_bags", "approve", "reject", "cancel"],
   // reverse: an admin reversed (part of) a load (entityId = the reversal dispatch row, v2 B2)
   dispatch: ["create", "reverse"],
   // Stock (spec section 4)
@@ -229,6 +229,14 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
           return say(
             `changed the rate on ${possessive(shop)} order${before !== null && after !== null ? ` from ${rs(before)} to ${rs(after)} a bag` : ""}${reason}`,
           );
+        case "change_bags": {
+          const bg = d.bags && typeof d.bags === "object" ? (d.bags as Record<string, unknown>) : null;
+          const bBefore = bg ? n(bg.before) : null;
+          const bAfter = bg ? n(bg.after) : null;
+          return say(
+            `changed quantity on ${possessive(shop)} order${bBefore !== null && bAfter !== null ? ` from ${bagsText(bBefore)} to ${bagsText(bAfter)}` : ""}${reason}`,
+          );
+        }
         case "approve":
           return say(`approved ${possessive(shop)} order${what}`);
         case "reject":

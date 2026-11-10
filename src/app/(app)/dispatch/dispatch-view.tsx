@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
@@ -59,12 +59,14 @@ export function DispatchView({
   places,
   truckChips,
   balances,
+  initialOrderId,
 }: {
   isAdmin: boolean;
   orders: OrderRow[];
   places: Place[];
   truckChips: TruckChip[];
   balances: Balance[];
+  initialOrderId?: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<OrderRow | null>(null);
@@ -98,6 +100,15 @@ export function DispatchView({
     clearError();
     renew();
   }
+
+  useEffect(() => {
+    if (initialOrderId) {
+      const match = orders.find((o) => o.id === initialOrderId);
+      if (match) {
+        openSheet(match);
+      }
+    }
+  }, [initialOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Picking a stock place syncs the source AND if it's a truck, locks the delivery truck & driver to this truck. */
   function pickPlace(key: string) {
