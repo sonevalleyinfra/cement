@@ -130,12 +130,20 @@ export function DispatchView({
     }
   }
 
-  /** A chip fills truck number and driver; if the truck holds stock, it ALWAYS switches source to that truck! */
+  /** A chip fills truck number and driver. If Godown is selected as source, KEEP Godown! */
   function pickChip(c: TruckChip) {
     setTruck(c.truck);
     setAutoTruck(null);
     setDriverName(c.driverName || "");
     setDriverPhone(c.driverPhone || "");
+
+    // If currently a Godown is selected in "Take from", KEEP the Godown!
+    // The user wants: "Godown pe hai, truck pe load hokar jayega".
+    // Do NOT override Godown when picking a delivery truck!
+    const currentPlace = options.find((p) => p.key === chosenPlace);
+    if (currentPlace && !currentPlace.truck) {
+      return;
+    }
 
     const matchingStockPlace = options.find((p) => p.truck === c.truck);
     if (matchingStockPlace) {
@@ -144,15 +152,6 @@ export function DispatchView({
         const left = remainingBags(open.bags, open.sent);
         if (Number(bags || 0) > matchingStockPlace.bagsHere || Number(bags || 0) === 0) {
           setBags(String(Math.min(left, matchingStockPlace.bagsHere)));
-        }
-      }
-    } else {
-      // If currently a truck source was chosen, fallback to first godown since this truck has no stock of this product
-      const currentChosen = options.find((p) => p.key === fromPlace);
-      if (currentChosen?.truck) {
-        const firstGodown = options.find((p) => !p.truck);
-        if (firstGodown) {
-          setFromPlace(firstGodown.key);
         }
       }
     }
