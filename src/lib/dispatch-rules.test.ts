@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDispatchFields, isDispatchable, planDispatch, placesWithEnough, placesWithStock, truckAfterPlacePick, truckChips } from "./dispatch-rules";
+import { checkDispatchFields, isDispatchable, planDispatch, placesWithEnough, placesWithStock, truckAfterPlacePick, truckChips, visibleDispatchChips } from "./dispatch-rules";
 import { orderTotalPaise } from "./order-rules";
 
 describe("isDispatchable", () => {
@@ -163,5 +163,53 @@ describe("truckChips", () => {
   });
   it("is empty with no trucks", () => {
     expect(truckChips([], [])).toEqual([]);
+  });
+});
+
+describe("visibleDispatchChips", () => {
+  const allChips = [
+    { truck: "BR01AA1111", driverName: "Ramesh", driverPhone: "9876543210" },
+    { truck: "BR02BB2222", driverName: "Suresh", driverPhone: "9876543211" },
+    { truck: "BR03CC3333", driverName: "Mahesh", driverPhone: "9876543212" },
+  ];
+  const productStockPlaces = [
+    { key: "g1", name: "Main Godown", truck: null, bagsHere: 300 },
+    { key: "v1", name: "Truck BR01AA1111", truck: "BR01AA1111", bagsHere: 120 },
+  ];
+  // BR02BB2222 is loaded with a different product; BR03CC3333 is completely empty.
+  const loadedAnyProductTrucks = ["BR01AA1111", "BR02BB2222"];
+
+  it("shows ONLY loaded trucks of the order product when not taking from godown", () => {
+    const res = visibleDispatchChips({
+      allChips,
+      productStockPlaces,
+      loadedAnyProductTrucks,
+      takingFromGodown: false,
+    });
+    expect(res).toEqual([
+      { truck: "BR01AA1111", driverName: "Ramesh", driverPhone: "9876543210", bagsHere: 120 },
+    ]);
+  });
+
+  it("shows empty fleet/recent trucks when taking from a godown", () => {
+    const res = visibleDispatchChips({
+      allChips,
+      productStockPlaces,
+      loadedAnyProductTrucks,
+      takingFromGodown: true,
+    });
+    expect(res).toEqual([
+      { truck: "BR03CC3333", driverName: "Mahesh", driverPhone: "9876543212", bagsHere: 0 },
+    ]);
+  });
+
+  it("returns nothing in direct mode when no truck holds bags of the product", () => {
+    const res = visibleDispatchChips({
+      allChips,
+      productStockPlaces: [{ key: "g1", name: "Main Godown", truck: null, bagsHere: 300 }],
+      loadedAnyProductTrucks,
+      takingFromGodown: false,
+    });
+    expect(res).toEqual([]);
   });
 });

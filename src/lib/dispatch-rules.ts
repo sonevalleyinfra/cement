@@ -10,7 +10,7 @@
 import { checkDispatchBags, isOrderStatus, isValidRatePaise, statusAfterDispatch, type OrderStatus } from "./order-rules";
 import { orderDebitPaise } from "./ledger-rules";
 import { canDispatch, parsePlaceKey, type PlaceRef } from "./stock-rules";
-import { checkTruck } from "./vehicle-rules";
+import { checkTruck, cleanTruckLabel } from "./vehicle-rules";
 
 const DISPATCHABLE: readonly OrderStatus[] = ["approved", "partly_dispatched"];
 
@@ -147,8 +147,9 @@ export function placesWithEnough<P extends StockPlace>(
 }
 
 export type TruckChip = { truck: string; driverName: string; driverPhone: string };
+export type DispatchChip = TruckChip & { bagsHere: number };
 
-/** How many truck chips the dispatch sheet shows. */
+/** How many truck chips the dispatch sheet shows for empty fleet/recent delivery trucks. */
 export const MAX_TRUCK_CHIPS = 6;
 
 /**
@@ -168,5 +169,62 @@ export function truckChips(loaded: readonly string[], recent: readonly TruckChip
   };
   loaded.forEach(add);
   recent.forEach((r) => add(r.truck));
+  return out;
+}
+
+/**
+ * Chips shown in the dispatch sheet for one order:
+ * - Direct / non-godown mode: ONLY trucks holding at least 1 bag of this order's product (`productStockPlaces`).
+ * - Godown mode (`takingFromGodown: true`): empty standing/recent fleet trucks (`0 bags` across all products)
+ *   so bags loaded from the godown go onto an empty truck rather than one loaded with other stock.
+ */
+export function visibleDispatchChips({
+  allChips,
+  productStockPlaces,
+  loadedAnyProductTrucks,
+  takingFromGodown,
+  maxEmpty = MAX_TRUCK_CHIPS,
+}: {
+  allChips: readonly TruckChip[];
+  productStockPlaces: readonly (StockPlace & { bagsHere: number })[];
+  loadedAnyProductTrucks: readonly string[];
+  takingFromGodown: boolean;
+  maxEmpty?: number;
+}): DispatchChip[] {
+  const chipByNumber = new Map<string, TruckChip>();
+  for (const c of allChips) {
+    const key = cleanTruckLabel(c.truck);
+    if (key && !chipByNumber.has(key)) chipByNumber.set(key, c);
+  }
+
+  if (!takingFromGodown) {
+    const out: DispatchChip[] = [];
+    const seen = new Set<string>();
+    for (const p of productStockPlaces) {
+      if (!p.truck || p.bagsHere <= 0) continue;
+      const key = cleanTruckLabel(p.truck);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const info = chipByNumber.get(key);
+      out.push({
+        truck: info?.truck ?? p.truck,
+        driverName: info?.driverName ?? "",
+        driverPhone: info?.driverPhone ?? "",
+        bagsHere: p.bagsHere,
+      });
+    }
+    return out;
+  }
+
+  const loadedSet = new Set(loadedAnyProductTrucks.map(cleanTruckLabel).filter(Boolean));
+  const out: DispatchChip[] = [];
+  const seen = new Set<string>();
+  for (const c of allChips) {
+    if (out.length >= maxEmpty) break;
+    const key = cleanTruckLabel(c.truck);
+    if (!key || seen.has(key) || loadedSet.has(key)) continue;
+    seen.add(key);
+    out.push({ ...c, bagsHere: 0 });
+  }
   return out;
 }

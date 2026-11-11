@@ -1,4 +1,4 @@
-import { asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
@@ -61,8 +61,8 @@ export default async function DispatchPage({
       .select({ truck: vehicles.number, driverName: dispatches.driverName, driverPhone: dispatches.driverPhone })
       .from(dispatches)
       .innerJoin(vehicles, eq(vehicles.id, dispatches.vehicleId))
-      // Loads only (a reversal row copies its load's truck, v2 B2).
-      .where(gt(dispatches.bags, 0))
+      // Loads only (a reversal row copies its load's truck, v2 B2); ignore hidden trucks.
+      .where(and(gt(dispatches.bags, 0), eq(vehicles.active, true)))
       .orderBy(desc(dispatches.createdAt))
       .limit(30),
     getActiveTrucks(),
@@ -77,13 +77,16 @@ export default async function DispatchPage({
   // Places with stock history (godown still switched on), godowns first.
   // Trucks holding bags right now are listed under places.
   const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.placeKey));
+  const loadedTruckNumbers = [...loadedTrucks]
+    .map((k) => balances.find((b) => b.placeKey === k)?.placeName ?? "")
+    .filter(Boolean);
   const chips = truckChips(
-    [...loadedTrucks].map((k) => balances.find((b) => b.placeKey === k)?.placeName ?? ""),
+    loadedTruckNumbers,
     [
       ...activeTrucks.map((t) => ({ truck: t.number, driverName: t.driverName, driverPhone: t.driverPhone })),
       ...recent,
     ],
-    12,
+    Math.max(50, loadedTruckNumbers.length + activeTrucks.length + recent.length),
   );
   const places = [
     ...new Map(
@@ -146,6 +149,7 @@ export default async function DispatchPage({
         places={places}
         placeSources={placeSources}
         truckChips={chips}
+        loadedTrucks={loadedTruckNumbers}
         balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
         initialOrderId={initialOrderId}
       />

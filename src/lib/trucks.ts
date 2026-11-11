@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { dispatches, stockMovements, vehicles } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
@@ -86,7 +86,7 @@ export type TruckResult = { ok: true; id?: string } | { ok: false; error: string
 
 const duplicate = (number: string, active = true): TruckResult => ({
   ok: false,
-  error: `Truck ${number} is already in the list${active ? "" : " (switched off)"}`,
+  error: `Truck ${number} is already in the list${active ? "" : " (hidden)"}`,
 });
 
 /**
@@ -120,7 +120,12 @@ export async function saveTruck(
       if (decision === "fill") {
         await tx
           .update(vehicles)
-          .set({ driverName: truck.driverName, driverPhone: truck.driverPhone, active: true, updatedAt: new Date() })
+          .set({
+            driverName: truck.driverName,
+            driverPhone: truck.driverPhone,
+            active: true,
+            updatedAt: new Date(),
+          })
           .where(eq(vehicles.id, existing.id));
         await writeAudit(tx, {
           actorId,
@@ -129,7 +134,11 @@ export async function saveTruck(
           action: "update",
           details: {
             number: truck.number,
-            from: { driverName: existing.driverName, driverPhone: existing.driverPhone, active: existing.active },
+            from: {
+              driverName: existing.driverName,
+              driverPhone: existing.driverPhone,
+              active: existing.active,
+            },
             to: { driverName: truck.driverName, driverPhone: truck.driverPhone, active: true },
           },
         });
@@ -156,7 +165,76 @@ export async function saveTruck(
   }
 }
 
-/** Switches a truck on or off. A truck with bags on it cannot be switched off. Server-only. */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Per product, so one product's minus balance cannot hide another's bags. */
+async function maxProductBagsOnTruck(tx: Tx, vehicleId: string): Promise<number> {
+  const stock = await tx
+    .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
+    .from(stockMovements)
+    .where(eq(stockMovements.vehicleId, vehicleId))
+    .groupBy(stockMovements.productId);
+  return Math.max(0, ...stock.map((s) => s.bags));
+}
+
+/** Updates a truck's number, driver name and driver phone. Refuses duplicate numbers. Server-only. */
+export async function updateTruck(
+  id: string,
+  input: { number: string; driverName: string; driverPhone?: string },
+  actorId: string,
+): Promise<TruckResult> {
+  const check = checkTruck(input, { phoneRequired: false });
+  if (!check.ok) return check;
+  const truck = check.value;
+
+  try {
+    return await db.transaction(async (tx): Promise<TruckResult> => {
+      const [row] = await tx
+        .select({
+          number: vehicles.number,
+          driverName: vehicles.driverName,
+          driverPhone: vehicles.driverPhone,
+        })
+        .from(vehicles)
+        .where(eq(vehicles.id, id))
+        .for("update");
+      if (!row) return { ok: false, error: "Truck not found" };
+
+      const [other] = await tx
+        .select({ id: vehicles.id, active: vehicles.active })
+        .from(vehicles)
+        .where(and(ne(vehicles.id, id), eq(vehicles.number, truck.number)))
+        .limit(1);
+      if (other) return duplicate(truck.number, other.active);
+
+      await tx
+        .update(vehicles)
+        .set({
+          number: truck.number,
+          driverName: truck.driverName,
+          driverPhone: truck.driverPhone,
+          updatedAt: new Date(),
+        })
+        .where(eq(vehicles.id, id));
+      await writeAudit(tx, {
+        actorId,
+        entity: "vehicle",
+        entityId: id,
+        action: "update",
+        details: {
+          from: { number: row.number, driverName: row.driverName, driverPhone: row.driverPhone },
+          to: { number: truck.number, driverName: truck.driverName, driverPhone: truck.driverPhone },
+        },
+      });
+      return { ok: true, id };
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return duplicate(truck.number);
+    throw e;
+  }
+}
+
+/** Hides (`active: false`) or unhides (`active: true`) a truck. A truck with bags on it cannot be hidden. Server-only. */
 export async function switchTruck(id: string, active: boolean, actorId: string): Promise<TruckResult> {
   return db.transaction(async (tx): Promise<TruckResult> => {
     const [row] = await tx
@@ -168,13 +246,7 @@ export async function switchTruck(id: string, active: boolean, actorId: string):
     if (row.active === active) return { ok: true, id };
 
     if (!active) {
-      // Per product, so one product's minus balance cannot hide another's bags.
-      const stock = await tx
-        .select({ bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number) })
-        .from(stockMovements)
-        .where(eq(stockMovements.vehicleId, id))
-        .groupBy(stockMovements.productId);
-      const can = canSwitchOffTruck(Math.max(0, ...stock.map((s) => s.bags)));
+      const can = canSwitchOffTruck(await maxProductBagsOnTruck(tx, id));
       if (!can.ok) return can;
     }
 

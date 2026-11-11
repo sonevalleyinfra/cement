@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-
-import { Plus } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { CallButton } from "@/components/app/call-button";
 import { ChipCount, chipClass } from "@/components/app/chip";
@@ -21,7 +20,7 @@ import type { TruckRow } from "@/lib/trucks";
 import { useFormError } from "@/lib/use-form-error";
 import { cn } from "@/lib/utils";
 import { bagsText, formatCount } from "@/lib/words";
-import { addTruck, setTruckActive } from "./actions";
+import { addTruck, editTruck, setTruckActive } from "./actions";
 
 type Filter = "all" | "loaded" | "standing";
 
@@ -36,24 +35,31 @@ function matchesFilter(r: TruckRow, filter: Filter): boolean {
 }
 
 export function TrucksView({ rows }: { rows: TruckRow[] }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [sheet, setSheet] = useState<{ mode: "add" } | { mode: "edit"; truck: TruckRow } | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const [filter, setFilter] = useState<Filter>(tabParam === "loaded" || tabParam === "standing" ? tabParam : "all");
 
-  const normalized = query.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const shown = rows.filter((r) => {
-    if (!matchesFilter(r, filter)) return false;
-    if (!query.trim()) return true;
+  const trimmed = query.trim();
+  const normalized = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  function matchesQuery(r: TruckRow): boolean {
+    if (!trimmed) return true;
     const matchNum = normalized !== "" && r.number.toUpperCase().includes(normalized);
-    const matchDriver = r.driverName.toLowerCase().includes(query.trim().toLowerCase());
-    const matchPhone = r.driverPhone.includes(query.trim());
+    const matchDriver = r.driverName.toLowerCase().includes(trimmed.toLowerCase());
+    const matchPhone = r.driverPhone.includes(trimmed);
     return matchNum || matchDriver || matchPhone;
-  });
+  }
 
-  const counts = truckCounts(rows);
-  const tabCount: Record<Filter, number> = { all: rows.length, ...counts };
+  const visibleRows = rows.filter((r) => r.active);
+  const hiddenRows = rows.filter((r) => !r.active);
+  const shown = visibleRows.filter((r) => matchesFilter(r, filter) && matchesQuery(r));
+  const shownHidden = hiddenRows.filter(matchesQuery);
+
+  const counts = truckCounts(visibleRows);
+  const tabCount: Record<Filter, number> = { all: visibleRows.length, ...counts };
 
   return (
     <div className="flex flex-col gap-4">
@@ -85,35 +91,72 @@ export function TrucksView({ rows }: { rows: TruckRow[] }) {
         </div>
       )}
 
-      {rows.length === 0 ? (
-        <EmptyState title="No trucks added yet" />
+      {visibleRows.length === 0 ? (
+        <EmptyState title={hiddenRows.length > 0 ? "All trucks are hidden" : "No trucks added yet"} />
       ) : shown.length === 0 ? (
         <EmptyState title="No matching trucks" />
       ) : (
         <ul className="flex flex-col gap-3">
           {shown.map((r) => (
             <li key={r.id}>
-              <TruckCard truck={r} />
+              <TruckCard truck={r} onEdit={() => setSheet({ mode: "edit", truck: r })} />
             </li>
           ))}
         </ul>
       )}
 
+      {shownHidden.length > 0 && (
+        <div className="flex flex-col gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => setShowHidden((v) => !v)}
+            aria-expanded={showHidden}
+            className="flex min-h-11 items-center justify-between rounded-2xl bg-muted/60 px-4 py-2.5 text-sm font-semibold text-muted-foreground ring-1 ring-foreground/8 transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <span>Hidden trucks ({shownHidden.length})</span>
+            {showHidden ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          </button>
+          {showHidden && (
+            <ul className="flex flex-col gap-3">
+              {shownHidden.map((r) => (
+                <li key={r.id}>
+                  <TruckCard truck={r} onEdit={() => setSheet({ mode: "edit", truck: r })} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <PinnedAction>
-        <Button onClick={() => setAdding(true)} className="flex items-center gap-2">
+        <Button onClick={() => setSheet({ mode: "add" })} className="flex items-center gap-2">
           <Plus className="size-4" />
           Add truck
         </Button>
       </PinnedAction>
 
-      <Sheet open={adding} onOpenChange={setAdding} title="Add truck">
-        {adding && <AddTruckForm onDone={() => setAdding(false)} />}
+      <Sheet
+        open={sheet !== null}
+        onOpenChange={(o) => !o && setSheet(null)}
+        title={sheet?.mode === "edit" ? "Edit truck" : "Add truck"}
+      >
+        {sheet && (
+          <TruckForm
+            key={sheet.mode === "edit" ? sheet.truck.id : "add"}
+            initial={sheet.mode === "edit" ? sheet.truck : undefined}
+            onDone={() => {
+              setSheet(null);
+              router.refresh();
+            }}
+          />
+        )}
       </Sheet>
     </div>
   );
 }
 
-function TruckCard({ truck: r }: { truck: TruckRow }) {
+function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }) {
+  const router = useRouter();
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
@@ -121,18 +164,19 @@ function TruckCard({ truck: r }: { truck: TruckRow }) {
     setError("");
     start(async () => {
       const res = await setTruckActive(r.id, !r.active);
-      if (!res.ok) setError(res.error);
+      if (res.ok) router.refresh();
+      else setError(res.error);
     });
   }
 
   return (
-    <div className={cn("flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6", !r.active && "opacity-60")}>
+    <div className={cn("flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6", !r.active && "opacity-75")}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-base font-bold tracking-wide">{r.number}</span>
         {r.active ? (
           <span className="tabular text-sm text-muted-foreground">{r.bags > 0 ? bagsText(r.bags) : "Empty"}</span>
         ) : (
-          <StatusChip status="cancelled" label="Off" />
+          <StatusChip status="cancelled" label="Hidden" />
         )}
       </div>
 
@@ -144,7 +188,9 @@ function TruckCard({ truck: r }: { truck: TruckRow }) {
         {r.driverPhone && <CallButton phone={r.driverPhone} label={`Call ${r.driverName || r.number}`} />}
       </div>
 
-      <div className="flex items-center justify-between gap-2">
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
         {r.bags > 0 ? (
           <Link
             href={`/stock/transfer?from=vehicle:${r.id}`}
@@ -152,23 +198,37 @@ function TruckCard({ truck: r }: { truck: TruckRow }) {
           >
             Unload to Godown
           </Link>
-        ) : error ? (
-          <p className="text-sm text-destructive">{error}</p>
         ) : (
           <span />
         )}
-        <Button type="button" variant="outline" size="sm" disabled={pending} onClick={toggle}>
-          {r.active ? "Switch off" : "Switch on"}
-        </Button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button type="button" variant="outline" size="sm" onClick={onEdit} aria-label={`Edit ${r.number}`}>
+            <Pencil className="size-3.5" />
+            Edit
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={toggle}>
+            {r.active ? (
+              <>
+                <EyeOff className="size-3.5" />
+                Hide
+              </>
+            ) : (
+              <>
+                <Eye className="size-3.5" />
+                Unhide
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-function AddTruckForm({ onDone }: { onDone: () => void }) {
-  const [number, setNumber] = useState("");
-  const [driverName, setDriverName] = useState("");
-  const [driverPhone, setDriverPhone] = useState("");
+function TruckForm({ initial, onDone }: { initial?: TruckRow; onDone: () => void }) {
+  const [number, setNumber] = useState(initial?.number ?? "");
+  const [driverName, setDriverName] = useState(initial?.driverName ?? "");
+  const [driverPhone, setDriverPhone] = useState(initial?.driverPhone ?? "");
   const { error, setError, clearError } = useFormError([number, driverName, driverPhone]);
   const [pending, start] = useTransition();
 
@@ -176,11 +236,8 @@ function AddTruckForm({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     clearError();
     start(async () => {
-      const res = await addTruck({
-        number,
-        driverName,
-        driverPhone,
-      });
+      const payload = { number, driverName, driverPhone };
+      const res = initial ? await editTruck(initial.id, payload) : await addTruck(payload);
       if (res.ok) {
         onDone();
       } else {
@@ -229,7 +286,7 @@ function AddTruckForm({ onDone }: { onDone: () => void }) {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={pending || !number.trim() || !driverName.trim()} className="w-full">
-        Save truck
+        {initial ? "Save changes" : "Save truck"}
       </Button>
     </form>
   );

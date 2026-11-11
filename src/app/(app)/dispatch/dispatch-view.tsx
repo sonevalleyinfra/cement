@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { FormHint } from "@/components/app/form-hint";
 import { ListCard } from "@/components/app/list-card";
@@ -11,7 +11,7 @@ import { StatusChip } from "@/components/app/status-chip";
 import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { placesWithStock, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
+import { placesWithStock, visibleDispatchChips, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
 import { cleanTruckLabel } from "@/lib/vehicle-rules";
@@ -60,6 +60,7 @@ export function DispatchView({
   places,
   placeSources = {},
   truckChips,
+  loadedTrucks,
   balances,
   initialOrderId,
 }: {
@@ -68,50 +69,57 @@ export function DispatchView({
   places: Place[];
   placeSources?: Record<string, string>;
   truckChips: TruckChip[];
+  loadedTrucks?: string[];
   balances: Balance[];
   initialOrderId?: string | null;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState<OrderRow | null>(null);
-  const [bags, setBags] = useState("");
-  const [truck, setTruck] = useState("");
+
+  function initialFields(o: OrderRow) {
+    const stockPlaces = placesWithStock(places, balances, o.productId);
+    const fullest = stockPlaces[0];
+    const left = remainingBags(o.bags, o.sent);
+    const suggestedBags = fullest ? Math.min(left, fullest.bagsHere) : left;
+    const truckNo = fullest?.truck ?? null;
+    const chip = truckNo ? truckChips.find((c) => cleanTruckLabel(c.truck) === cleanTruckLabel(truckNo)) : null;
+    return {
+      bags: String(suggestedBags),
+      fromPlace: fullest?.key ?? "",
+      truck: truckNo ?? "",
+      autoTruck: truckNo,
+      driverName: chip?.driverName ?? "",
+      driverPhone: chip?.driverPhone ?? "",
+    };
+  }
+
+  const initialOrder = initialOrderId ? (orders.find((o) => o.id === initialOrderId) ?? null) : null;
+  const initialDefaults = initialOrder ? initialFields(initialOrder) : null;
+
+  const [open, setOpen] = useState<OrderRow | null>(initialOrder);
+  const [bags, setBags] = useState(initialDefaults?.bags ?? "");
+  const [truck, setTruck] = useState(initialDefaults?.truck ?? "");
   // The truck number last filled in from a truck place (null = what is there was typed).
-  const [autoTruck, setAutoTruck] = useState<string | null>(null);
-  const [fromPlace, setFromPlace] = useState("");
-  const [driverName, setDriverName] = useState("");
-  const [driverPhone, setDriverPhone] = useState("");
+  const [autoTruck, setAutoTruck] = useState<string | null>(initialDefaults?.autoTruck ?? null);
+  const [fromPlace, setFromPlace] = useState(initialDefaults?.fromPlace ?? "");
+  const [driverName, setDriverName] = useState(initialDefaults?.driverName ?? "");
+  const [driverPhone, setDriverPhone] = useState(initialDefaults?.driverPhone ?? "");
   const phoneOk = isValidIndianMobile(normalizePhone(driverPhone));
   // Goes away when any field is changed, after a save and when the sheet opens again.
   const { error, setError, clearError } = useFormError([open?.id, bags, truck, fromPlace, driverName, driverPhone]);
   const { pending, run, renew } = useSubmit();
 
   function openSheet(o: OrderRow) {
+    const next = initialFields(o);
     setOpen(o);
-    const stockPlaces = placesWithStock(places, balances, o.productId);
-    const fullest = stockPlaces[0];
-    const left = remainingBags(o.bags, o.sent);
-    // Suggest the bags to send: if the fullest place has less than remaining, suggest what's in stock
-    const suggestedBags = fullest ? Math.min(left, fullest.bagsHere) : left;
-    setBags(String(suggestedBags));
-    const truckNo = fullest?.truck ?? null;
-    const chip = truckNo ? truckChips.find((c) => c.truck === truckNo) : null;
-    setFromPlace(fullest?.key ?? "");
-    setTruck(truckNo ?? "");
-    setAutoTruck(truckNo);
-    setDriverName(chip?.driverName ?? "");
-    setDriverPhone(chip?.driverPhone ?? "");
+    setBags(next.bags);
+    setFromPlace(next.fromPlace);
+    setTruck(next.truck);
+    setAutoTruck(next.autoTruck);
+    setDriverName(next.driverName);
+    setDriverPhone(next.driverPhone);
     clearError();
     renew();
   }
-
-  useEffect(() => {
-    if (initialOrderId) {
-      const match = orders.find((o) => o.id === initialOrderId);
-      if (match) {
-        openSheet(match);
-      }
-    }
-  }, [initialOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Picking a stock place syncs the source AND if it's a truck, locks the delivery truck & driver to this truck. */
   function pickPlace(key: string) {
@@ -157,7 +165,7 @@ export function DispatchView({
       return;
     }
 
-    const matchingStockPlace = options.find((p) => p.truck === c.truck);
+    const matchingStockPlace = options.find((p) => p.truck && cleanTruckLabel(p.truck) === cleanTruckLabel(c.truck));
     if (matchingStockPlace) {
       setFromPlace(matchingStockPlace.key);
       if (open) {
@@ -173,6 +181,15 @@ export function DispatchView({
   const options = open ? placesWithStock(places, balances, open.productId) : [];
   const chosenPlace = options.some((p) => p.key === fromPlace) ? fromPlace : (options[0]?.key ?? "");
   const chosenPlaceObj = options.find((p) => p.key === chosenPlace);
+  const takingFromGodown = Boolean(chosenPlaceObj && !chosenPlaceObj.truck);
+  const shownChips = open
+    ? visibleDispatchChips({
+        allChips: truckChips,
+        productStockPlaces: options,
+        loadedAnyProductTrucks: loadedTrucks ?? places.filter((p) => p.truck).map((p) => p.truck!),
+        takingFromGodown,
+      })
+    : [];
   const requestedBags = Number(bags || 0);
   const exceedsStock = chosenPlaceObj ? requestedBags > chosenPlaceObj.bagsHere : false;
 
@@ -342,14 +359,14 @@ export function DispatchView({
                 Only {chosenPlaceObj.bagsHere} bags available in {chosenPlaceObj.name}. (You entered {requestedBags} bags)
               </p>
             )}
-            {truckChips.length > 0 && (
+            {shownChips.length > 0 && (
               <div className="flex flex-col gap-1">
-                <span className="text-sm font-semibold">Truck (Fleet & Recent)</span>
+                <span className="text-sm font-semibold">
+                  {takingFromGodown ? "Delivery truck (Empty / Fleet)" : `Loaded trucks (${open.product})`}
+                </span>
                 <div className="flex flex-wrap gap-2">
-                  {truckChips.map((c) => {
-                    const matchingPlace = options.find((p) => p.truck === c.truck);
-                    const stockInTruck = matchingPlace?.bagsHere ?? 0;
-                    const isSelected = truck === c.truck;
+                  {shownChips.map((c) => {
+                    const isSelected = cleanTruckLabel(truck) === cleanTruckLabel(c.truck);
                     return (
                       <button
                         key={c.truck}
@@ -364,7 +381,7 @@ export function DispatchView({
                       >
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold">{c.truck}</span>
-                          {stockInTruck > 0 && (
+                          {c.bagsHere > 0 && (
                             <span
                               className={`rounded px-1 text-[10px] font-bold ${
                                 isSelected
@@ -372,7 +389,7 @@ export function DispatchView({
                                   : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                               }`}
                             >
-                              {stockInTruck} bags
+                              {c.bagsHere} bags
                             </span>
                           )}
                         </div>

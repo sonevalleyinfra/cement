@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
-import { saveTruck, switchTruck, type TruckResult } from "@/lib/trucks";
+import { saveTruck, switchTruck, updateTruck, type TruckResult } from "@/lib/trucks";
 
 function refresh() {
   revalidatePath("/trucks");
@@ -19,6 +19,17 @@ export async function addTruck(form: {
 }): Promise<TruckResult> {
   const session = await requireRole(...rolesFor("dispatch"));
   const res = await saveTruck(form, session.user.id);
+  if (res.ok) refresh();
+  return res;
+}
+
+export async function editTruck(
+  id: string,
+  form: { number: string; driverName: string; driverPhone?: string },
+): Promise<TruckResult> {
+  const session = await requireRole(...rolesFor("dispatch"));
+  if (!isUuid(id)) return { ok: false, error: "Truck not found" };
+  const res = await updateTruck(id, form, session.user.id);
   if (res.ok) refresh();
   return res;
 }
