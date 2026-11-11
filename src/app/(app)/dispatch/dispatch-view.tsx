@@ -108,6 +108,8 @@ export function DispatchView({
     if (initialOrderId) {
       const match = orders.find((o) => o.id === initialOrderId);
       if (match) {
+        // One-shot deep link: open the sheet for ?order= on mount.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         openSheet(match);
       }
     }
