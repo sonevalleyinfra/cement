@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canAnswerRequest,
   canConfirmHandover,
+  heldCashByRetailer,
   pendingRequestIds,
   planHandoverAnswer,
   validateHandoverRequest,
@@ -134,5 +135,48 @@ describe("planHandoverAnswer", () => {
     expect(planHandoverAnswer("logistics", "a", request, false, full).ok).toBe(false);
     expect(planHandoverAnswer("accounts", "c", request, false, full).ok).toBe(false);
     expect(planHandoverAnswer("accounts", "a", request, true, full).ok).toBe(false);
+  });
+});
+
+
+describe("heldCashByRetailer", () => {
+  const shops = new Map([
+    ["r1", { retailerId: "shop-a", retailerName: "Gupta Hardware" }],
+    ["r2", { retailerId: "shop-b", retailerName: "Verma Traders" }],
+    ["r3", { retailerId: "shop-a", retailerName: "Gupta Hardware" }],
+  ]);
+
+  it("aggregates active cash collections by retailer, deducting reversed receipts and FIFO confirmed handovers", () => {
+    const timeline = [
+      { kind: "collected", amountPaise: 50000, receiptId: "r1", createdAt: 1000 },
+      { kind: "collected", amountPaise: 40000, receiptId: "r2", createdAt: 2000 },
+      { kind: "collected", amountPaise: 60000, receiptId: "r3", createdAt: 3000 },
+      { kind: "reversed", amountPaise: 40000, receiptId: "r2", createdAt: 4000 },
+      { kind: "handover_confirmed", amountPaise: 30000, createdAt: 5000 },
+    ];
+    // r2 (40000) is reversed; r1 gets 30000 consumed by handover_confirmed -> 20000 left + r3 60000 = 80000 from Gupta Hardware.
+    expect(heldCashByRetailer(timeline, shops)).toEqual([
+      { retailerId: "shop-a", retailerName: "Gupta Hardware", amountPaise: 80000, receiptCount: 2 },
+    ]);
+  });
+
+  it("keeps unconfirmed handover cash listed under the retailers it was collected from", () => {
+    const timeline = [
+      { kind: "collected", amountPaise: 60000, receiptId: "r1", createdAt: 1000 },
+      { kind: "collected", amountPaise: 40000, receiptId: "r2", createdAt: 2000 },
+      { kind: "handover_request", amountPaise: 100000, createdAt: 3000 },
+    ];
+    expect(heldCashByRetailer(timeline, shops)).toEqual([
+      { retailerId: "shop-a", retailerName: "Gupta Hardware", amountPaise: 60000, receiptCount: 1 },
+      { retailerId: "shop-b", retailerName: "Verma Traders", amountPaise: 40000, receiptCount: 1 },
+    ]);
+  });
+
+  it("returns empty once all collected cash is handed over and confirmed", () => {
+    const timeline = [
+      { kind: "collected", amountPaise: 60000, receiptId: "r1", createdAt: 1000 },
+      { kind: "handover_confirmed", amountPaise: 60000, createdAt: 2000 },
+    ];
+    expect(heldCashByRetailer(timeline, shops)).toEqual([]);
   });
 });

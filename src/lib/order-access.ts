@@ -15,8 +15,8 @@
  */
 import { formatINR } from "./money";
 import { isOrderStatus, isValidBags, orderTotalPaise, orderValuePaise, remainingBags } from "./order-rules";
-import { isStaff } from "./permissions";
-import { isRateEvent, rateEventLabel, rateMoveText } from "./rate-rules";
+import { can, isStaff } from "./permissions";
+import { canFillRate, isRateEvent, rateEventLabel, rateMoveText } from "./rate-rules";
 import { isShopVisibleReason, REVERSAL_REASON_CODES, reasonLabel } from "./reason-codes";
 import { hasAnyRole, isRetailerOnly } from "./roles";
 import { bagsText } from "./words";
@@ -211,4 +211,22 @@ export function historyReason(event: { reason: string; reasonCode?: string | nul
   if (reason.startsWith("Rate edited: ")) note = reason.slice("Rate edited: ".length);
   else if (isRateEvent(reason)) note = "";
   return [reasonLabel(event.reasonCode), note.trim()].filter(Boolean).join(" · ");
+}
+
+
+/**
+ * Quick action buttons shown on an order card in `/orders`, gated strictly by the viewer's
+ * role permissions (`dispatch`, `decideOrder`, `fillRate`).
+ */
+export function orderCardActions(
+  viewer: { role: string | null | undefined; userId: string },
+  order: { status: string; ratePaise: number | null; salesRepId: string | null },
+  remaining: number,
+): { canDispatch: boolean; canApprove: boolean; canFillRate: boolean; canAlsoApprove: boolean } {
+  return {
+    canDispatch: can(viewer.role, "dispatch") && (order.status === "approved" || order.status === "partly_dispatched") && remaining > 0,
+    canApprove: can(viewer.role, "decideOrder") && order.status === "placed" && order.ratePaise !== null,
+    canFillRate: canFillRate(viewer.role, viewer.userId, order),
+    canAlsoApprove: can(viewer.role, "decideOrder"),
+  };
 }

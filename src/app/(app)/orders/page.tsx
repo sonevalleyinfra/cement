@@ -36,7 +36,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const canPlace = canPlaceOrder(user.role);
   // A sales person gets Mine / All and status groups, except the focused "Rate to fill" list Home opens.
   if (hasScopeTabs(user.role) && state.show !== "rate") {
-    return <ScopedOrders userId={user.id} state={state} scope={state.scope ?? "mine"} showPrice={showPrice} canPlace={canPlace} />;
+    return <ScopedOrders userId={user.id} userRole={user.role} state={state} scope={state.scope ?? "mine"} showPrice={showPrice} canPlace={canPlace} />;
   }
   const focused = hasScopeTabs(user.role);
   // The tab is in the address (?show=rate), so Home cards can open the matching list.
@@ -119,7 +119,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         <ul className="flex flex-col gap-3">
           {rows.map((o, i) => (
             <li key={o.id}>
-              <OrderCard order={o} loads={loads} href={orderDetailHref(o.id, state)} index={i} showPrice={showPrice} />
+              <OrderCard order={o} loads={loads} href={orderDetailHref(o.id, state)} index={i} showPrice={showPrice} viewer={user} />
             </li>
           ))}
           {hasMore && (

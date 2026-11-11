@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { dispatches, orders, products, retailers } from "@/db/schema";
 import { formatDate } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
-import { cancelledNote } from "@/lib/order-access";
+import { cancelledNote, orderCardActions } from "@/lib/order-access";
 import { escapeLike, isOrderIdTerm, orderSearchTerms } from "@/lib/order-filter-rules";
 import { isOrderStatus, orderValuePaise } from "@/lib/order-rules";
 import { bagsText } from "@/lib/words";
@@ -15,6 +15,7 @@ const orderCardColumns = {
   bags: orders.bags,
   ratePaise: orders.ratePaise,
   status: orders.status,
+  salesRepId: orders.salesRepId,
   createdAt: orders.createdAt,
   retailer: retailers.name,
   product: products.name,
@@ -25,6 +26,7 @@ export type OrderCardRow = {
   bags: number;
   ratePaise: number | null;
   status: string;
+  salesRepId: string | null;
   createdAt: Date;
   retailer: string;
   product: string;
@@ -73,12 +75,14 @@ export function OrderCard({
   href,
   index,
   showPrice,
+  viewer,
 }: {
   order: OrderCardRow;
   loads: OrderLoad[];
   href: string;
   index: number;
   showPrice: boolean;
+  viewer: { id: string; role?: string | null | undefined };
 }) {
   const own = loads.filter((l) => l.orderId === o.id);
   const sentBags = own.reduce((n, l) => n + l.bags, 0);
@@ -87,9 +91,11 @@ export function OrderCard({
   const note = cancelledNote(o.status, o.bags, sentBags);
   const orderNum = o.id.slice(0, 6).toUpperCase();
 
-  const canDispatch = (o.status === "approved" || o.status === "partly_dispatched") && remaining > 0;
-  const canApprove = o.status === "placed" && o.ratePaise !== null;
-  const needsRate = o.status === "placed" && o.ratePaise === null;
+  const { canDispatch, canApprove, canFillRate: needsRate, canAlsoApprove } = orderCardActions(
+    { role: viewer.role, userId: viewer.id },
+    o,
+    remaining,
+  );
 
   return (
     <div className="group block rounded-3xl border border-border/70 bg-card p-4 shadow-xs transition-all duration-150 hover:bg-muted/40 hover:border-primary/30">
@@ -150,7 +156,7 @@ export function OrderCard({
               href={href}
               className="inline-flex items-center gap-1 rounded-xl bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 hover:bg-amber-500/25 transition-colors"
             >
-              ⚡ Set Rate & Approve
+              {canAlsoApprove ? "⚡ Set Rate & Approve" : "⚡ Set Rate"}
             </Link>
           )}
         </div>

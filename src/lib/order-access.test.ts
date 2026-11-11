@@ -7,7 +7,7 @@ import {
   historyStepLabel,
   isReversalEvent,
   mentionsMoney,
-  orderAmountSummary,
+  orderAmountSummary, orderCardActions,
   canPlaceOrder,
   canSeePrice,
   isBagsInRange,
@@ -308,5 +308,71 @@ describe("orderAmountSummary", () => {
       ],
     });
     expect(a).toEqual({ caption: "Billed", totalPaise: 40 * 36000 + 60 * 37000, lines: [] });
+  });
+});
+
+
+describe("orderCardActions", () => {
+  const approvedOrder = { status: "approved", ratePaise: 30000, salesRepId: "rep-1" };
+  const placedWithRate = { status: "placed", ratePaise: 30000, salesRepId: "rep-1" };
+  const placedNoRate = { status: "placed", ratePaise: null, salesRepId: "rep-1" };
+
+  it("accounts sees Approve only (never Dispatch or Set Rate)", () => {
+    expect(orderCardActions({ role: "accounts", userId: "acc-1" }, approvedOrder, 500)).toEqual({
+      canDispatch: false,
+      canApprove: false,
+      canFillRate: false,
+      canAlsoApprove: true,
+    });
+    expect(orderCardActions({ role: "accounts", userId: "acc-1" }, placedWithRate, 500)).toEqual({
+      canDispatch: false,
+      canApprove: true,
+      canFillRate: false,
+      canAlsoApprove: true,
+    });
+    expect(orderCardActions({ role: "accounts", userId: "acc-1" }, placedNoRate, 500)).toEqual({
+      canDispatch: false,
+      canApprove: false,
+      canFillRate: false,
+      canAlsoApprove: true,
+    });
+  });
+
+  it("logistics sees Dispatch on approved/partly_dispatched only (never Approve or Set Rate)", () => {
+    expect(orderCardActions({ role: "logistics", userId: "log-1" }, approvedOrder, 100)).toEqual({
+      canDispatch: true,
+      canApprove: false,
+      canFillRate: false,
+      canAlsoApprove: false,
+    });
+    expect(orderCardActions({ role: "logistics", userId: "log-1" }, approvedOrder, 0)).toEqual({
+      canDispatch: false,
+      canApprove: false,
+      canFillRate: false,
+      canAlsoApprove: false,
+    });
+    expect(orderCardActions({ role: "logistics", userId: "log-1" }, placedWithRate, 100).canApprove).toBe(false);
+  });
+
+  it("sales sees Set Rate only on own placed order without rate", () => {
+    expect(orderCardActions({ role: "sales", userId: "rep-1" }, placedNoRate, 100)).toEqual({
+      canDispatch: false,
+      canApprove: false,
+      canFillRate: true,
+      canAlsoApprove: false,
+    });
+    expect(orderCardActions({ role: "sales", userId: "rep-2" }, placedNoRate, 100).canFillRate).toBe(false);
+    expect(orderCardActions({ role: "sales", userId: "rep-1" }, approvedOrder, 100).canDispatch).toBe(false);
+  });
+
+  it("admin sees Dispatch, Approve, and Set Rate according to status", () => {
+    expect(orderCardActions({ role: "admin", userId: "adm-1" }, approvedOrder, 100).canDispatch).toBe(true);
+    expect(orderCardActions({ role: "admin", userId: "adm-1" }, placedWithRate, 100).canApprove).toBe(true);
+    expect(orderCardActions({ role: "admin", userId: "adm-1" }, placedNoRate, 100)).toEqual({
+      canDispatch: false,
+      canApprove: false,
+      canFillRate: true,
+      canAlsoApprove: true,
+    });
   });
 });

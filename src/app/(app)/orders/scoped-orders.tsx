@@ -31,12 +31,14 @@ const DONE_ID = "orders-done";
 /** The orders list of a sales person: Mine / All, then the open orders by status, then Done. */
 export async function ScopedOrders({
   userId,
+  userRole,
   state,
   scope,
   showPrice,
   canPlace,
 }: {
   userId: string;
+  userRole?: string | null | undefined;
   state: OrdersListState;
   scope: OrderScope;
   showPrice: boolean;
@@ -81,7 +83,7 @@ export async function ScopedOrders({
   const nothing = openRows.length === 0 && doneTotal.n === 0;
 
   const cards = (rows: OrderCardRow[]) => (
-    <OrderCards rows={rows} loads={loads} state={state} showPrice={showPrice} />
+    <OrderCards rows={rows} loads={loads} state={state} showPrice={showPrice} viewer={{ id: userId, role: userRole }} />
   );
   const scopes = [
     { value: "mine", label: "Mine", n: mineOpen.n },
@@ -208,17 +210,19 @@ function OrderCards({
   loads,
   state,
   showPrice,
+  viewer,
 }: {
   rows: OrderCardRow[];
   loads: OrderLoad[];
   state: OrdersListState;
   showPrice: boolean;
+  viewer: { id: string; role?: string | null | undefined };
 }) {
   return (
     <ul className="flex flex-col gap-3">
       {rows.map((o, i) => (
         <li key={o.id}>
-          <OrderCard order={o} loads={loads} href={orderDetailHref(o.id, state)} index={i} showPrice={showPrice} />
+          <OrderCard order={o} loads={loads} href={orderDetailHref(o.id, state)} index={i} showPrice={showPrice} viewer={viewer} />
         </li>
       ))}
     </ul>

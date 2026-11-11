@@ -37,6 +37,8 @@ export type WalletMovement = {
   amountPaise: number;
   /** For confirmed / rejected rows: the request row they answer. */
   refId?: string | null;
+  receiptId?: string | null;
+  createdAt?: Date | number;
 };
 
 export type WalletBalance = {
@@ -155,4 +157,80 @@ export function planHandoverAnswer(
   if (!Number.isSafeInteger(amount) || amount <= 0) return { ok: false, error: "Enter the amount received." };
   if (amount > request.amountPaise) return { ok: false, error: "That is more than the handover." };
   return { ok: true, kind: "handover_confirmed", amountPaise: amount, part: amount < request.amountPaise, note: "" };
+}
+
+export type HeldByRetailer = {
+  retailerId: string | null;
+  retailerName: string;
+  amountPaise: number;
+  receiptCount: number;
+};
+
+/**
+ * Breaks down a collector's currently held cash by the retailer(s) it came from.
+ * Subtracts reversed receipts directly (by `receiptId`), then deducts confirmed handovers
+ * chronologically (FIFO: oldest collections are handed over first), and aggregates what
+ * remains by retailer in descending order of amount.
+ */
+export function heldCashByRetailer(
+  movements: readonly WalletMovement[],
+  retailerOfReceipt: ReadonlyMap<string, { retailerId: string; retailerName: string }>,
+): HeldByRetailer[] {
+  const reversedByReceipt = new Map<string, number>();
+  let unlinkedReversed = 0;
+  let handedOver = 0;
+  const collected: WalletMovement[] = [];
+
+  for (const m of movements) {
+    if (m.kind === "collected") collected.push(m);
+    else if (m.kind === "handover_confirmed") handedOver += m.amountPaise;
+    else if (m.kind === "reversed") {
+      if (m.receiptId) reversedByReceipt.set(m.receiptId, (reversedByReceipt.get(m.receiptId) ?? 0) + m.amountPaise);
+      else unlinkedReversed += m.amountPaise;
+    }
+  }
+
+  collected.sort((a, b) => {
+    const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : typeof a.createdAt === "number" ? a.createdAt : 0;
+    const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : typeof b.createdAt === "number" ? b.createdAt : 0;
+    return ta - tb;
+  });
+
+  let remainingDeduction = handedOver + unlinkedReversed;
+  const byRetailer = new Map<string, HeldByRetailer>();
+
+  for (const m of collected) {
+    let net = m.amountPaise;
+    if (m.receiptId) {
+      const rev = reversedByReceipt.get(m.receiptId) ?? 0;
+      if (rev > 0) {
+        const used = Math.min(net, rev);
+        net -= used;
+        reversedByReceipt.set(m.receiptId, rev - used);
+      }
+    }
+    if (net <= 0) continue;
+
+    const consumed = Math.min(net, remainingDeduction);
+    remainingDeduction -= consumed;
+    const held = net - consumed;
+    if (held <= 0) continue;
+
+    const shop = m.receiptId ? retailerOfReceipt.get(m.receiptId) : undefined;
+    const key = shop ? `shop:${shop.retailerId}` : "unlinked";
+    const prev = byRetailer.get(key);
+    if (prev) {
+      prev.amountPaise += held;
+      prev.receiptCount += 1;
+    } else {
+      byRetailer.set(key, {
+        retailerId: shop ? shop.retailerId : null,
+        retailerName: shop ? shop.retailerName : "Other / unlinked receipt",
+        amountPaise: held,
+        receiptCount: 1,
+      });
+    }
+  }
+
+  return [...byRetailer.values()].sort((a, b) => b.amountPaise - a.amountPaise);
 }

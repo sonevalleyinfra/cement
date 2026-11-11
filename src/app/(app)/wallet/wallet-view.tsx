@@ -18,8 +18,9 @@ import { useSubmit } from "@/lib/use-submit";
 import { answerHandover, requestHandover } from "./actions";
 
 type Mine = { balancePaise: number; pendingPaise: number; availablePaise: number };
-type Holder = { id: string; name: string; balancePaise: number; pendingPaise: number };
-type Request = { id: string; collector: string; amountPaise: number; own: boolean; note?: string };
+type HeldRetailer = { retailerId: string | null; retailerName: string; amountPaise: number; receiptCount: number };
+type Holder = { id: string; name: string; balancePaise: number; pendingPaise: number; byRetailer: HeldRetailer[] };
+type Request = { id: string; collector: string; amountPaise: number; own: boolean; note?: string; fromRetailers?: HeldRetailer[] };
 type Collection = { id: string; receiptNo: number; amountPaise: number; retailerName: string; createdAt: Date };
 
 const rupees = (paise: number) => (paise / 100).toFixed(2);
@@ -163,7 +164,18 @@ export function WalletView({
                   <ListCard
                     index={i}
                     title={r.collector}
-                    top={r.note ? <span className="text-xs text-primary font-semibold">{r.note}</span> : undefined}
+                    top={
+                      r.note || (r.fromRetailers && r.fromRetailers.length > 0) ? (
+                        <div className="flex flex-col gap-0.5">
+                          {r.note && <span className="text-xs text-primary font-semibold">{r.note}</span>}
+                          {r.fromRetailers && r.fromRetailers.length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              From: {r.fromRetailers.map((b) => `${b.retailerName} (${formatINR(b.amountPaise, { hidePaise: true })})`).join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      ) : undefined
+                    }
                     bottom={
                       <>
                         <span className="tabular text-lg font-bold">{formatINR(r.amountPaise, { hidePaise: true })}</span>
@@ -201,10 +213,34 @@ export function WalletView({
                     index={i}
                     title={h.name}
                     bottom={
-                      <div className="flex flex-col gap-1">
-                        <span className="tabular text-lg font-bold">{formatINR(h.balancePaise, { hidePaise: true })}</span>
-                        {h.pendingPaise > 0 && (
-                          <span className="text-xs text-muted-foreground">{formatINR(h.pendingPaise, { hidePaise: true })} to confirm</span>
+                      <div className="flex w-full flex-col gap-2">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="tabular text-lg font-bold">{formatINR(h.balancePaise, { hidePaise: true })}</span>
+                          {h.pendingPaise > 0 && (
+                            <span className="text-xs text-muted-foreground">{formatINR(h.pendingPaise, { hidePaise: true })} to confirm</span>
+                          )}
+                        </div>
+                        {h.byRetailer.length > 0 && (
+                          <div className="border-t border-border/50 pt-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Collected from
+                            </div>
+                            <ul className="flex flex-col gap-1">
+                              {h.byRetailer.map((b) => (
+                                <li key={b.retailerId ?? b.retailerName} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="font-medium text-foreground">
+                                    {b.retailerName}
+                                    {b.receiptCount > 1 && (
+                                      <span className="ml-1 font-normal text-muted-foreground">({b.receiptCount})</span>
+                                    )}
+                                  </span>
+                                  <span className="tabular font-semibold text-foreground">
+                                    {formatINR(b.amountPaise, { hidePaise: true })}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
                       </div>
                     }
