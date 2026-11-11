@@ -239,7 +239,7 @@ describe("resolveDispatchOrigin", () => {
     },
   ];
 
-  it("shows By <Godown> when dispatched directly from a godown", () => {
+  it("shows the godown name when dispatched directly from a godown", () => {
     expect(
       resolveDispatchOrigin(
         {
@@ -257,7 +257,7 @@ describe("resolveDispatchOrigin", () => {
       fromPlaceName: "CC Varanasi",
       movementType: "Godown Delivery",
       purchaseDate: "Stock",
-      purchaseSource: "By CC Varanasi",
+      purchaseSource: "CC Varanasi",
     });
   });
 
@@ -283,7 +283,40 @@ describe("resolveDispatchOrigin", () => {
     });
   });
 
-  it("shows By <Godown> when bags were transferred from godown onto the truck before dispatch", () => {
+  it("shows legacy purchase reason directly when Source: prefix is absent", () => {
+    expect(
+      resolveDispatchOrigin(
+        {
+          createdAt: "2026-10-27T07:08:19Z",
+          productId: "p1",
+          fromGodownId: null,
+          fromVehicleId: "v-legacy",
+          godownName: null,
+          vehicleNumber: "BR01AB1121",
+        },
+        [
+          {
+            vehicleId: "v-legacy",
+            productId: "p1",
+            type: "purchase",
+            bags: 200,
+            reason: "Maihar Plant , MP",
+            createdAt: "2026-10-27T06:19:14Z",
+            invoiceDate: "2026-10-27",
+            transferFromGodownName: null,
+          },
+        ],
+        new Map(),
+      ),
+    ).toEqual({
+      fromPlaceName: "Truck BR01AB1121",
+      movementType: "Direct Plant Truck",
+      purchaseDate: "2026-10-27",
+      purchaseSource: "Maihar Plant , MP",
+    });
+  });
+
+  it("shows the godown name when bags were transferred from godown onto the truck before dispatch", () => {
     expect(
       resolveDispatchOrigin(
         {
@@ -298,10 +331,10 @@ describe("resolveDispatchOrigin", () => {
         new Map(),
       ),
     ).toEqual({
-      fromPlaceName: "Truck UP65FT2205 (By CC Varanasi)",
+      fromPlaceName: "Truck UP65FT2205 (CC Varanasi)",
       movementType: "Godown Delivery",
       purchaseDate: "Stock",
-      purchaseSource: "By CC Varanasi",
+      purchaseSource: "CC Varanasi",
     });
   });
 });

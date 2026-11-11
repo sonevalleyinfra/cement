@@ -167,8 +167,8 @@ describe("parsePurchaseSource", () => {
     expect(parsePurchaseSource("  Source: Maihar  ")).toBe("Maihar");
   });
 
-  it("returns null for non-source notes or empty values", () => {
-    expect(parsePurchaseSource("Opening stock")).toBeNull();
+  it("falls back to raw text for legacy notes without Source prefix and null for empty", () => {
+    expect(parsePurchaseSource("Maihar Plant , MP")).toBe("Maihar Plant , MP");
     expect(parsePurchaseSource("")).toBeNull();
     expect(parsePurchaseSource(null)).toBeNull();
   });

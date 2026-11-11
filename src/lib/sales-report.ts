@@ -302,7 +302,7 @@ export function resolveDispatchOrigin(
       fromPlaceName: gName,
       movementType: "Godown Delivery",
       purchaseDate: "Stock",
-      purchaseSource: `By ${gName}`,
+      purchaseSource: gName,
     };
   }
 
@@ -313,10 +313,10 @@ export function resolveDispatchOrigin(
   if (inflow?.type === "transfer") {
     const gName = inflow.transferFromGodownName || "Godown";
     return {
-      fromPlaceName: dispatch.vehicleNumber ? `Truck ${dispatch.vehicleNumber} (By ${gName})` : `By ${gName}`,
+      fromPlaceName: dispatch.vehicleNumber ? `Truck ${dispatch.vehicleNumber} (${gName})` : gName,
       movementType: "Godown Delivery",
       purchaseDate: "Stock",
-      purchaseSource: `By ${gName}`,
+      purchaseSource: gName,
     };
   }
 
