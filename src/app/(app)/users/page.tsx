@@ -2,6 +2,7 @@ import { asc, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { user } from "@/db/schema";
 import { rolesFor } from "@/lib/permissions";
+import { pickableSalesReps } from "@/lib/sales-rep-rules";
 import { requireRole } from "@/lib/session";
 import { UsersView } from "./users-view";
 
@@ -20,5 +21,8 @@ export default async function UsersPage() {
     role: u.role ?? "",
     active: !u.banned,
   }));
-  return <UsersView rows={rows} myId={me.id} />;
+  const salesReps = pickableSalesReps(
+    users.map((u) => ({ id: u.id, name: u.name, role: u.role, banned: u.banned, deletedAt: null })),
+  ).map((u) => ({ id: u.id, name: u.name }));
+  return <UsersView rows={rows} myId={me.id} salesReps={salesReps} />;
 }

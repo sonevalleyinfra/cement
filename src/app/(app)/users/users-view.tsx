@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { SelectField } from "@/components/app/select-field";
 import { Sheet } from "@/components/app/sheet";
 import { StatusChip } from "@/components/app/status-chip";
 import { Button } from "@/components/ui/button";
@@ -48,15 +49,27 @@ function Checks({ options, value, onChange }: { options: { id: string; label: st
   );
 }
 
-export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
+type SalesRepOption = { id: string; name: string };
+
+export function UsersView({
+  rows,
+  myId,
+  salesReps = [],
+}: {
+  rows: Row[];
+  myId: string;
+  salesReps?: SalesRepOption[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
+  const [salesRepId, setSalesRepId] = useState("");
+  const [place, setPlace] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [confirming, setConfirming] = useState<null | "deactivate" | "delete">(null);
-  const { error, setError, clearError } = useFormError([roles, tempPassword]);
+  const { error, setError, clearError } = useFormError([roles, tempPassword, salesRepId]);
   const [pending, start] = useTransition();
 
   // All, then role tabs (a person with several roles shows under each), then Active / Deactivated.
@@ -85,6 +98,8 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
   function openSheet(row: Row | null) {
     setEditing(row);
     setRoles(row ? parseRoles(row.role) : []);
+    setSalesRepId("");
+    setPlace("");
     setTempPassword("");
     setShowPassword(false);
     setConfirming(null);
@@ -111,6 +126,7 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
             phone: String(formData.get("phone") ?? ""),
             roles,
             password: tempPassword,
+            ...(roles.includes("retailer") ? { salesRepId, place } : {}),
           });
       if (res.ok) {
         setOpen(false);
@@ -229,6 +245,34 @@ export function UsersView({ rows, myId }: { rows: Row[]; myId: string }) {
             <Label>Roles</Label>
             <Checks options={ROLES.map((x) => ({ id: x, label: roleLabel(x) }))} value={roles} onChange={setRoles} />
           </div>
+          {!editing && roles.includes("retailer") && (
+            <div className="flex flex-col gap-3 rounded-2xl bg-muted/50 p-3.5 ring-1 ring-foreground/8">
+              <p className="text-xs font-medium text-muted-foreground">
+                A shop with the same name &amp; mobile will be created and linked automatically.
+              </p>
+              {salesReps.length === 0 ? (
+                <p className="text-xs text-destructive">No active sales person found. Create a Sales user first.</p>
+              ) : (
+                <SelectField
+                  label="Sales person"
+                  value={salesRepId}
+                  onChange={setSalesRepId}
+                  placeholder="Pick a sales person"
+                  options={salesReps.map((s) => ({ value: s.id, label: s.name }))}
+                />
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="retailer-place">Place (optional)</Label>
+                <Input
+                  id="retailer-place"
+                  value={place}
+                  onChange={(e) => setPlace(e.target.value)}
+                  placeholder="Town / market"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           {!confirming && (
             <Button type="submit" disabled={pending}>

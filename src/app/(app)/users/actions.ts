@@ -5,15 +5,17 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { user } from "@/db/schema";
+import { retailers, user } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { env } from "@/env";
 import { auth } from "@/lib/auth";
+import { isUniqueViolation } from "@/lib/db-errors";
 import { sendEmailInBackground } from "@/lib/email";
 import { accountCreatedMessage } from "@/lib/email/templates";
 import { checkTempPassword } from "@/lib/password-rules";
 import { rolesFor } from "@/lib/permissions";
 import { joinRoles, parseRoles, type Role } from "@/lib/roles";
+import { checkSalesRepPick } from "@/lib/sales-rep-rules";
 import { requireRole } from "@/lib/session";
 import { deactivateStaff, deleteStaff, heldCashOf, lockStaff, reactivateStaff } from "@/lib/staff-cash";
 import {
@@ -34,6 +36,8 @@ export type UserResult = { ok: true } | { ok: false; error: string };
  * Creates a user and marks the email as verified (the admin vouches for it).
  * If the admin typed a temporary password, the user signs in with it and can change it
  * under Account. Otherwise they get a random password nobody sees and an email link to choose one.
+ * When the `retailer` role is picked, a linked shop row is automatically created with the chosen
+ * sales person and the user's name and mobile so no manual linking step is needed later.
  */
 export async function createUser(form: {
   name: string;
@@ -41,12 +45,44 @@ export async function createUser(form: {
   phone: string;
   roles: string[];
   password?: string;
+  salesRepId?: string;
+  place?: string;
 }): Promise<UserResult> {
   const session = await requireRole(...rolesFor("manageUsers"));
   const check = validateNewUser(form);
   if (!check.ok) return { ok: false, error: check.error };
   const { name, email, phone, roles, password } = check.value;
+  const isRetailer = roles.includes("retailer");
+  const repId = isRetailer && typeof form.salesRepId === "string" && form.salesRepId ? form.salesRepId : null;
+  const place = isRetailer && typeof form.place === "string" ? form.place.trim().replace(/\s+/g, " ") : "";
 
+  if (isRetailer) {
+    const [rep] = repId
+      ? await db
+          .select({ id: user.id, role: user.role, banned: user.banned, deletedAt: user.deletedAt })
+          .from(user)
+          .where(eq(user.id, repId))
+          .limit(1)
+      : [];
+    const repCheck = checkSalesRepPick(repId, rep);
+    if (!repCheck.ok) return repCheck;
+
+    const [clash] = await db
+      .select({ id: retailers.id, name: retailers.name, userId: retailers.userId })
+      .from(retailers)
+      .where(eq(retailers.phone, phone))
+      .limit(1);
+    if (clash) {
+      return {
+        ok: false,
+        error: clash.userId
+          ? `Phone already used by shop ${clash.name}.`
+          : `Shop ${clash.name} already exists with this mobile — link login on Retailers page instead.`,
+      };
+    }
+  }
+
+  let createdUserId: string | null = null;
   try {
     const created = await auth.api.createUser({
       headers: await headers(),
@@ -57,25 +93,76 @@ export async function createUser(form: {
         data: { emailVerified: true },
       },
     });
-    // Roles, phone and the audit row are saved together.
+    createdUserId = created.user.id;
+  } catch {
+    return { ok: false, error: "Could not create the user. Is the email already used?" };
+  }
+
+  try {
+    // Roles, phone, optional auto-created shop, and audit rows are saved together.
     await db.transaction(async (tx) => {
-      await tx.update(user).set({ role: joinRoles(roles), phone }).where(eq(user.id, created.user.id));
+      await tx.update(user).set({ role: joinRoles(roles), phone }).where(eq(user.id, createdUserId));
       await writeAudit(tx, {
         actorId: session.user.id,
         entity: "user",
-        entityId: created.user.id,
+        entityId: createdUserId,
         action: "create",
         details: { name, email, phone, roles, tempPassword: password !== null },
       });
+
+      if (isRetailer) {
+        const [lockedRep] = repId
+          ? await tx
+              .select({ id: user.id, role: user.role, banned: user.banned, deletedAt: user.deletedAt })
+              .from(user)
+              .where(eq(user.id, repId))
+              .for("share")
+          : [];
+        const repCheck = checkSalesRepPick(repId, lockedRep);
+        if (!repCheck.ok) throw new Error(repCheck.error);
+
+        const [shop] = await tx
+          .insert(retailers)
+          .values({ name, phone, place, salesRepId: repId, userId: createdUserId, category: "retailer" })
+          .returning({ id: retailers.id });
+        await writeAudit(tx, {
+          actorId: session.user.id,
+          entity: "retailer",
+          entityId: shop.id,
+          action: "create",
+          details: { name, phone, place, salesRepId: repId, userId: createdUserId },
+        });
+        await writeAudit(tx, {
+          actorId: session.user.id,
+          entity: "retailer",
+          entityId: shop.id,
+          action: "link",
+          details: { before: { userId: null }, after: { userId: createdUserId } },
+        });
+      }
     });
+
     if (password === null) {
       await auth.api.requestPasswordReset({ body: { email, redirectTo: "/reset-password" } });
     }
     sendEmailInBackground(accountCreatedMessage(email, name, `${env.APP_URL}/sign-in`, password !== null));
-  } catch {
-    return { ok: false, error: "Could not create the user. Is the email already used?" };
+  } catch (e) {
+    await db.delete(user).where(eq(user.id, createdUserId)).catch(() => {});
+    if (isUniqueViolation(e, "retailers_phone_unique")) {
+      return { ok: false, error: "Phone already used by another shop." };
+    }
+    return {
+      ok: false,
+      error: e instanceof Error && e.message === "Pick an active sales person." ? e.message : "Could not create the shop for this retailer.",
+    };
   }
   revalidatePath("/users");
+  if (isRetailer) {
+    revalidatePath("/retailers");
+    revalidatePath("/dashboard");
+    revalidatePath("/ledger");
+    revalidatePath("/orders");
+  }
   return { ok: true };
 }
 
