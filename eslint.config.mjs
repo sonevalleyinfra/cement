@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Bundled output of scripts/build-scripts.mjs
     "dist-scripts/**",
+    // Capacitor Android native project & fallback web dir
+    "android/**",
+    "www/**",
   ]),
 ]);
 
