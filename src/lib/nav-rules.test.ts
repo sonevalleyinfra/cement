@@ -45,10 +45,10 @@ describe("moreGroups", () => {
   const titles = (role: string) => moreGroups(role).map((g) => g.title);
   const hrefs = (role: string) => moreGroups(role).flatMap((g) => g.rows.map((r) => r.href));
 
-  it("gives admin every group, with Books check under Records", () => {
+  it("gives admin every group under Records", () => {
     expect(titles("admin")).toEqual(["Money", "Goods", "People", "Records", "Account"]);
     const records = moreGroups("admin").find((g) => g.title === "Records");
-    expect(records?.rows.map((r) => r.href)).toEqual(["/reports", "/activity", "/reports/books"]);
+    expect(records?.rows.map((r) => r.href)).toEqual(["/reports", "/activity"]);
   });
   it("lists Areas under People for admin only", () => {
     const people = moreGroups("admin").find((g) => g.title === "People");
@@ -60,7 +60,8 @@ describe("moreGroups", () => {
     expect(money?.rows).toContainEqual({ href: "/bank-accounts", label: "Bank accounts", permission: "manageBankAccounts" });
     for (const role of ["sales", "accounts", "logistics", "retailer"]) expect(hrefs(role)).not.toContain("/bank-accounts");
   });
-  it("shows Books check only to admin", () => {
+  it("does not list Books check", () => {
+    expect(hrefs("admin")).not.toContain("/reports/books");
     expect(hrefs("accounts")).not.toContain("/reports/books");
     expect(hrefs("sales")).not.toContain("/reports/books");
   });

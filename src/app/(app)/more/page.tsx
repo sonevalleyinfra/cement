@@ -10,7 +10,6 @@ import {
   MapPin,
   Package,
   Receipt,
-  ShieldCheck,
   Tags,
   Truck,
   Warehouse,
@@ -46,7 +45,6 @@ const looks: Record<string, { icon: LucideIcon; tone: Tone }> = {
   "/areas": { icon: MapPin, tone: "slate" },
   "/reports": { icon: ChartColumn, tone: "orange" },
   "/activity": { icon: History, tone: "slate" },
-  "/reports/books": { icon: ShieldCheck, tone: "slate" },
   "/account": { icon: KeyRound, tone: "orange" },
 };
 

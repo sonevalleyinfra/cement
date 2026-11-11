@@ -8,7 +8,7 @@ import {
   claimValuePaise,
   DEFAULT_PURCHASE_SOURCES,
   PURCHASE_NOTE_MAX,
-  purchaseNote,
+  purchaseNote, parsePurchaseSource,
 } from "./purchase-rules";
 
 const today = "2026-10-24";
@@ -155,5 +155,21 @@ describe("PURCHASE_NOTE_MAX", () => {
     for (const source of DEFAULT_PURCHASE_SOURCES) {
       expect(purchaseNote({ source, otherSource: "", note: "y".repeat(PURCHASE_NOTE_MAX) }).length).toBeLessThanOrEqual(200);
     }
+  });
+});
+
+
+describe("parsePurchaseSource", () => {
+  it("extracts plant/source names with or without trailing notes", () => {
+    expect(parsePurchaseSource("Source: Satna Plant")).toBe("Satna Plant");
+    expect(parsePurchaseSource("Source: RLJ Chunar · late arrival")).toBe("RLJ Chunar");
+    expect(parsePurchaseSource("Source: Rake - Chaukhandi · urgent")).toBe("Rake - Chaukhandi");
+    expect(parsePurchaseSource("  Source: Maihar  ")).toBe("Maihar");
+  });
+
+  it("returns null for non-source notes or empty values", () => {
+    expect(parsePurchaseSource("Opening stock")).toBeNull();
+    expect(parsePurchaseSource("")).toBeNull();
+    expect(parsePurchaseSource(null)).toBeNull();
   });
 });

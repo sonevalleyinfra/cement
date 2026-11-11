@@ -57,6 +57,7 @@ export function DispatchView({
   isAdmin,
   orders,
   places,
+  placeSources = {},
   truckChips,
   balances,
   initialOrderId,
@@ -64,6 +65,7 @@ export function DispatchView({
   isAdmin: boolean;
   orders: OrderRow[];
   places: Place[];
+  placeSources?: Record<string, string>;
   truckChips: TruckChip[];
   balances: Balance[];
   initialOrderId?: string | null;
@@ -325,10 +327,13 @@ export function DispatchView({
               label="Take from"
               value={chosenPlace}
               onChange={(key) => pickPlace(key)}
-              options={options.map((p) => ({
-                value: p.key,
-                label: `${p.name} (${p.bagsHere} bags in stock)`,
-              }))}
+              options={options.map((p) => {
+                const src = p.truck ? (placeSources[`${p.key}:${open.productId}`] ?? placeSources[p.key]) : null;
+                return {
+                  value: p.key,
+                  label: src ? `${p.name} · ${src} (${p.bagsHere} bags in stock)` : `${p.name} (${p.bagsHere} bags in stock)`,
+                };
+              })}
             />
             {options.length === 0 && (
               <p className="text-sm text-destructive">No godown or truck has stock of this product.</p>
@@ -383,23 +388,27 @@ export function DispatchView({
             )}
 
             {/* Delivery Source Notice */}
-            {truck && chosenPlaceObj && (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-foreground">
-                {chosenPlaceObj.truck === truck ? (
-                  <span>
-                    ✅ <strong>Direct Truck Dispatch:</strong> Maal truck <strong>{truck}</strong> ({driverName || "Driver"}) se direct deliver hoga. (Stock: <strong>{chosenPlaceObj.bagsHere} bags</strong>)
-                  </span>
-                ) : !chosenPlaceObj.truck ? (
-                  <span>
-                    ℹ️ <strong>Godown se Dispatch:</strong> Maal godown <strong>{chosenPlaceObj.name}</strong> se nikal kar delivery gaadi <strong>{truck}</strong> ({driverName || "Driver"}) me load hoga.
-                  </span>
-                ) : (
-                  <span>
-                    ℹ️ Maal <strong>{chosenPlaceObj.name}</strong> se deliver hoga via gaadi <strong>{truck}</strong>.
-                  </span>
-                )}
-              </div>
-            )}
+            {truck && chosenPlaceObj && (() => {
+              const truckSrc = chosenPlaceObj.truck ? (placeSources[`${chosenPlaceObj.key}:${open.productId}`] ?? placeSources[chosenPlaceObj.key]) : null;
+              return (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-foreground">
+                  {chosenPlaceObj.truck === truck ? (
+                    <span>
+                      ✅ <strong>Direct Truck Dispatch:</strong> Maal truck <strong>{truck}</strong> ({driverName || "Driver"})
+                      {truckSrc ? <> · Source: <strong>{truckSrc}</strong></> : null} se direct deliver hoga. (Stock: <strong>{chosenPlaceObj.bagsHere} bags</strong>)
+                    </span>
+                  ) : !chosenPlaceObj.truck ? (
+                    <span>
+                      ℹ️ <strong>Godown se Dispatch:</strong> Maal godown <strong>{chosenPlaceObj.name}</strong> se nikal kar delivery gaadi <strong>{truck}</strong> ({driverName || "Driver"}) me load hoga.
+                    </span>
+                  ) : (
+                    <span>
+                      ℹ️ Maal <strong>{chosenPlaceObj.name}</strong>{truckSrc ? <> ({truckSrc})</> : null} se deliver hoga via gaadi <strong>{truck}</strong>.
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <label className="flex flex-col gap-1 text-sm font-semibold">
               Truck number

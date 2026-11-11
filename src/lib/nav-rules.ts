@@ -72,7 +72,6 @@ const MORE_GROUPS: MoreGroup[] = [
     rows: [
       { href: "/reports", label: "Reports", permission: "viewReports" },
       { href: "/activity", label: "Activity", permission: "viewActivity" },
-      { href: "/reports/books", label: "Books check", adminOnly: true },
     ],
   },
   { title: "Account", rows: [{ href: "/account", label: "Change password" }] },

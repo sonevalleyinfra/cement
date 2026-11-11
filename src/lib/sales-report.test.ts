@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   averageCostPerBag,
   landedCostRows,
-  profitReport,
+  profitReport, resolveDispatchOrigin,
   purchaseCostTotals,
   saleValuePaise,
   salesReport,
@@ -211,5 +211,97 @@ describe("landed cost in profit", () => {
       { productId: "p2", bags: 50, unitCostPaise: null },
     ]);
     expect(profitReport([sale({ bags: 10 })], rows).lines[0].avgCostPaise).toBe(28_000);
+  });
+});
+
+
+describe("resolveDispatchOrigin", () => {
+  const inflows = [
+    {
+      vehicleId: "v1",
+      productId: "p1",
+      type: "purchase",
+      bags: 300,
+      reason: "Source: Satna Plant · direct load",
+      createdAt: "2026-11-10T05:00:00Z",
+      invoiceDate: "2026-11-10",
+      transferFromGodownName: null,
+    },
+    {
+      vehicleId: "v1",
+      productId: "p1",
+      type: "transfer",
+      bags: 120,
+      reason: "",
+      createdAt: "2026-11-11T04:00:00Z",
+      invoiceDate: null,
+      transferFromGodownName: "CC Varanasi",
+    },
+  ];
+
+  it("shows By <Godown> when dispatched directly from a godown", () => {
+    expect(
+      resolveDispatchOrigin(
+        {
+          createdAt: "2026-11-11T06:00:00Z",
+          productId: "p1",
+          fromGodownId: "g1",
+          fromVehicleId: null,
+          godownName: "CC Varanasi",
+          vehicleNumber: "UP65GT8667",
+        },
+        inflows,
+        new Map(),
+      ),
+    ).toEqual({
+      fromPlaceName: "CC Varanasi",
+      movementType: "Godown Delivery",
+      purchaseDate: "Stock",
+      purchaseSource: "By CC Varanasi",
+    });
+  });
+
+  it("shows the purchase plant/source when dispatched directly from truck without unloading to godown", () => {
+    expect(
+      resolveDispatchOrigin(
+        {
+          createdAt: "2026-11-10T09:00:00Z",
+          productId: "p1",
+          fromGodownId: null,
+          fromVehicleId: "v1",
+          godownName: null,
+          vehicleNumber: "UP65FT2205",
+        },
+        inflows,
+        new Map(),
+      ),
+    ).toEqual({
+      fromPlaceName: "Truck UP65FT2205",
+      movementType: "Direct Plant Truck",
+      purchaseDate: "2026-11-10",
+      purchaseSource: "Satna Plant",
+    });
+  });
+
+  it("shows By <Godown> when bags were transferred from godown onto the truck before dispatch", () => {
+    expect(
+      resolveDispatchOrigin(
+        {
+          createdAt: "2026-11-11T06:00:00Z",
+          productId: "p1",
+          fromGodownId: null,
+          fromVehicleId: "v1",
+          godownName: null,
+          vehicleNumber: "UP65FT2205",
+        },
+        inflows,
+        new Map(),
+      ),
+    ).toEqual({
+      fromPlaceName: "Truck UP65FT2205 (By CC Varanasi)",
+      movementType: "Godown Delivery",
+      purchaseDate: "Stock",
+      purchaseSource: "By CC Varanasi",
+    });
   });
 });

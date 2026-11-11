@@ -18,7 +18,6 @@ import {
   walletMovements,
 } from "@/db/schema";
 import { hasManyBrands, shortProductName } from "@/lib/catalogue-rules";
-import { toISTDateKey } from "@/lib/datetime";
 import { duesAging } from "@/lib/due-items";
 import { ledgerBackdatedSql, ledgerMomentSql, ledgerReversesAtSql } from "@/lib/ledger";
 import { lossReport } from "@/lib/loss-report";
@@ -29,11 +28,13 @@ import {
   landedCostRows,
   profitReport,
   purchaseCostTotals,
+  resolveDispatchOrigin,
   salesReport,
   schemeCreditsPaise,
   type PurchaseCostRow,
   type SaleRow,
 } from "@/lib/sales-report";
+import { getVehicleInflowOrigins } from "@/lib/truck-origins";
 import { cashByPerson, onlineWaiting, paymentsByMode, staffActivity } from "@/lib/staff-report";
 import { buildStatement, byDay, byMoment } from "@/lib/statement-rules";
 import { placeFlows, stockFlows, stockNow, totalFlow, totalPlaceFlow } from "@/lib/stock-report";
@@ -96,49 +97,47 @@ async function salesQuery(range: ReportRange) {
     .orderBy(asc(dispatches.createdAt));
 
   const vehicleNumbers = [...new Set(rows.map((r) => r.vehicleNumber).filter(Boolean))] as string[];
-  const truckPurchases =
+  const fromVehicleIds = [...new Set(rows.map((r) => r.fromVehicleId).filter((id): id is string => id !== null))];
+  const [truckPurchases, vehicleInflows] = await Promise.all([
     vehicleNumbers.length > 0
-      ? await db
+      ? db
           .select({
             truckNumber: purchases.truckNumber,
             invoiceDate: purchases.invoiceDate,
-            createdAt: purchases.createdAt,
+            reason: stockMovements.reason,
           })
           .from(purchases)
+          .innerJoin(stockMovements, eq(stockMovements.id, purchases.stockMovementId))
           .where(inArray(purchases.truckNumber, vehicleNumbers))
           .orderBy(asc(purchases.createdAt))
-      : [];
+      : Promise.resolve([]),
+    getVehicleInflowOrigins(fromVehicleIds, range.end),
+  ]);
 
-  const purchaseMap = new Map<string, { invoiceDate: string }>();
+  const fallbackPurchaseByTruck = new Map<string, { invoiceDate: string; reason: string }>();
   for (const p of truckPurchases) {
     const key = p.truckNumber.toUpperCase().replace(/\s+/g, "");
-    purchaseMap.set(key, p);
+    fallbackPurchaseByTruck.set(key, { invoiceDate: p.invoiceDate, reason: p.reason });
   }
 
   return rows.map((r) => {
-    const vKey = (r.vehicleNumber || "").toUpperCase().replace(/\s+/g, "");
-    const pur = purchaseMap.get(vKey);
-    const isDirectTruck = !!r.fromVehicleId;
-    const isGodown = !!r.fromGodownId;
-    const movementType = isDirectTruck
-      ? "Direct Plant Truck"
-      : isGodown
-        ? "Godown Delivery"
-        : "Direct";
-    const fromPlaceName = r.godownName
-      ? r.godownName
-      : isDirectTruck
-        ? `Truck ${r.vehicleNumber || ""}`
-        : "Godown";
-    const purchaseSource = isDirectTruck ? "Plant Direct" : r.godownName ? "Godown Stock" : "Plant / Factory";
+    const origin = resolveDispatchOrigin(
+      {
+        createdAt: r.createdAt,
+        productId: r.productId,
+        fromGodownId: r.fromGodownId,
+        fromVehicleId: r.fromVehicleId,
+        godownName: r.godownName,
+        vehicleNumber: r.vehicleNumber,
+      },
+      vehicleInflows,
+      fallbackPurchaseByTruck,
+    );
 
     return {
       ...r,
       vehicleNumber: r.vehicleNumber || "Unknown truck",
-      fromPlaceName,
-      movementType,
-      purchaseDate: pur?.invoiceDate || (isDirectTruck ? toISTDateKey(new Date(r.createdAt)) : "Stock"),
-      purchaseSource,
+      ...origin,
     };
   });
 }

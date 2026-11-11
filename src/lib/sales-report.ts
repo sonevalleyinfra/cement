@@ -20,6 +20,7 @@
  */
 import { toISTDateKey } from "./datetime";
 import { mulDivRound } from "./money";
+import { parsePurchaseSource } from "./purchase-rules";
 
 export type SaleRow = {
   bags: number;
@@ -227,4 +228,107 @@ export function profitReport(sales: readonly SaleRow[], purchases: readonly Purc
 /** Scheme / discount credits from suppliers in the range, as a plus amount (entries store them as minus). */
 export function schemeCreditsPaise(entries: readonly { kind: string; amountPaise: number }[]): number {
   return entries.filter((e) => e.kind === "credit").reduce((n, e) => n - e.amountPaise, 0);
+}
+
+
+export type VehicleInflow = {
+  vehicleId: string;
+  productId: string;
+  type: string;
+  bags: number;
+  reason: string;
+  createdAt: Date | string;
+  invoiceDate?: string | null;
+  transferFromGodownName?: string | null;
+};
+
+export type DispatchOrigin = {
+  fromPlaceName: string;
+  movementType: string;
+  purchaseDate: string;
+  purchaseSource: string;
+};
+
+const toTimeMs = (d: Date | string) => (d instanceof Date ? d.getTime() : Date.parse(d));
+
+/** Returns the latest positive inflow onto a truck at or before `asOfMs` (exact product match preferred). */
+export function latestVehicleInflow(
+  vehicleId: string,
+  productId: string,
+  asOfMs: number,
+  inflows: readonly VehicleInflow[],
+): VehicleInflow | null {
+  let bestSameProduct: VehicleInflow | null = null;
+  let bestSameTime = -Infinity;
+  let bestAnyProduct: VehicleInflow | null = null;
+  let bestAnyTime = -Infinity;
+  for (const inf of inflows) {
+    if (inf.vehicleId !== vehicleId) continue;
+    const t = toTimeMs(inf.createdAt);
+    if (t > asOfMs) continue;
+    if (inf.productId === productId && t >= bestSameTime) {
+      bestSameTime = t;
+      bestSameProduct = inf;
+    }
+    if (t >= bestAnyTime) {
+      bestAnyTime = t;
+      bestAnyProduct = inf;
+    }
+  }
+  return bestSameProduct ?? bestAnyProduct;
+}
+
+/**
+ * Resolves where a dispatch's bags originated:
+ * - Dispatched from a godown (or loaded onto a truck from a godown): "By <Godown Name>".
+ * - Dispatched directly from a truck without unloading at a godown: the plant/source recorded on
+ *   that truck's purchase ("Satna Plant", "RLJ Chunar", etc.).
+ */
+export function resolveDispatchOrigin(
+  dispatch: {
+    createdAt: Date | string;
+    productId: string;
+    fromGodownId: string | null;
+    fromVehicleId: string | null;
+    godownName: string | null;
+    vehicleNumber: string | null;
+  },
+  vehicleInflows: readonly VehicleInflow[],
+  fallbackPurchaseByTruck: ReadonlyMap<string, { invoiceDate: string; reason: string }>,
+): DispatchOrigin {
+  if (dispatch.fromGodownId) {
+    const gName = dispatch.godownName || "Godown";
+    return {
+      fromPlaceName: gName,
+      movementType: "Godown Delivery",
+      purchaseDate: "Stock",
+      purchaseSource: `By ${gName}`,
+    };
+  }
+
+  const inflow = dispatch.fromVehicleId
+    ? latestVehicleInflow(dispatch.fromVehicleId, dispatch.productId, toTimeMs(dispatch.createdAt), vehicleInflows)
+    : null;
+
+  if (inflow?.type === "transfer") {
+    const gName = inflow.transferFromGodownName || "Godown";
+    return {
+      fromPlaceName: dispatch.vehicleNumber ? `Truck ${dispatch.vehicleNumber} (By ${gName})` : `By ${gName}`,
+      movementType: "Godown Delivery",
+      purchaseDate: "Stock",
+      purchaseSource: `By ${gName}`,
+    };
+  }
+
+  const vKey = (dispatch.vehicleNumber || "").toUpperCase().replace(/\s+/g, "");
+  const fallback = fallbackPurchaseByTruck.get(vKey);
+  const parsedSource = parsePurchaseSource(inflow?.reason) ?? parsePurchaseSource(fallback?.reason);
+  const truckLabel = dispatch.vehicleNumber ? `Truck ${dispatch.vehicleNumber}` : "Truck";
+
+  return {
+    fromPlaceName: truckLabel,
+    movementType: "Direct Plant Truck",
+    purchaseDate: inflow?.invoiceDate || fallback?.invoiceDate || toISTDateKey(inflow?.createdAt ?? dispatch.createdAt),
+    purchaseSource: parsedSource || "Direct Plant",
+  };
 }

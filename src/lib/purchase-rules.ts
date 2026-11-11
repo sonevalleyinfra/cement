@@ -151,3 +151,14 @@ export function purchaseNote({ source, otherSource, note }: { source: string; ot
   const from = source === "Other" ? otherSource.trim() || "Other" : source.trim();
   return [from ? `Source: ${from}` : "", note.trim()].filter(Boolean).join(" · ");
 }
+
+
+/** Extracts the plant or source name from a purchase note ("Source: Satna Plant · note" -> "Satna Plant"). */
+export function parsePurchaseSource(reason: string | null | undefined): string | null {
+  const s = (reason ?? "").trim();
+  if (!s.startsWith("Source:")) return null;
+  const rest = s.slice("Source:".length).trim();
+  const [sourcePart] = rest.split(" · ");
+  const clean = sourcePart?.trim() ?? "";
+  return clean || null;
+}

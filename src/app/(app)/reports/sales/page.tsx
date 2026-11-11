@@ -45,7 +45,7 @@ function DispatchRegister({ dispatches }: { dispatches: SaleRow[] }) {
       <ul className="flex flex-col gap-3">
         {sorted.map((d, i) => {
           const value = saleValuePaise(d.bags, d.ratePaise);
-          const from = [d.driverName && `Driver ${d.driverName}`, d.fromPlaceName].filter(Boolean).join(" · ");
+          const from = [d.driverName && `Driver ${d.driverName}`, d.fromPlaceName, d.purchaseSource && d.purchaseSource !== d.fromPlaceName ? d.purchaseSource : null].filter(Boolean).join(" · ");
           return (
             <li key={i} className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-center justify-between gap-3">

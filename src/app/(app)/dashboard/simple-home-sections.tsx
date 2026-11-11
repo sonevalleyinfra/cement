@@ -1187,18 +1187,6 @@ export async function SimpleAdminHome() {
             </div>
           </Link>
         </div>
-
-        {/* Double-entry Books Integrity Check */}
-        <Link
-          href="/reports/books"
-          className="mt-2.5 flex items-center justify-between rounded-2xl border border-border/80 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
-        >
-          <span className="font-semibold flex items-center gap-2">
-            <BadgeCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
-            Double-Entry Books Integrity Check
-          </span>
-          <ChevronRight className="size-4" />
-        </Link>
       </div>
     </div>
   );

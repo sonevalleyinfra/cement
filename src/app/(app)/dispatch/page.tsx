@@ -7,6 +7,9 @@ import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { truckChips } from "@/lib/dispatch-rules";
 import { byRequiredBy, isPastRequiredBy } from "@/lib/order-delivery-rules";
 import { getBalances } from "@/lib/stock";
+import { parsePlaceKey } from "@/lib/stock-rules";
+import { resolveDispatchOrigin } from "@/lib/sales-report";
+import { getVehicleInflowOrigins } from "@/lib/truck-origins";
 import { can, rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
@@ -98,6 +101,33 @@ export default async function DispatchPage({
     ).values(),
   ];
 
+  const loadedTruckVehicleIds = [...loadedTrucks]
+    .map((k) => parsePlaceKey(k))
+    .filter((ref): ref is { kind: "vehicle"; id: string } => ref?.kind === "vehicle")
+    .map((ref) => ref.id);
+  const truckInflows = await getVehicleInflowOrigins(loadedTruckVehicleIds);
+  const placeSources: Record<string, string> = {};
+  for (const b of balances) {
+    if (!loadedTrucks.has(b.placeKey)) continue;
+    const ref = parsePlaceKey(b.placeKey);
+    if (ref?.kind !== "vehicle") continue;
+    const key = `${b.placeKey}:${b.productId}`;
+    const origin = resolveDispatchOrigin(
+      {
+        createdAt: new Date(),
+        productId: b.productId,
+        fromGodownId: null,
+        fromVehicleId: ref.id,
+        godownName: null,
+        vehicleNumber: b.placeName,
+      },
+      truckInflows,
+      new Map(),
+    );
+    placeSources[key] = origin.purchaseSource;
+    if (!placeSources[b.placeKey]) placeSources[b.placeKey] = origin.purchaseSource;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
@@ -114,6 +144,7 @@ export default async function DispatchPage({
         isAdmin={isAdmin(user.role)}
         orders={pending}
         places={places}
+        placeSources={placeSources}
         truckChips={chips}
         balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
         initialOrderId={initialOrderId}
