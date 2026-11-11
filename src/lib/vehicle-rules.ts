@@ -22,6 +22,21 @@ export function checkTruckNumber(raw: string | null | undefined): { ok: true; nu
   return { ok: true, number };
 }
 
+/** Strips a leading "Truck " label if present and returns normalized plate number ("Truck BR01AB1234" -> "BR01AB1234"). */
+export function cleanTruckLabel(raw: string | null | undefined): string {
+  return normalizeVehicleNumber(String(raw ?? "").trim().replace(/^truck\s+/i, ""));
+}
+
+/** Finds a truck matching `rawNumber` (ignoring case, spaces, punctuation, or leading "Truck " prefix). */
+export function findKnownTruck<T extends { number: string }>(
+  trucks: readonly T[],
+  rawNumber: string | null | undefined,
+): T | undefined {
+  const needle = cleanTruckLabel(rawNumber);
+  if (!needle) return undefined;
+  return trucks.find((t) => cleanTruckLabel(t.number) === needle);
+}
+
 export type Truck = { number: string; driverName: string; driverPhone: string };
 
 /**

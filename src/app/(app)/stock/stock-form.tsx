@@ -21,6 +21,7 @@ import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
 import { DEFAULT_PURCHASE_SOURCES, PURCHASE_NOTE_MAX, purchaseNote } from "@/lib/purchase-rules";
 import { reasonHint } from "@/lib/reason-codes";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
+import { cleanTruckLabel, findKnownTruck } from "@/lib/vehicle-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { bagsText } from "@/lib/words";
@@ -129,20 +130,22 @@ export function StockForm({
   const [otherSource, setOtherSource] = useState("");
   const newTruck = purchase && place === NEW_TRUCK_PLACE;
   // A purchase into a truck already in the list keeps that truck's number.
-  const placeTruck = purchase && place.startsWith("vehicle:") ? places.find((p) => p.key === place)?.name : undefined;
+  const rawPlaceTruck = purchase && place.startsWith("vehicle:") ? places.find((p) => p.key === place)?.name : undefined;
+  const placeTruck = rawPlaceTruck ? cleanTruckLabel(rawPlaceTruck) : undefined;
   // Same sync as an effect would do, done during render (adjust state when inputs change).
   const [syncedTruck, setSyncedTruck] = useState<{ placeTruck?: string; trucks: typeof trucks }>({ trucks: [] });
   if (syncedTruck.placeTruck !== placeTruck || syncedTruck.trucks !== trucks) {
+    const truckChanged = syncedTruck.placeTruck !== placeTruck;
     setSyncedTruck({ placeTruck, trucks });
     if (placeTruck) {
-      const match = trucks.find(
-        (t) => t.number.toUpperCase().replace(/\s+/g, "") === placeTruck.toUpperCase().replace(/\s+/g, ""),
-      );
+      const match = findKnownTruck(trucks, placeTruck);
       setTruck((prev) => ({
         number: placeTruck,
-        driverName: (match && match.driverName) || prev.driverName,
-        driverPhone: (match && match.driverPhone) || prev.driverPhone,
+        driverName: truckChanged ? (match?.driverName ?? "") : prev.driverName || match?.driverName || "",
+        driverPhone: truckChanged ? (match?.driverPhone ?? "") : prev.driverPhone || match?.driverPhone || "",
       }));
+    } else if (truckChanged) {
+      setTruck(NO_TRUCK);
     }
   }
   // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
@@ -222,7 +225,9 @@ export function StockForm({
           setCostText("");
           setInvoiceNo("");
           setInvoiceDate(today);
-          setTruck(NO_TRUCK);
+          setTruck((prev) =>
+            placeTruck ? { number: placeTruck, driverName: prev.driverName, driverPhone: prev.driverPhone } : NO_TRUCK,
+          );
           router.refresh();
         } else setError(res.error);
       },

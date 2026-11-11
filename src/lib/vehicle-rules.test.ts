@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { checkDriver, checkTruck, checkTruckNumber, isValidVehicleNumber, normalizeVehicleNumber, truckNote } from "./vehicle-rules";
+import {
+  checkDriver,
+  checkTruck,
+  checkTruckNumber,
+  cleanTruckLabel,
+  findKnownTruck,
+  isValidVehicleNumber,
+  normalizeVehicleNumber,
+  truckNote,
+} from "./vehicle-rules";
 
 describe("normalizeVehicleNumber", () => {
   it("uppercases and removes spaces and dashes", () => {
@@ -24,20 +33,18 @@ describe("checkTruckNumber", () => {
 });
 
 describe("checkTruck", () => {
-  it("normalises everything", () => {
+  it("cleans number, driver and phone", () => {
     expect(checkTruck({ number: "br 01 ab 1234", driverName: "  Ravi  Kumar ", driverPhone: "+91 98765 43210" })).toEqual({
       ok: true,
       value: { number: "BR01AB1234", driverName: "Ravi Kumar", driverPhone: "9876543210" },
     });
   });
-  it("needs the driver phone by default", () => {
+  it("needs a 10-digit driver phone by default, but allows an empty phone when optional", () => {
     expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi" })).toEqual({ ok: false, error: "Enter the driver mobile." });
     expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi", driverPhone: " " })).toEqual({
       ok: false,
       error: "Enter the driver mobile.",
     });
-  });
-  it("allows an empty driver phone when it is optional", () => {
     expect(checkTruck({ number: "BR01AB1234", driverName: "Ravi" }, { phoneRequired: false })).toEqual({
       ok: true,
       value: { number: "BR01AB1234", driverName: "Ravi", driverPhone: "" },
@@ -79,4 +86,23 @@ describe("truckNote", () => {
     expect(truckNote("", { ...truck, driverPhone: "" })).toBe("Truck BR01AB1234 · Ravi");
   });
   it("stays within 200 characters", () => expect(truckNote("x".repeat(300), truck)).toHaveLength(200));
+});
+
+describe("cleanTruckLabel & findKnownTruck", () => {
+  const trucks = [
+    { number: "BR01AB1234", driverName: "Ravi Kumar", driverPhone: "9876543210" },
+    { number: "UP65CD5678", driverName: "", driverPhone: "" },
+  ];
+
+  it("strips leading Truck prefix and spaces", () => {
+    expect(cleanTruckLabel("Truck BR01AB1234")).toBe("BR01AB1234");
+    expect(cleanTruckLabel("truck br 01-ab 1234")).toBe("BR01AB1234");
+    expect(cleanTruckLabel("")).toBe("");
+  });
+
+  it("matches a known truck regardless of prefix or spacing", () => {
+    expect(findKnownTruck(trucks, "Truck BR01AB1234")?.driverName).toBe("Ravi Kumar");
+    expect(findKnownTruck(trucks, "up 65 cd 5678")?.number).toBe("UP65CD5678");
+    expect(findKnownTruck(trucks, "Truck MH01AA0001")).toBeUndefined();
+  });
 });

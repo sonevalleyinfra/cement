@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { placesWithStock, truckAfterPlacePick, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
+import { cleanTruckLabel } from "@/lib/vehicle-rules";
 import { formatINR } from "@/lib/money";
 import { stagger } from "@/lib/motion";
 import { isOrderStatus, remainingBags } from "@/lib/order-rules";
@@ -128,11 +129,9 @@ export function DispatchView({
     if (picked.truck) {
       setTruck(picked.truck);
       setAutoTruck(picked.truck);
-      const chip = truckChips.find((c) => c.truck === picked.truck);
-      if (chip) {
-        setDriverName(chip.driverName || "");
-        setDriverPhone(chip.driverPhone || "");
-      }
+      const chip = truckChips.find((c) => cleanTruckLabel(c.truck) === cleanTruckLabel(picked.truck));
+      setDriverName(chip?.driverName || "");
+      setDriverPhone(chip?.driverPhone || "");
     } else {
       if (autoTruck && truck === autoTruck) {
         setTruck("");
@@ -414,7 +413,15 @@ export function DispatchView({
               Truck number
               <Input
                 value={truck}
-                onChange={(e) => setTruck(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  const next = e.target.value.toUpperCase();
+                  setTruck(next);
+                  const chip = truckChips.find((c) => cleanTruckLabel(c.truck) === cleanTruckLabel(next));
+                  if (chip) {
+                    setDriverName(chip.driverName || "");
+                    setDriverPhone(chip.driverPhone || "");
+                  }
+                }}
                 placeholder="BR01AB1234"
                 autoCapitalize="characters"
                 autoComplete="off"

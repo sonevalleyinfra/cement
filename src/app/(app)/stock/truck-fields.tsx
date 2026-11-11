@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { SelectField } from "@/components/app/select-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { findKnownTruck } from "@/lib/vehicle-rules";
 
 export type TruckInput = { number: string; driverName: string; driverPhone: string };
 
@@ -32,12 +33,12 @@ export function TruckFields({
 
   function onNumberChange(raw: string) {
     const clean = raw.toUpperCase().replace(/\s+/g, "");
-    const match = knownTrucks.find((t) => t.number.toUpperCase().replace(/\s+/g, "") === clean);
+    const match = findKnownTruck(knownTrucks, clean);
     if (match) {
       onChange({
         number: clean,
-        driverName: match.driverName || value.driverName,
-        driverPhone: match.driverPhone || value.driverPhone,
+        driverName: match.driverName || "",
+        driverPhone: match.driverPhone || "",
       });
     } else {
       onChange({ ...value, number: clean });
@@ -50,7 +51,7 @@ export function TruckFields({
   function onPick(sel: string) {
     if (sel === OTHER) {
       setTyping(true);
-      onChange({ ...value, number: "" });
+      onChange({ number: "", driverName: "", driverPhone: "" });
       return;
     }
     const match = knownTrucks.find((t) => t.number === sel);
@@ -58,8 +59,8 @@ export function TruckFields({
     setTyping(false);
     onChange({
       number: match.number,
-      driverName: match.driverName || value.driverName,
-      driverPhone: match.driverPhone || value.driverPhone,
+      driverName: match.driverName || "",
+      driverPhone: match.driverPhone || "",
     });
   }
 
