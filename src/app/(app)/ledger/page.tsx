@@ -102,15 +102,20 @@ export default async function LedgerPage({ searchParams }: { searchParams: Searc
   if (!staff && !own) return empty("Your login is not linked to a retailer");
 
   const balances = await getAllBalances();
+  const where = own
+    ? eq(retailers.id, own)
+    : scope?.repId
+      ? eq(retailers.salesRepId, scope.repId)
+      : undefined;
   const list = await db
     .select({ id: retailers.id, name: retailers.name, place: retailers.place })
     .from(retailers)
-    .where(own ? eq(retailers.id, own) : undefined)
+    .where(where)
     .orderBy(asc(retailers.name));
 
   // A shop with one login sees one ledger: go straight to it.
   if (own && list.length === 1) redirect(`/ledger/${list[0].id}`);
-  if (list.length === 0) return empty("No retailers yet");
+  if (list.length === 0) return empty(scope?.repId ? "No retailers assigned to you" : "No retailers yet");
   return (
     <div className="flex flex-col gap-4">
       {header}

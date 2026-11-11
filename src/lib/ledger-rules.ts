@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Retailer ledger rules as plain functions (no database) so they are easy to test.
  * Source: docs/idea.md section 5 (Retailer dues) and section 3 (Order flow).
  *
@@ -89,7 +89,7 @@ export function orderDebitPaise(bags: number, ratePaise: number | null | undefin
   return Number.isSafeInteger(total) ? total : null;
 }
 
-/** Largest opening balance we accept: ₹100 crore (a typo guard, not a real business limit). */
+/** Largest opening balance we accept: â‚¹100 crore (a typo guard, not a real business limit). */
 export const MAX_OPENING_PAISE = 100 * 1_00_00_000 * 100;
 
 /**
@@ -138,12 +138,14 @@ export function adjustmentEntry(
   return { ok: true, entry: { retailerId, kind: "adjustment", amountPaise }, note: r.reason };
 }
 
-/** Which roles may see all retailers' ledgers; a retailer sees only their own. */
+/** Admin & Accounts see all ledgers; sales sees only assigned retailers; retailer sees only own. */
 export function canViewLedger(
   roles: { admin: boolean; accounts: boolean; sales: boolean; retailer: boolean },
   ownRetailerId: string | null,
   retailerId: string,
+  sales?: { userId: string; salesRepId: string | null },
 ): boolean {
-  if (roles.admin || roles.accounts || roles.sales) return true;
+  if (roles.admin || roles.accounts) return true;
+  if (roles.sales && sales?.salesRepId && sales.salesRepId === sales.userId) return true;
   return roles.retailer && ownRetailerId !== null && ownRetailerId === retailerId;
 }

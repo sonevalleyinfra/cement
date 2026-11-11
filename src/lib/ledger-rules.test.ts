@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   adjustmentEntry,
   balanceOf,
@@ -60,7 +60,7 @@ describe("order debit", () => {
     expect(orderDebitPaise(10, 0)).toBeNull();
     expect(orderDebitPaise(10, 10.5)).toBeNull();
   });
-  it("allows totals above the old 32-bit limit (₹2.15 crore)", () =>
+  it("allows totals above the old 32-bit limit (â‚¹2.15 crore)", () =>
     expect(orderDebitPaise(100000, 100000)).toBe(10_000_000_000));
   it("refuses totals JavaScript cannot count exactly", () =>
     expect(orderDebitPaise(1_000_000_000, 100_000_000)).toBeNull());
@@ -79,7 +79,7 @@ describe("dispatch entry", () => {
     expect(dispatchEntry(o, 0, 35000).ok).toBe(false);
   });
   it("one entry per dispatch: a rate change only touches later loads", () => {
-    // 100 bags: 40 sent at ₹350, rate changed to ₹360, 60 sent. Nothing else is posted.
+    // 100 bags: 40 sent at â‚¹350, rate changed to â‚¹360, 60 sent. Nothing else is posted.
     const a = dispatchEntry(o, 40, 35000);
     const b = dispatchEntry(o, 60, 36000);
     if (!a.ok || !b.ok) throw new Error("expected entries");
@@ -119,10 +119,18 @@ describe("opening balance", () => {
 
 describe("canViewLedger", () => {
   const none = { admin: false, accounts: false, sales: false, retailer: false };
-  it("staff see all", () => {
+  it("admin and accounts see all", () => {
     expect(canViewLedger({ ...none, accounts: true }, null, "r1")).toBe(true);
-    expect(canViewLedger({ ...none, sales: true }, null, "r1")).toBe(true);
     expect(canViewLedger({ ...none, admin: true }, null, "r1")).toBe(true);
+    expect(
+      canViewLedger({ ...none, accounts: true, sales: true }, null, "r1", { userId: "rep1", salesRepId: "rep2" }),
+    ).toBe(true);
+  });
+  it("sales sees only retailers assigned to them", () => {
+    expect(canViewLedger({ ...none, sales: true }, null, "r1", { userId: "rep1", salesRepId: "rep1" })).toBe(true);
+    expect(canViewLedger({ ...none, sales: true }, null, "r1", { userId: "rep1", salesRepId: "rep2" })).toBe(false);
+    expect(canViewLedger({ ...none, sales: true }, null, "r1", { userId: "rep1", salesRepId: null })).toBe(false);
+    expect(canViewLedger({ ...none, sales: true }, null, "r1")).toBe(false);
   });
   it("retailer sees only own", () => {
     expect(canViewLedger({ ...none, retailer: true }, "r1", "r1")).toBe(true);

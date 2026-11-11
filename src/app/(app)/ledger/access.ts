@@ -10,7 +10,7 @@ export async function ownRetailerId(userId: string): Promise<string | null> {
   return own?.id ?? null;
 }
 
-/** True if this user may read this retailer's ledger. Staff: all. Retailer: own shop only. */
+/** True if this user may read this retailer's ledger. Admin/Accounts: all. Sales: assigned shops only. Retailer: own shop only. */
 export async function mayViewLedger(user: { id: string; role?: string | null }, retailerId: string) {
   const roles = {
     admin: isAdmin(user.role),
@@ -18,6 +18,15 @@ export async function mayViewLedger(user: { id: string; role?: string | null }, 
     sales: hasRole(user.role, "sales"),
     retailer: hasRole(user.role, "retailer"),
   };
-  const own = roles.retailer ? await ownRetailerId(user.id) : null;
-  return canViewLedger(roles, own, retailerId);
+  if (roles.admin || roles.accounts) return true;
+  const [own, repRows] = await Promise.all([
+    roles.retailer ? ownRetailerId(user.id) : Promise.resolve(null),
+    roles.sales
+      ? db.select({ salesRepId: retailers.salesRepId }).from(retailers).where(eq(retailers.id, retailerId)).limit(1)
+      : Promise.resolve([]),
+  ]);
+  return canViewLedger(roles, own, retailerId, {
+    userId: user.id,
+    salesRepId: repRows[0]?.salesRepId ?? null,
+  });
 }
