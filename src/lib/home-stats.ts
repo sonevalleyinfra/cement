@@ -90,7 +90,7 @@ async function dispatchedTotalsSince(since: Date, salesRepId?: string) {
 
 export async function getSalesHome(userId: string, now = new Date()) {
   const month = monthStartIST(now);
-  const [pendingRate, today, dues, collectedTodayPaise, collectedMonthPaise, dispatchedMonth, collect] = await Promise.all([
+  const [pendingRate, today, dues, collectedTodayPaise, collectedMonthPaise, dispatchedMonth, collect, recentOrders] = await Promise.all([
     // "Rate to fill": my shops' placed orders with no rate yet.
     countOrders(and(eq(orders.salesRepId, userId), eq(orders.status, "placed"), isNull(orders.ratePaise))),
     countOrders(and(eq(orders.salesRepId, userId), gte(orders.createdAt, istDayStart(now)))),
@@ -102,6 +102,24 @@ export async function getSalesHome(userId: string, now = new Date()) {
     getOverdueRows(now)
       .then((rows) => collectToday(rows, userId, 10))
       .catch(() => null),
+    db
+      .select({
+        id: orders.id,
+        retailerName: retailers.name,
+        retailerPlace: retailers.place,
+        productName: products.name,
+        bags: orders.bags,
+        ratePaise: orders.ratePaise,
+        status: orders.status,
+        deliverTo: orders.deliverTo,
+        siteAddress: orders.siteAddress,
+      })
+      .from(orders)
+      .innerJoin(retailers, eq(retailers.id, orders.retailerId))
+      .innerJoin(products, eq(products.id, orders.productId))
+      .where(eq(orders.salesRepId, userId))
+      .orderBy(desc(orders.createdAt))
+      .limit(3),
   ]);
   return {
     pendingRate,
@@ -113,11 +131,11 @@ export async function getSalesHome(userId: string, now = new Date()) {
     bagsMonth: dispatchedMonth.bags,
     salesMonthPaise: dispatchedMonth.salesPaise,
     collect,
+    recentOrders,
   };
 }
 
-/** Handover requests nobody has answered yet: how many, and how much cash. */
-async function pendingHandovers() {
+function unansweredHandoverWhere() {
   const answer = db
     .select({ one: sql`1` })
     .from(sql`${walletMovements} as a`)
@@ -127,6 +145,11 @@ async function pendingHandovers() {
         inArray(sql`a.kind`, ["handover_confirmed", "handover_rejected"]),
       ),
     );
+  return and(eq(walletMovements.kind, "handover_request"), notExists(answer));
+}
+
+/** Handover requests nobody has answered yet: how many, and how much cash. */
+async function pendingHandovers() {
   const [row] = await db
     .select({
       c: count(),
@@ -134,18 +157,56 @@ async function pendingHandovers() {
       oldest: min(walletMovements.createdAt),
     })
     .from(walletMovements)
-    .where(and(eq(walletMovements.kind, "handover_request"), notExists(answer)));
+    .where(unansweredHandoverWhere());
   return { count: n(row?.c), paise: n(row?.p), oldest: row?.oldest ?? null };
 }
 
 const unverifiedOnline = and(eq(receipts.mode, "online"), eq(receipts.status, "unverified"));
 
 export async function getAccountsHome() {
-  const [approvals, oldestApproval, online, handovers] = await Promise.all([
+  const [approvals, oldestApproval, online, handovers, pendingOrders, pendingOnline, pendingCash] = await Promise.all([
     countOrders(waitingApproval),
     oldestOrder(waitingApproval),
     db.select({ c: count(), oldest: min(receipts.createdAt) }).from(receipts).where(unverifiedOnline),
     pendingHandovers(),
+    db
+      .select({
+        id: orders.id,
+        retailerName: retailers.name,
+        retailerPlace: retailers.place,
+        productName: products.name,
+        bags: orders.bags,
+        ratePaise: orders.ratePaise,
+      })
+      .from(orders)
+      .innerJoin(retailers, eq(retailers.id, orders.retailerId))
+      .innerJoin(products, eq(products.id, orders.productId))
+      .where(waitingApproval)
+      .orderBy(asc(orders.createdAt))
+      .limit(3),
+    db
+      .select({
+        id: receipts.id,
+        retailerName: retailers.name,
+        totalPaise: receipts.totalPaise,
+        receivedOn: receipts.receivedOn,
+      })
+      .from(receipts)
+      .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
+      .where(unverifiedOnline)
+      .orderBy(asc(receipts.createdAt))
+      .limit(3),
+    db
+      .select({
+        id: walletMovements.id,
+        collectorName: user.name,
+        amountPaise: walletMovements.amountPaise,
+      })
+      .from(walletMovements)
+      .innerJoin(user, eq(user.id, walletMovements.collectorId))
+      .where(unansweredHandoverWhere())
+      .orderBy(asc(walletMovements.createdAt))
+      .limit(3),
   ]);
   return {
     approvals,
@@ -154,6 +215,9 @@ export async function getAccountsHome() {
     cashToConfirmPaise: handovers.paise,
     /** When the oldest waiting item of each card arrived (null when nothing waits). */
     oldest: { approvals: oldestApproval, online: online[0]?.oldest ?? null, handovers: handovers.oldest },
+    pendingOrders,
+    pendingOnline,
+    pendingCash,
   };
 }
 

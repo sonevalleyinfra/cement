@@ -108,56 +108,6 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-4 font-sans">
-      {/* Top Hero: Cash in Hand Card with Handover pill */}
-      <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-xs font-semibold text-muted-foreground">Cash in Hand:</span>
-            <p className="mt-0.5 text-3xl font-black tracking-tight text-foreground">
-              {money(cash.heldPaise)}
-            </p>
-          </div>
-
-          <Link
-            href="/wallet"
-            className="inline-flex items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm font-bold text-primary transition-all duration-150 active:scale-95 hover:bg-primary/15"
-          >
-            Handover
-          </Link>
-        </div>
-
-        {/* Sales & Collection Breakdown */}
-        <div className="mt-3.5 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 text-xs">
-          <Link
-            href="/receipts"
-            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
-          >
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-semibold">Collected Today</span>
-              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <span className="mt-0.5 text-sm font-black text-foreground">{money(s.collectedTodayPaise)}</span>
-          </Link>
-          <Link
-            href="/ledger"
-            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
-          >
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-semibold">My Shops Due</span>
-              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <span className="mt-0.5 text-sm font-black text-rose-600 dark:text-rose-400">{money(s.duesPaise)}</span>
-          </Link>
-        </div>
-
-        <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
-          <span>
-            This Month: <strong className="text-foreground">{money(s.salesMonthPaise)}</strong> ({formatCount(s.bagsMonth)} bags)
-          </span>
-          <span>{s.retailersWithDues} shops owe dues</span>
-        </div>
-      </div>
-
       {/* Quick Actions (3 Vibrant Portrait Cards in a row) */}
       <div>
         <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
@@ -191,12 +141,93 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
         </div>
       </div>
 
-      {/* Recent Activity / Collect Today Feed */}
+      {/* Compact Summary Strip */}
+      <div className="grid grid-cols-3 gap-2">
+        <Link
+          href="/wallet"
+          className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
+        >
+          <span className="text-[11px] font-semibold text-muted-foreground">Cash in Hand</span>
+          <span className="mt-0.5 truncate text-sm font-black text-foreground">{money(cash.heldPaise)}</span>
+        </Link>
+        <Link
+          href="/receipts"
+          className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
+        >
+          <span className="text-[11px] font-semibold text-muted-foreground">Collected Today</span>
+          <span className="mt-0.5 truncate text-sm font-black text-emerald-600 dark:text-emerald-400">
+            {money(s.collectedTodayPaise)}
+          </span>
+        </Link>
+        <Link
+          href="/ledger"
+          className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
+        >
+          <span className="text-[11px] font-semibold text-muted-foreground">My Shops Due</span>
+          <span className="mt-0.5 truncate text-sm font-black text-rose-600 dark:text-rose-400">
+            {money(s.duesPaise)}
+          </span>
+        </Link>
+      </div>
+
+      {/* My Recent Orders (Top 3 + View all) */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">My Recent Orders</h2>
+          <Link href="/orders" className="text-xs font-bold text-primary hover:underline">
+            View all
+          </Link>
+        </div>
+
+        {s.recentOrders.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {s.recentOrders.map((o) => {
+              const location =
+                o.deliverTo === "site"
+                  ? o.siteAddress
+                    ? `Site: ${o.siteAddress}`
+                    : "Site delivery"
+                  : o.retailerPlace;
+              const needsRate = o.ratePaise == null && o.status === "placed";
+              return (
+                <Link
+                  key={o.id}
+                  href={`/orders/${o.id}`}
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-extrabold text-foreground">{o.retailerName}</p>
+                      {isOrderStatus(o.status) && <StatusChip status={o.status} />}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{location}</p>
+                    <p className="mt-1 text-xs font-semibold text-foreground">
+                      {o.productName} &middot; {num(o.bags)} bags
+                      {needsRate && (
+                        <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                          Fill rate
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No orders yet
+          </div>
+        )}
+      </div>
+
+      {/* Collect Today (Top 3 overdue shops) */}
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-extrabold text-foreground">Collect Today</h2>
           <Link href="/ledger?show=overdue" className="text-xs font-bold text-primary hover:underline">
-            View All
+            View all
           </Link>
         </div>
 
@@ -236,7 +267,7 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
 }
 
 /* =========================================================================
-   2. LOGISTICS SCREEN (Exact Match to Image 2: 3 Cards in a row)
+   1. SALES SCREEN (Exact Match to Image 2)
    ========================================================================= */
 
 export async function SimpleLogisticsHome() {
@@ -313,7 +344,7 @@ export async function SimpleLogisticsHome() {
                       {location}
                     </p>
                     <p className="mt-1 text-xs font-semibold text-foreground">
-                      {o.productName} ?{" "}
+                      {o.productName} &middot;{" "}
                       <span className="font-extrabold text-orange-600 dark:text-orange-400">
                         {num(o.remainingBags)} bags left
                       </span>
@@ -407,7 +438,7 @@ export async function SimpleLogisticsHome() {
                       key={p.name}
                       className="inline-flex items-center rounded-lg bg-muted/60 px-2.5 py-1 text-xs font-semibold text-foreground"
                     >
-                      {p.name} ? {num(p.bags)} bags
+                      {p.name} &middot; {num(p.bags)} bags
                     </span>
                   ))}
                 </div>
@@ -426,58 +457,9 @@ export async function SimpleLogisticsHome() {
 
 export async function SimpleAccountsHome() {
   const s = await getAccountsHome();
-  const totalWaiting = s.approvals + s.unverifiedOnline + s.handoversToConfirm;
 
   return (
     <div className="flex flex-col gap-4 font-sans">
-      {/* Top Hero: Verification Status Card */}
-      <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-xs font-semibold text-muted-foreground">Pending Verification:</span>
-            <p className="mt-0.5 text-3xl font-black tracking-tight text-foreground">
-              {totalWaiting} Items
-            </p>
-          </div>
-
-          <Link
-            href="/approvals"
-            className="inline-flex items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-sm font-bold text-primary transition-all duration-150 active:scale-95 hover:bg-primary/15"
-          >
-            Review
-          </Link>
-        </div>
-
-        {/* Accounts Pending Breakdown */}
-        <div className="mt-3.5 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 text-xs">
-          <Link
-            href="/wallet"
-            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
-          >
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-semibold">Staff Cash to Verify</span>
-              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <span className="mt-0.5 text-sm font-black text-emerald-600 dark:text-emerald-400">{money(s.cashToConfirmPaise)}</span>
-          </Link>
-          <Link
-            href="/receipts/review"
-            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
-          >
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-semibold">Online to Reconcile</span>
-              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <span className="mt-0.5 text-sm font-black text-blue-600 dark:text-blue-400">{s.unverifiedOnline} payments</span>
-          </Link>
-        </div>
-
-        <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Orders to approve: <strong className="text-foreground">{s.approvals} orders</strong></span>
-          <span>Cash requests: <strong>{s.handoversToConfirm} staff</strong></span>
-        </div>
-      </div>
-
       {/* Quick Actions (3 Vibrant Portrait Cards in a row) */}
       <div>
         <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
@@ -511,42 +493,119 @@ export async function SimpleAccountsHome() {
         </div>
       </div>
 
-      {/* Pending Approvals List */}
+      {/* Orders Waiting Approval (Top 3 + View all) */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">Pending Approvals</h2>
+          <h2 className="text-sm font-extrabold text-foreground">
+            Orders Waiting Approval ({s.approvals})
+          </h2>
           <Link href="/approvals" className="text-xs font-bold text-primary hover:underline">
-            View All
+            View all
           </Link>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Link
-            href="/approvals"
-            className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
-          >
-            <div>
-              <p className="text-sm font-bold text-foreground">Order Approvals</p>
-              <p className="text-xs text-muted-foreground">Credit limit &amp; rate checks</p>
-            </div>
-            <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-bold text-amber-700 dark:text-amber-400">
-              {s.approvals} waiting
-            </span>
-          </Link>
+        {s.pendingOrders.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {s.pendingOrders.map((o) => (
+              <Link
+                key={o.id}
+                href="/approvals"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-extrabold text-foreground">{o.retailerName}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{o.retailerPlace}</p>
+                  <p className="mt-1 text-xs font-semibold text-foreground">
+                    {o.productName} &middot; {num(o.bags)} bags
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  {o.ratePaise != null && (
+                    <p className="text-sm font-extrabold text-foreground">
+                      {money(o.bags * o.ratePaise)}
+                    </p>
+                  )}
+                  <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                    Approve
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No orders waiting approval
+          </div>
+        )}
+      </div>
 
-          <Link
-            href="/wallet"
-            className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
-          >
-            <div>
-              <p className="text-sm font-bold text-foreground">Sales Staff Cash</p>
-              <p className="text-xs text-muted-foreground">{s.handoversToConfirm} requests pending</p>
-            </div>
-            <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
-              {money(s.cashToConfirmPaise)}
-            </span>
+      {/* Staff Cash Handovers (Top 3 + View all) */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">
+            Staff Cash Handovers ({s.handoversToConfirm})
+          </h2>
+          <Link href="/wallet" className="text-xs font-bold text-primary hover:underline">
+            View all
           </Link>
         </div>
+
+        {s.pendingCash.length > 0 ? (
+          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
+            {s.pendingCash.map((c) => (
+              <Link
+                key={c.id}
+                href="/wallet"
+                className="flex items-center justify-between gap-3 px-4 py-3 text-sm transition-colors hover:bg-muted/40"
+              >
+                <span className="font-semibold text-foreground">{c.collectorName}</span>
+                <span className="shrink-0 font-extrabold text-emerald-600 dark:text-emerald-400">
+                  {money(c.amountPaise)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No cash handovers pending
+          </div>
+        )}
+      </div>
+
+      {/* Online / UPI to Reconcile (Top 3 + View all) */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">
+            Online / UPI to Verify ({s.unverifiedOnline})
+          </h2>
+          <Link href="/receipts/review" className="text-xs font-bold text-primary hover:underline">
+            View all
+          </Link>
+        </div>
+
+        {s.pendingOnline.length > 0 ? (
+          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
+            {s.pendingOnline.map((r) => (
+              <Link
+                key={r.id}
+                href="/receipts/review"
+                className="flex items-center justify-between gap-3 px-4 py-3 text-sm transition-colors hover:bg-muted/40"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-foreground">{r.retailerName}</p>
+                  <p className="text-xs text-muted-foreground">{r.receivedOn}</p>
+                </div>
+                <span className="shrink-0 font-extrabold text-blue-600 dark:text-blue-400">
+                  {money(r.totalPaise)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            All online payments verified
+          </div>
+        )}
       </div>
     </div>
   );
