@@ -260,8 +260,8 @@ describe.skipIf(!url)("credit check at approval (real database)", () => {
     const [truck] = await db.select({ id: vehicles.id }).from(vehicles).limit(1);
     if (!truck) throw new Error("The test database needs a truck (run seed:demo)");
     await db.insert(dispatches).values([
-      { orderId: partly, bags: 30, vehicleId: truck.id, driverName: "Test", driverPhone: "9876543210", ratePaise: RATE, fromVehicleId: truck.id, dispatchedBy: acc },
-      { orderId: partly, bags: 10, vehicleId: truck.id, driverName: "Test", driverPhone: "9876543210", ratePaise: RATE, fromVehicleId: truck.id, dispatchedBy: acc },
+      { orderId: partly, trackingId: "DSP-261112-TST1", bags: 30, vehicleId: truck.id, driverName: "Test", driverPhone: "9876543210", ratePaise: RATE, fromVehicleId: truck.id, dispatchedBy: acc },
+      { orderId: partly, trackingId: "DSP-261112-TST2", bags: 10, vehicleId: truck.id, driverName: "Test", driverPhone: "9876543210", ratePaise: RATE, fromVehicleId: truck.id, dispatchedBy: acc },
     ]);
     const facts = (await readCreditFacts(db, [shop], toISTDateKey(new Date()))).get(shop);
     // (100 − 40) + 10 bags at the rate.

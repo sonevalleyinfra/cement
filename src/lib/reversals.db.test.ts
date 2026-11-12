@@ -113,7 +113,7 @@ describe.skipIf(!url)("reversals (real database)", () => {
       const when = at ? { createdAt: at } : {};
       const [d] = await tx
         .insert(dispatches)
-        .values({ orderId, bags, vehicleId, driverName: "Test", driverPhone: "9876543210", fromGodownId: godownId, ratePaise: RATE, dispatchedBy: by, ...when })
+        .values({ orderId, trackingId: `DSP-TEST-${Math.random().toString(36).slice(2, 6).toUpperCase()}`, bags, vehicleId, driverName: "Test", driverPhone: "9876543210", fromGodownId: godownId, ratePaise: RATE, dispatchedBy: by, ...when })
         .returning({ id: dispatches.id, createdAt: dispatches.createdAt });
       await tx.insert(stockMovements).values({ productId, godownId, type: "dispatch", bags: -bags, orderId, actorId: by, createdAt: d.createdAt });
       await tx.insert(ledgerEntries).values({ retailerId: o.retailerId, kind: "order_debit", amountPaise: bags * RATE, orderId, actorId: by, createdAt: d.createdAt });
@@ -264,6 +264,7 @@ describe.skipIf(!url)("reversals (real database)", () => {
     const raw = (bags: number, over: Partial<typeof dispatches.$inferInsert> = {}) =>
       db.insert(dispatches).values({
         orderId: order,
+        trackingId: "DSP-TEST-RAW1",
         bags: -bags,
         vehicleId,
         driverName: "Test",
@@ -315,6 +316,7 @@ describe.skipIf(!url)("reversals (real database)", () => {
         if (header) {
           await tx.insert(purchases).values({
             stockMovementId: m.id,
+            trackingId: `TRK-TEST-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
             invoiceNo: "INV-1",
             invoiceDate: day[0].d,
             truckNumber: vehicleNumber,

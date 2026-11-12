@@ -111,6 +111,7 @@ export const purchases = pgTable(
       .unique()
       .references(() => stockMovements.id),
     invoiceNo: text("invoice_no").notNull(),
+    trackingId: text("tracking_id").notNull().unique(),
     /** The calendar day on the supplier's invoice (India); the supplier entry is dated on it. */
     invoiceDate: date("invoice_date").notNull(),
     truckNumber: text("truck_number").notNull(),

@@ -22,6 +22,7 @@
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { generateTrackingId } from "@/lib/tracking-id";
 import {
   areas,
   auditLog,
@@ -198,6 +199,7 @@ async function seedPurchase(
     .insert(purchases)
     .values({
       stockMovementId: moved.id,
+      trackingId: generateTrackingId("TRK"),
       invoiceNo: b.invoice,
       invoiceDate: daysAgo(b.ago),
       truckNumber: b.truck.number,
@@ -701,6 +703,7 @@ async function main() {
           .insert(dispatches)
           .values({
             orderId: o.id,
+            trackingId: generateTrackingId("DSP"),
             bags: load,
             vehicleId: truck.id,
             driverName: truck.driverName,
@@ -783,6 +786,7 @@ async function main() {
           .insert(dispatches)
           .values({
             orderId: o.id,
+            trackingId: generateTrackingId("DSP"),
             bags: load,
             vehicleId: truck.id,
             driverName: truck.driverName,

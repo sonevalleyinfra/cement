@@ -194,7 +194,8 @@ export function StockForm({
       (requestId) => action({ ...input, requestId }),
       (res) => {
         if (res.ok) {
-          setDone(copy[mode].done);
+          const code = "trackingId" in res && res.trackingId ? ` · Tracking ID: ${res.trackingId}` : "";
+          setDone(`${copy[mode].done}${code}`);
           // A fresh form: amount empty and (adjust) back to "Add bags", so it never shows "-0 bags".
           setDigits("");
           setMinus(false);

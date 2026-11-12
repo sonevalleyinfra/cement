@@ -27,6 +27,7 @@ export const dispatches = pgTable(
   "dispatches",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    trackingId: text("tracking_id").notNull(),
     orderId: uuid("order_id")
       .notNull()
       .references(() => orders.id),
@@ -53,6 +54,7 @@ export const dispatches = pgTable(
   },
   (t) => [
     index("dispatches_order_idx").on(t.orderId),
+    index("dispatches_tracking_idx").on(t.trackingId),
     // Reports read dispatches by date.
     index("dispatches_created_idx").on(t.createdAt),
     index("dispatches_reverses_idx").on(t.reversesDispatchId),

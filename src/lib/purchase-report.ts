@@ -28,6 +28,7 @@ export type RawPurchaseRow = {
   shortBags: number;
   burstBags: number;
   receivedBags: number;
+  trackingId?: string;
   shortMovementId: string | null;
   burstMovementId: string | null;
   unitCostPaise: number;
@@ -123,6 +124,7 @@ export type PurchaseRegisterRow = {
   productName: string;
   brandName: string;
   placeName: string;
+  trackingId: string;
   sourceLabel: string;
   truckNumber: string;
   driverName: string;
@@ -381,6 +383,7 @@ export function buildPurchaseReport({
 
     return {
       id: p.id,
+      trackingId: p.trackingId ?? "",
       movementId: p.movementId,
       vehicleId: p.vehicleId,
       productId: p.productId,

@@ -34,6 +34,7 @@ export type SaleRow = {
   salesRepName: string | null;
   vehicleId?: string | null;
   vehicleNumber?: string | null;
+  trackingId?: string | null;
   driverName?: string | null;
   driverPhone?: string | null;
   retailerPlace?: string | null;

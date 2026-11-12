@@ -99,6 +99,7 @@ export async function reverseDispatchInTx(
     .insert(dispatches)
     .values({
       orderId: order.id,
+      trackingId: load.trackingId,
       bags: -bags,
       vehicleId: load.vehicleId,
       driverName: load.driverName,
@@ -150,6 +151,7 @@ export async function reverseDispatchInTx(
     action: "reverse",
     details: {
       orderId: order.id,
+      trackingId: load.trackingId,
       retailerId: order.retailerId,
       productId: order.productId,
       bags,

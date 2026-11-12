@@ -49,6 +49,11 @@ function PurchaseCard({ p }: { p: PurchaseRegisterRow }) {
       {/* Header: Truck No, Entry Time, Status, Value */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {p.trackingId && (
+            <span className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-bold tracking-wide text-primary">
+              {p.trackingId}
+            </span>
+          )}
           <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-xs font-bold tracking-wide text-accent-foreground">
             {p.truckNumber}
           </span>

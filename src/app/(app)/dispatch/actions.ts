@@ -1,8 +1,8 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { dispatches, orderEvents, orders, stockMovements } from "@/db/schema";
+import { dispatches, orderEvents, orders, purchases, stockMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { saveOnce } from "@/lib/form-submissions";
 import { checkDispatchFields, planDispatch } from "@/lib/dispatch-rules";
@@ -15,6 +15,7 @@ import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
 import { atPlace, lockPlace, truckByNumber } from "@/lib/stock-places";
 import { placeColumns, placeKey } from "@/lib/stock-rules";
+import { generateTrackingId } from "@/lib/tracking-id";
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
 
@@ -83,8 +84,27 @@ export async function dispatchOrder(input: {
     });
     const load = `${input.bags} bags in ${fields.vehicleNumber}`;
     const source = placeColumns(placeKey(fields.from));
+    let trackingId: string | null = null;
+    if (source.vehicleId) {
+      const [activePurchase] = await tx
+        .select({ trackingId: purchases.trackingId })
+        .from(purchases)
+        .innerJoin(stockMovements, eq(purchases.stockMovementId, stockMovements.id))
+        .where(
+          and(
+            eq(stockMovements.vehicleId, source.vehicleId),
+            eq(stockMovements.productId, order.productId),
+            eq(stockMovements.type, "purchase"),
+          ),
+        )
+        .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id))
+        .limit(1);
+      trackingId = activePurchase?.trackingId ?? null;
+    }
+    if (!trackingId) trackingId = generateTrackingId("DSP");
     const [sentRow] = await tx.insert(dispatches).values({
       orderId: order.id,
+      trackingId,
       bags: input.bags,
       vehicleId,
       driverName: fields.driverName,
@@ -112,6 +132,7 @@ export async function dispatchOrder(input: {
       action: "create",
       details: {
         orderId: order.id,
+        trackingId,
         retailerId: order.retailerId,
         productId: order.productId,
         bags: input.bags,

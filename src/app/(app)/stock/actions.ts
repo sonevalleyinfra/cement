@@ -31,8 +31,9 @@ import { requireRole } from "@/lib/session";
 import { atPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
 import { checkClaimChange, checkPurchaseDetails, claimValuePaise } from "@/lib/purchase-rules";
 import { checkDriver, checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
+import { generateTrackingId } from "@/lib/tracking-id";
 
-export type StockResult = { ok: true } | { ok: false; error: string };
+export type StockResult = { ok: true; trackingId?: string } | { ok: false; error: string };
 
 export type StockInput = {
   /** The product, picked as its parts: brand, trade-type (channel), cement type and grade. */
@@ -271,10 +272,17 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     const shortId = linked.find((l) => l.movement.reasonCode === "transit_short")?.id ?? null;
     const burstId = linked.find((l) => l.movement.reasonCode === "transit_burst")?.id ?? null;
     await postSupplierEntry(tx, owed.entry, actorId, moved.id, { audit: false });
+    let trackingId = generateTrackingId("TRK");
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const [taken] = await tx.select({ id: purchases.id }).from(purchases).where(eq(purchases.trackingId, trackingId)).limit(1);
+      if (!taken) break;
+      trackingId = generateTrackingId("TRK");
+    }
     const [header] = await tx
       .insert(purchases)
       .values({
         stockMovementId: moved.id,
+        trackingId,
         invoiceNo: d.invoiceNo,
         invoiceDate: d.invoiceDate,
         truckNumber: truck.number,
@@ -304,6 +312,7 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
         amountPaise: owed.entry.amountPaise,
         brandId: owed.entry.brandId,
         invoiceNo: d.invoiceNo,
+        trackingId,
         invoiceDate: d.invoiceDate,
         truck: truck.number,
         driverName: truck.driverName,
@@ -327,12 +336,13 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
         details: { ...movementFacts(l.movement), reasonCode: l.movement.reasonCode, reason: l.movement.reason ?? "", purchaseId: header.id },
       });
     }
-    return { ok: true, resultId: moved.id };
+    return { ok: true, resultId: moved.id, trackingId };
   });
   if (!res.ok) return res;
   revalidatePath("/suppliers", "layout");
   revalidatePath("/stock/purchases");
-  return done();
+  const dRes = done();
+  return dRes.ok ? { ok: true, trackingId: (res as { trackingId?: string }).trackingId } : dRes;
 }
 
 /**

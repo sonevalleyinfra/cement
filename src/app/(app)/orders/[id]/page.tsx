@@ -123,6 +123,7 @@ export default async function OrderDetailPage({
     db
       .select({
         id: dispatches.id,
+        trackingId: dispatches.trackingId,
         bags: dispatches.bags,
         ratePaise: dispatches.ratePaise,
         driverName: dispatches.driverName,
@@ -258,9 +259,14 @@ export default async function OrderDetailPage({
                 <span className="tabular text-lg font-bold">
                   {bagsText(l.bags)}
                   {showPrice && l.ratePaise !== null && (
-                    <span className="text-sm font-normal text-muted-foreground"> · @ {formatINR(l.ratePaise)}/bag</span>
+                    <span className="text-sm font-normal text-muted-foreground"> @ {formatINR(l.ratePaise)}/bag</span>
                   )}
                 </span>
+                {showPrice && l.trackingId && (
+                  <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-bold tracking-wide text-primary">
+                    {l.trackingId}
+                  </span>
+                )}
                 <span className="text-sm font-semibold">{l.vehicle}</span>
               </div>
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
