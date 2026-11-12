@@ -332,29 +332,29 @@ export async function SimpleLogisticsHome() {
                 <Link
                   key={o.id}
                   href={`/orders/${o.id}`}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
+                  className="flex flex-col gap-1 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                       <p className="truncate text-sm font-extrabold text-foreground">
                         {o.retailerName}
                       </p>
                       {isOrderStatus(o.status) && <StatusChip status={o.status} />}
                     </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {location}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-foreground">
-                      {o.productName} &middot;{" "}
-                      <span className="font-extrabold text-orange-600 dark:text-orange-400">
-                        {num(o.remainingBags)} bags left
-                      </span>
-                    </p>
+                    <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                      <OrderAgeTimer sinceIso={o.updatedAt.toISOString()} initialNowMs={now.getTime()} />
+                      <ChevronRight className="size-4 text-muted-foreground" />
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <OrderAgeTimer sinceIso={o.updatedAt.toISOString()} initialNowMs={now.getTime()} />
-                    <ChevronRight className="size-4 text-muted-foreground" />
-                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {location}
+                  </p>
+                  <p className="text-xs font-semibold text-foreground">
+                    {o.productName} &middot;{" "}
+                    <span className="font-extrabold text-orange-600 dark:text-orange-400">
+                      {num(o.remainingBags)} bags left
+                    </span>
+                  </p>
                 </Link>
               );
             })}
