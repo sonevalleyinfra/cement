@@ -75,7 +75,7 @@ function QuickActionTile({ href, line1, line2, sub, icon: Icon, gradient }: Quic
     >
       <div className="flex size-10 items-center justify-center rounded-xl bg-white/20 transition-transform group-hover:scale-105">
         {Icon === "rupee" ? (
-          <span className="text-lg font-black leading-none">â‚¹</span>
+          <span className="text-lg font-black leading-none">&#8377;</span>
         ) : (
           <Icon className="size-5 text-white" strokeWidth={2.4} />
         )}
@@ -793,7 +793,7 @@ export async function SimpleAdminHome() {
             Collected Today: <strong className="text-foreground">{money(todayTotalCollected)}</strong>
           </span>
           <span className="text-muted-foreground text-[11px]">
-            Cash: <strong className="text-foreground">{money(todayCash)}</strong> Â· Online: <strong className="text-foreground">{money(todayOnline)}</strong>
+            Cash: <strong className="text-foreground">{money(todayCash)}</strong> &middot; Online: <strong className="text-foreground">{money(todayOnline)}</strong>
           </span>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-1 rounded-xl bg-blue-500/8 px-3.5 py-2 text-xs">
@@ -907,7 +907,7 @@ export async function SimpleAdminHome() {
           <div className="flex items-center gap-2">
             {marginPerBag !== null && (
               <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
-                â‚¹{money(marginPerBag)}/bag
+                {money(marginPerBag)}/bag
               </span>
             )}
             {salesDelta !== null && (
@@ -1005,7 +1005,7 @@ export async function SimpleAdminHome() {
             href={`/reports/purchases?from=${w.today}&to=${w.today}`}
             line1="Purchase"
             line2="Report"
-            sub={todayPurchaseBags > 0 ? `${short(todayPurchasePaise)} Â· ${num(todayPurchaseBags)} bags` : "Truck journey & CSV"}
+            sub={todayPurchaseBags > 0 ? `${short(todayPurchasePaise)} \u00b7 ${num(todayPurchaseBags)} bags` : "Truck journey & CSV"}
             icon={PackagePlus}
             gradient="bg-gradient-to-br from-blue-600 to-indigo-700"
           />
@@ -1014,7 +1014,7 @@ export async function SimpleAdminHome() {
             href={`/reports/sales?from=${w.today}&to=${w.today}`}
             line1="Dispatch"
             line2="Report"
-            sub={bags > 0 ? `${short(salesPaise)} Â· ${num(bags)} bags` : "Register & CSV"}
+            sub={bags > 0 ? `${short(salesPaise)} \u00b7 ${num(bags)} bags` : "Register & CSV"}
             icon={Truck}
             gradient="bg-gradient-to-br from-sky-600 to-blue-700"
           />
@@ -1072,7 +1072,7 @@ export async function SimpleAdminHome() {
           <div className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs">
             <span className="text-xs font-semibold text-muted-foreground">DSO (Collection Speed)</span>
             <span className="mt-1 text-lg font-black text-foreground">
-              {!risk || risk.dso === null ? "â€”" : daysText(risk.dso)}
+              {!risk || risk.dso === null ? "\u2014" : daysText(risk.dso)}
             </span>
             <span className="text-[11px] text-muted-foreground font-medium">Average days</span>
           </div>
