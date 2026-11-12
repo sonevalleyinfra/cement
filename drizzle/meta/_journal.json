@@ -337,6 +337,13 @@
       "when": 1793290000000,
       "tag": "0047_exact_cement_products",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794467321506,
+      "tag": "0048_rename_contractor_to_customer",
+      "breakpoints": true
     }
   ]
 }

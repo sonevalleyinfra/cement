@@ -10,7 +10,7 @@ import { saveOnce } from "@/lib/form-submissions";
 import { isUuid } from "@/lib/ids";
 import { isBagsInRange, resolveOrderRetailer, validatePlaceOrder } from "@/lib/order-access";
 import { checkDelivery, checkNotes, orderSourceFor } from "@/lib/order-delivery-rules";
-import { canEditOrderBags, checkEditOrderBags, planCancel } from "@/lib/order-rules";
+import { canEditOrderBags, checkEditOrderBags, isOrderStatus, planCancel, statusAfterBagEdit } from "@/lib/order-rules";
 import { rolesFor } from "@/lib/permissions";
 import {
   canChangeRate,
@@ -416,10 +416,9 @@ export async function updateOrderBags(
     const check = checkEditOrderBags(o.bags, dispatchedBags, newBags);
     if (!check.ok) return check;
 
-    let newStatus = o.status;
-    if (dispatchedBags > 0 && newBags > dispatchedBags) {
-      newStatus = "partly_dispatched";
-    }
+    const newStatus = isOrderStatus(o.status)
+      ? statusAfterBagEdit(me.role, o.status, check.newBags, dispatchedBags)
+      : o.status;
 
     await tx
       .update(orders)
@@ -431,9 +430,10 @@ export async function updateOrderBags(
       .where(eq(orders.id, orderId));
 
     const cleanNote = note ? note.trim().slice(0, 200) : "";
+    const approvalSuffix = o.status === "approved" && newStatus === "placed" ? " · sent for approval" : "";
     const eventReason = cleanNote
-      ? `Quantity updated: ${o.bags} → ${check.newBags} bags (${cleanNote})`
-      : `Quantity updated: ${o.bags} → ${check.newBags} bags`;
+      ? `Quantity updated: ${o.bags} → ${check.newBags} bags${approvalSuffix} (${cleanNote})`
+      : `Quantity updated: ${o.bags} → ${check.newBags} bags${approvalSuffix}`;
 
     await tx.insert(orderEvents).values({
       orderId,

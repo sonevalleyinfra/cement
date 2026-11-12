@@ -21,7 +21,7 @@ import {
 } from "@/lib/order-access";
 import { DELIVER_TO_LABELS, notesForViewer, orderSourceLabel } from "@/lib/order-delivery-rules";
 import { orderBackHref } from "@/lib/order-filter-rules";
-import { canCancelOrder, canEditOrderBags, isOrderStatus, orderTotalPaise, remainingBags } from "@/lib/order-rules";
+import { canCancelOrder, canEditOrderBags, isOrderStatus, needsReapprovalOnBagEdit, orderTotalPaise, remainingBags } from "@/lib/order-rules";
 import { canChangeRate, canFillRate } from "@/lib/rate-rules";
 import { reasonLabel } from "@/lib/reason-codes";
 import { isReversibleOrderStatus, reversedByLoad } from "@/lib/reversal-rules";
@@ -182,7 +182,14 @@ export default async function OrderDetailPage({
       </PageHeader>
       {(canEditBags || canDispatchOrder) && (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          {canEditBags && <EditBagsForm orderId={o.id} currentBags={o.bags} sentBags={sentBags} />}
+          {canEditBags && (
+            <EditBagsForm
+              orderId={o.id}
+              currentBags={o.bags}
+              sentBags={sentBags}
+              needsReapproval={needsReapprovalOnBagEdit(user.role, o.status)}
+            />
+          )}
           {canDispatchOrder && (
             <Link
               href={`/dispatch?orderId=${o.id}`}

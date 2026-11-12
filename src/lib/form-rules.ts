@@ -54,3 +54,15 @@ export function pressKey(value: string, key: string, { maxLength = 9, decimal = 
   const next = (whole + key).replace(/^0+(?=\d)/, "");
   return next.length <= maxLength ? next : value;
 }
+
+/** Map a physical keyboard key to a Keypad key ("0"-"9", ".", "del"), or null if ignored. */
+export function mapKeyboardKeyToKeypad(
+  key: string,
+  options: { decimal?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean } = {},
+): string | null {
+  if (options.ctrlKey || options.metaKey || options.altKey) return null;
+  if (/^\d$/.test(key)) return key;
+  if (key === "Backspace" || key === "Delete") return "del";
+  if (key === "." && options.decimal) return ".";
+  return null;
+}

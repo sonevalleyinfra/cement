@@ -148,7 +148,7 @@ describe("geoErrorText", () => {
 
 describe("category", () => {
   it("accepts the five kinds", () => {
-    for (const c of ["retailer", "sub_dealer", "contractor", "builder", "institution"]) {
+    for (const c of ["retailer", "sub_dealer", "customer", "builder", "institution"]) {
       expect(value({ category: c }).category).toBe(c);
     }
   });

@@ -27,6 +27,7 @@ import { buildRetailersHref, type OrderScope } from "@/lib/order-filter-rules";
 import { reasonHint } from "@/lib/reason-codes";
 import { matchesRetailerSearch, retailerInScope } from "@/lib/retailer-rules";
 import {
+  canHaveShopLogin,
   type CategoryFilter,
   CREDIT_STATUSES,
   CREDIT_STATUS_LABELS,
@@ -101,7 +102,7 @@ const NO_LIMIT_CLASS = "text-amber-700";
 const CATEGORY_TABS: { value: CategoryFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "retailer", label: "Retailers" },
-  { value: "contractor", label: "Contractors" },
+  { value: "customer", label: "Customers" },
 ];
 
 const SCOPE_TABS: { value: OrderScope; label: string }[] = [
@@ -174,7 +175,7 @@ export function RetailersView({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Retailers & Contractors" back={fromHome ? "/retailers" : undefined} />
+      <PageHeader title="Retailers & Customers" back={fromHome ? "/retailers" : undefined} />
 
       {hasScopeTabs && (
         <div className="grid grid-cols-2 gap-2">
@@ -246,6 +247,7 @@ export function RetailersView({
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-bold text-muted-foreground">
                         {SHOP_CATEGORY_LABELS[shopCategoryOf(r.category)]}
+                        {!canHaveShopLogin(r.category) && " · No login"}
                       </span>
                       {!r.active && <StatusChip status="cancelled" label="Off" />}
                     </div>
@@ -368,7 +370,7 @@ export function RetailersView({
           />
         )}
       </Sheet>
-      <Sheet open={adding} onOpenChange={setAdding} title="New retailer">
+      <Sheet open={adding} onOpenChange={setAdding} title="New retailer / customer">
         {adding && <AddShop salesReps={salesReps ?? []} onDone={() => setAdding(false)} />}
       </Sheet>
     </div>
@@ -640,7 +642,7 @@ function ShopDetail({
         phone,
         place,
         salesRepId: salesReps && repId && repId !== (row.salesRepId ?? "") ? repId : undefined,
-        userId: logins && loginId !== (row.userId ?? "") ? loginId || null : undefined,
+        userId: !canHaveShopLogin(category) ? (row.userId ? null : undefined) : logins && loginId !== (row.userId ?? "") ? loginId || null : undefined,
         master: { ownerName, altPhone, address, areaId, pincode, lat: geo.lat, lng: geo.lng, category, openedOn, gstin },
         credit: { limit, days, status: creditStatus, note: creditChanged ? note : "" },
       });
@@ -737,7 +739,11 @@ function ShopDetail({
               <HintLine>{`${duesText} dues move to ${newRepName}`}</HintLine>
             </div>
           )}
-          {logins && <SelectField label="Login" value={loginId} onChange={setLoginId} options={loginOptions} />}
+          {canHaveShopLogin(category) ? (
+            logins && <SelectField label="Login" value={loginId} onChange={setLoginId} options={loginOptions} />
+          ) : (
+            <p className="text-xs text-muted-foreground">Login: Customers do not get a login (data &amp; delivery only).</p>
+          )}
         </section>
         <section className="flex flex-col gap-4">
           <SectionCaption>Contact</SectionCaption>
@@ -889,9 +895,14 @@ function AddShop({ salesReps, onDone }: { salesReps: Login[]; onDone: () => void
   return (
     <form onSubmit={submit} onInput={clearError} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label>Customer type</Label>
+        <Label>Type</Label>
+        <p className="text-xs text-muted-foreground">
+          {category === "customer"
+            ? "Customer does not get a login — data stays with us for orders & delivery."
+            : "Retailer shop (can link a login later if needed)."}
+        </p>
         <div className="flex gap-2">
-          {SHOP_CATEGORIES.filter((c) => c === "retailer" || c === "contractor").map((c) => (
+          {SHOP_CATEGORIES.filter((c) => c === "retailer" || c === "customer").map((c) => (
             <button
               key={c}
               type="button"

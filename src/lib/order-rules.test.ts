@@ -4,6 +4,9 @@ import {
   ALLOWED_TRANSITIONS,
   ORDER_STATUSES,
   canCancelOrder,
+  canEditOrderBags,
+  needsReapprovalOnBagEdit,
+  statusAfterBagEdit,
   canTransition,
   canUserTransition,
   checkDispatchBags,
@@ -240,5 +243,32 @@ describe("bag wording in messages", () => {
   it("says 'bag is' for one and 'bags are' for more", () => {
     expect(checkDispatchBags(10, 9, 5)).toEqual({ ok: false, error: "Only 1 bag is left to dispatch." });
     expect(checkDispatchBags(10, 5, 9)).toEqual({ ok: false, error: "Only 5 bags are left to dispatch." });
+  });
+});
+
+describe("editing order bags and re-approval", () => {
+  it("allows staff to edit placed/approved, but only admin/accounts on partly_dispatched", () => {
+    for (const r of ["admin", "accounts", "sales", "logistics"]) {
+      expect(canEditOrderBags(r, "placed")).toBe(true);
+      expect(canEditOrderBags(r, "approved")).toBe(true);
+    }
+    expect(canEditOrderBags("admin", "partly_dispatched")).toBe(true);
+    expect(canEditOrderBags("accounts", "partly_dispatched")).toBe(true);
+    expect(canEditOrderBags("sales", "partly_dispatched")).toBe(false);
+    expect(canEditOrderBags("logistics", "partly_dispatched")).toBe(false);
+    expect(canEditOrderBags("admin", "dispatched")).toBe(false);
+  });
+
+  it("resets approved orders to placed when edited by sales/logistics, but keeps approved for admin/accounts", () => {
+    expect(needsReapprovalOnBagEdit("sales", "approved")).toBe(true);
+    expect(needsReapprovalOnBagEdit("logistics", "approved")).toBe(true);
+    expect(needsReapprovalOnBagEdit("admin", "approved")).toBe(false);
+    expect(needsReapprovalOnBagEdit("accounts", "approved")).toBe(false);
+
+    expect(statusAfterBagEdit("sales", "approved", 150, 0)).toBe("placed");
+    expect(statusAfterBagEdit("logistics", "approved", 150, 0)).toBe("placed");
+    expect(statusAfterBagEdit("admin", "approved", 150, 0)).toBe("approved");
+    expect(statusAfterBagEdit("accounts", "approved", 150, 0)).toBe("approved");
+    expect(statusAfterBagEdit("admin", "partly_dispatched", 150, 50)).toBe("partly_dispatched");
   });
 });

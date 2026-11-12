@@ -7,7 +7,7 @@ import { canLinkRetailerUser } from "./rate-rules";
 import { hasRole } from "./roles";
 import { creditChange, validateCredit, type CreditChange, type CreditForm, type CreditTerms } from "./credit-rules";
 import { checkSalesRepPick, type SalesRepCandidate } from "./sales-rep-rules";
-import { isCreditStatus } from "./shop-lists";
+import { canHaveShopLogin, isCreditStatus } from "./shop-lists";
 import { checkAreaPick, validateShopMaster, type AreaCandidate, type ShopMaster, type ShopMasterForm } from "./shop-master-rules";
 
 // The phone rules moved to phone-rules.ts (the shop master rules use them too).
@@ -155,6 +155,7 @@ export function planShopEdit(
     creditLimitPaise?: number | null;
     creditDays?: number | null;
     creditStatus?: string;
+    category?: string | null;
   },
   form: ShopEditForm,
   facts: ShopEditFacts,
@@ -171,7 +172,11 @@ export function planShopEdit(
   }
 
   let userId: string | null | undefined = undefined;
-  if (form.userId !== undefined && (form.userId || null) !== shop.userId) {
+  const nextCategory = form.master?.category || shop.category;
+  if (!canHaveShopLogin(nextCategory)) {
+    if (form.userId) return { ok: false, error: "Customers do not use a login account." };
+    if (shop.userId) userId = null;
+  } else if (form.userId !== undefined && (form.userId || null) !== shop.userId) {
     userId = form.userId || null;
     if (userId) {
       if (!facts.login || facts.login.id !== userId || !hasRole(facts.login.role, "retailer")) {

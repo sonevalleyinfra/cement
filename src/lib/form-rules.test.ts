@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorKey, firstMissing, pressKey, visibleError } from "./form-rules";
+import { errorKey, firstMissing, mapKeyboardKeyToKeypad, pressKey, visibleError } from "./form-rules";
 import { parseRupeesToPaise } from "./money";
 
 describe("errorKey", () => {
@@ -67,5 +67,24 @@ describe("pressKey (on-screen keypad)", () => {
   it("the length cap counts whole rupees only", () => {
     expect(type(["1", "2", "3", ".", "4", "5"], { maxLength: 3, decimal: true })).toBe("123.45");
     expect(type(["1", "2", "3", "4"], { maxLength: 3, decimal: true })).toBe("123");
+  });
+});
+
+describe("mapKeyboardKeyToKeypad", () => {
+  it("maps digits, Backspace/Delete, and optional decimal point", () => {
+    expect(mapKeyboardKeyToKeypad("5")).toBe("5");
+    expect(mapKeyboardKeyToKeypad("0")).toBe("0");
+    expect(mapKeyboardKeyToKeypad("Backspace")).toBe("del");
+    expect(mapKeyboardKeyToKeypad("Delete")).toBe("del");
+    expect(mapKeyboardKeyToKeypad(".", { decimal: false })).toBeNull();
+    expect(mapKeyboardKeyToKeypad(".", { decimal: true })).toBe(".");
+  });
+
+  it("ignores non-digit keys and modifier shortcuts", () => {
+    expect(mapKeyboardKeyToKeypad("a")).toBeNull();
+    expect(mapKeyboardKeyToKeypad("Enter")).toBeNull();
+    expect(mapKeyboardKeyToKeypad("5", { ctrlKey: true })).toBeNull();
+    expect(mapKeyboardKeyToKeypad("5", { metaKey: true })).toBeNull();
+    expect(mapKeyboardKeyToKeypad("5", { altKey: true })).toBeNull();
   });
 });

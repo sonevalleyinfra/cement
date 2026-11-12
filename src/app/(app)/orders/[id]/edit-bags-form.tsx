@@ -13,10 +13,12 @@ export function EditBagsForm({
   orderId,
   currentBags,
   sentBags,
+  needsReapproval = false,
 }: {
   orderId: string;
   currentBags: number;
   sentBags: number;
+  needsReapproval?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -81,6 +83,11 @@ export function EditBagsForm({
         <h4 className="text-sm font-bold text-foreground">Update Order Quantity</h4>
         <span className="text-xs text-muted-foreground">Current: {bagsText(currentBags)}</span>
       </div>
+      {needsReapproval && (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+          Updating an approved order will send it back to Accountant &amp; Admin for approval.
+        </p>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-edit-bags" className="text-xs">

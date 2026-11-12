@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { Delete } from "lucide-react";
-import { pressKey } from "@/lib/form-rules";
+import { mapKeyboardKeyToKeypad, pressKey } from "@/lib/form-rules";
 import { cn } from "@/lib/utils";
 
 const wholeKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "del"] as const;
@@ -28,6 +29,25 @@ export function Keypad({
     const next = pressKey(value, key, { maxLength, decimal });
     if (next !== value) onChange(next);
   }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      const mapped = mapKeyboardKeyToKeypad(e.key, {
+        decimal,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+      });
+      if (!mapped) return;
+      e.preventDefault();
+      const next = pressKey(value, mapped, { maxLength, decimal });
+      if (next !== value) onChange(next);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [value, onChange, maxLength, decimal]);
 
   return (
     <div className="grid grid-cols-3 gap-2">

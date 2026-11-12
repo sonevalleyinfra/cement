@@ -4,13 +4,13 @@
  */
 
 /** What kind of buyer a shop is. */
-export const SHOP_CATEGORIES = ["retailer", "sub_dealer", "contractor", "builder", "institution"] as const;
+export const SHOP_CATEGORIES = ["retailer", "sub_dealer", "customer", "builder", "institution"] as const;
 export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
 
 export const SHOP_CATEGORY_LABELS: Record<ShopCategory, string> = {
   retailer: "Retailer",
   sub_dealer: "Sub-dealer",
-  contractor: "Contractor",
+  customer: "Customer",
   builder: "Builder",
   institution: "Institution",
 };
@@ -42,7 +42,12 @@ export function shopCategoryOf(category: string | null | undefined): ShopCategor
 }
 
 /** The shop list's filter tabs. Sub-dealers, builders and institutions show only under All. */
-export type CategoryFilter = "all" | "retailer" | "contractor";
+export type CategoryFilter = "all" | "retailer" | "customer";
+
+/** Customers never get a login account; their data stays in the app for orders and dispatch. */
+export function canHaveShopLogin(category: string | null | undefined): boolean {
+  return category !== "customer";
+}
 
 export function matchesCategoryFilter(category: string | null | undefined, filter: CategoryFilter): boolean {
   return filter === "all" || shopCategoryOf(category) === filter;

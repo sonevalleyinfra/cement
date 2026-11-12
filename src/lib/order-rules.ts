@@ -132,12 +132,37 @@ export function isValidBags(bags: number): boolean {
 
 /**
  * Can order bags/quantity be edited?
- * Allowed while order is active: 'placed', 'approved', or 'partly_dispatched'.
+ * Allowed on 'placed' and 'approved' for staff (sales/logistics edits on approved orders reset to 'placed' for re-approval).
+ * On 'partly_dispatched', only admin and accounts can edit quantity.
  */
 export function canEditOrderBags(role: string | null | undefined, status: string): boolean {
   if (!isOrderStatus(status)) return false;
-  if (!["placed", "approved", "partly_dispatched"].includes(status)) return false;
-  return hasAnyRole(role, ["admin", "sales", "logistics", "accounts"]);
+  if (status === "partly_dispatched") return hasAnyRole(role, ["admin", "accounts"]);
+  if (status === "placed" || status === "approved") {
+    return hasAnyRole(role, ["admin", "sales", "logistics", "accounts"]);
+  }
+  return false;
+}
+
+/** Whether editing an order in `status` by `role` requires re-approval by accountant/admin. */
+export function needsReapprovalOnBagEdit(role: string | null | undefined, status: string): boolean {
+  return status === "approved" && !hasAnyRole(role, ["admin", "accounts"]);
+}
+
+/** Next order status after editing bags. Non-admin/non-accounts edits on approved orders return to 'placed'. */
+export function statusAfterBagEdit(
+  role: string | null | undefined,
+  currentStatus: OrderStatus,
+  newBags: number,
+  dispatchedBags: number,
+): OrderStatus {
+  if (dispatchedBags > 0 && newBags > dispatchedBags) {
+    return "partly_dispatched";
+  }
+  if (needsReapprovalOnBagEdit(role, currentStatus)) {
+    return "placed";
+  }
+  return currentStatus;
 }
 
 export function checkEditOrderBags(

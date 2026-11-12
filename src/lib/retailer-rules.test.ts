@@ -162,6 +162,31 @@ describe("planShopEdit", () => {
     const same = planShopEdit(linked, { ...form, userId: "u9" }, facts);
     expect(same.ok && same.userId).toBeUndefined();
   });
+  it("refuses linking a login to a customer and unlinks when switching to customer", () => {
+    expect(
+      planShopEdit({ ...shop, category: "customer" }, { ...form, userId: "u9" }, { ...facts, login }),
+    ).toEqual({ ok: false, error: "Customers do not use a login account." });
+    const unlinkOnSwitch = planShopEdit(
+      { ...shop, category: "retailer", userId: "u9" },
+      {
+        ...form,
+        master: {
+          ownerName: "",
+          altPhone: "",
+          address: "",
+          areaId: "",
+          pincode: "",
+          lat: null,
+          lng: null,
+          category: "customer",
+          openedOn: "",
+          gstin: "",
+        },
+      },
+      facts,
+    );
+    expect(unlinkOnSwitch.ok && unlinkOnSwitch.userId).toBeNull();
+  });
 });
 
 describe("planShopEdit: master and credit parts", () => {
