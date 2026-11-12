@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { db } from "@/db";
-import { dispatches, orders, products, retailers, vehicles } from "@/db/schema";
+import { dispatches, orders, products, retailers } from "@/db/schema";
 import { formatDate, toISTDateKey } from "@/lib/datetime";
 import { truckChips } from "@/lib/dispatch-rules";
 import { byRequiredBy, isPastRequiredBy } from "@/lib/order-delivery-rules";
@@ -26,7 +26,8 @@ export default async function DispatchPage({
   const initialOrderId = sp?.orderId ?? null;
 
   // Every approved or partly dispatched order: any logistics person may send it.
-  const [rows, balances, recent, activeTrucks] = await Promise.all([
+  // Only currently loaded trucks (`bags > 0`) remain in active UI; 0-bag trucks stay in DB & reports only.
+  const [rows, balances, activeTrucks] = await Promise.all([
     db
       .select({
         id: orders.id,
@@ -56,15 +57,6 @@ export default async function DispatchPage({
       .orderBy(asc(orders.createdAt))
       .limit(100),
     getBalances(),
-    // Newest dispatches first: their truck and driver become chips in the sheet.
-    db
-      .select({ truck: vehicles.number, driverName: dispatches.driverName, driverPhone: dispatches.driverPhone })
-      .from(dispatches)
-      .innerJoin(vehicles, eq(vehicles.id, dispatches.vehicleId))
-      // Loads only (a reversal row copies its load's truck, v2 B2); ignore hidden trucks.
-      .where(and(gt(dispatches.bags, 0), eq(vehicles.active, true)))
-      .orderBy(desc(dispatches.createdAt))
-      .limit(30),
     getActiveTrucks(),
   ]);
   // The earliest "needed by" first (none last), then the oldest order first.
@@ -82,11 +74,8 @@ export default async function DispatchPage({
     .filter(Boolean);
   const chips = truckChips(
     loadedTruckNumbers,
-    [
-      ...activeTrucks.map((t) => ({ truck: t.number, driverName: t.driverName, driverPhone: t.driverPhone })),
-      ...recent,
-    ],
-    Math.max(50, loadedTruckNumbers.length + activeTrucks.length + recent.length),
+    activeTrucks.map((t) => ({ truck: t.number, driverName: t.driverName, driverPhone: t.driverPhone })),
+    Math.max(50, loadedTruckNumbers.length + activeTrucks.length),
   );
   const places = [
     ...new Map(

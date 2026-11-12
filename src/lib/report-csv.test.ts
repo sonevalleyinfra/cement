@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { toCsv } from "./csv";
 import { emptyBuckets, type DuesAging } from "./due-items";
 import { lossReport } from "./loss-report";
-import { cashRows, csvFilename, duesRows, lossRows, salesRows, statementRows, stockRows, supplierRows } from "./report-csv";
+import { buildPurchaseReport } from "./purchase-report";
+import { cashRows, csvFilename, duesRows, lossRows, purchaseRows, salesRows, statementRows, stockRows, supplierRows } from "./report-csv";
 import { reportRange } from "./report-range";
 import type { SalesReport } from "./sales-report";
 import { buildStatement } from "./statement-rules";
@@ -151,5 +152,71 @@ describe("lossRows", () => {
       ["Total", 5, "999.99", 2],
       ["Total", 5, "999.99", 2],
     ]);
+  });
+});
+
+
+describe("purchaseRows", () => {
+  it("exports summary, detailed purchase register, truck journey until 0 bags, and product/source tables", () => {
+    const r = buildPurchaseReport({
+      inRangePurchases: [
+        {
+          id: "p1",
+          movementId: "m1",
+          createdAt: new Date("2026-11-10T05:00:00Z"),
+          invoiceDate: "2026-11-10",
+          invoiceNo: "INV-55",
+          productId: "pr1",
+          productName: "Prism PPC",
+          brandName: "Prism",
+          vehicleId: "v1",
+          placeName: "Truck UP65AA1111",
+          truckNumber: "UP65AA1111",
+          driverName: "Raju",
+          driverPhone: "9876543210",
+          billedBags: 200,
+          shortBags: 0,
+          burstBags: 0,
+          receivedBags: 200,
+          shortMovementId: null,
+          burstMovementId: null,
+          unitCostPaise: 30000,
+          freightPaise: 200000,
+          unloadingPaise: 0,
+          landedUnitCostPaise: 31000,
+          claimStatus: "none",
+          actorName: "Admin",
+          note: "Source: Satna Plant",
+        },
+      ],
+      dispatchEvents: [
+        {
+          fromVehicleId: "v1",
+          productId: "pr1",
+          createdAt: new Date("2026-11-10T08:00:00Z"),
+          bags: 200,
+          ratePaise: 35000,
+          retailerName: "Sharma Cement",
+          retailerPlace: "Varanasi",
+          deliverTo: "site",
+          siteAddress: "Ring Road",
+          receiverName: "Anil",
+          receiverPhone: "9811112222",
+          salesRepName: "Ravi",
+          actorName: "Admin",
+          reasonCode: null,
+          reasonNote: "",
+        },
+      ],
+      currentBalances: new Map([["v1:pr1", 0]]),
+    });
+    const out = purchaseRows(r, "2026-11-10", "2026-11-10");
+    expect(out[0]).toEqual(["Purchases", "2026-11-10 to 2026-11-10"]);
+    expect(out).toContainEqual(["Detailed Purchase Register"]);
+    expect(out).toContainEqual(["Truck Purchase-to-Dispatch Journey"]);
+    expect(toCsv(out)).toContain("INV-55");
+    expect(toCsv(out)).toContain("Completed (0 left)");
+    expect(toCsv(out)).toContain("Sharma Cement");
+    expect(toCsv(out)).toContain("Ring Road");
   });
 });

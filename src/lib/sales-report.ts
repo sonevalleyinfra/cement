@@ -41,6 +41,13 @@ export type SaleRow = {
   movementType?: string | null;
   purchaseDate?: string | null;
   purchaseSource?: string | null;
+  deliverTo?: string | null;
+  siteAddress?: string | null;
+  receiverName?: string | null;
+  receiverPhone?: string | null;
+  dispatchedByName?: string | null;
+  reasonCode?: string | null;
+  reasonNote?: string | null;
 };
 
 export type SalesLine = { key: string; label: string; bags: number; valuePaise: number; loads: number };

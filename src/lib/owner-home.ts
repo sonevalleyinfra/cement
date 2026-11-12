@@ -16,7 +16,7 @@ import {
   type HomeWindows,
 } from "@/lib/owner-home-rules";
 import { istStartOf, rangeOf, type ReportRange } from "@/lib/report-range";
-import { getProfitReport, getSalesReport, paymentsReceivedIn, purchaseCostRows } from "@/lib/reports";
+import { getProfitReport, getPurchaseTotals, getSalesReport, paymentsReceivedIn, purchaseCostRows } from "@/lib/reports";
 import { purchaseCostTotals } from "@/lib/sales-report";
 import { paymentsByMode } from "@/lib/staff-report";
 import { getBalances } from "@/lib/stock";
@@ -37,14 +37,21 @@ const overdueRows = cache((dayKey: string) => getOverdueRows(istStartOf(dayKey))
 
 export async function getOwnerToday(w: HomeWindows) {
   const today = rangeOf(w.today, w.today);
-  const [sales, cash] = await Promise.all([getSalesReport(today), collected(today)]);
-  return { salesPaise: sales.valuePaise, bags: sales.bags, collected: cash };
+  const [sales, purchases, cash] = await Promise.all([getSalesReport(today), getPurchaseTotals(today), collected(today)]);
+  return {
+    salesPaise: sales.valuePaise,
+    bags: sales.bags,
+    purchasePaise: purchases.valuePaise,
+    purchaseBags: purchases.receivedBags,
+    collected: cash,
+  };
 }
 
 export async function getOwnerMonth(w: HomeWindows) {
-  const [sales, prevSales, profit, prevProfit, cash, prevCash] = await Promise.all([
+  const [sales, prevSales, purchases, profit, prevProfit, cash, prevCash] = await Promise.all([
     getSalesReport(w.mtd),
     getSalesReport(w.prev),
+    getPurchaseTotals(w.mtd),
     getProfitReport(w.mtd),
     getProfitReport(w.prev),
     collected(w.mtd),
@@ -53,6 +60,7 @@ export async function getOwnerMonth(w: HomeWindows) {
   return {
     sales: { paise: sales.valuePaise, bags: sales.bags },
     prevSales: { paise: prevSales.valuePaise, bags: prevSales.bags },
+    purchase: { paise: purchases.valuePaise, bags: purchases.receivedBags },
     margin: { paise: profit.total.profitPaise, perBagPaise: profit.total.profitPerBagPaise },
     prevMargin: { paise: prevProfit.total.profitPaise, perBagPaise: prevProfit.total.profitPerBagPaise },
     collected: cash,

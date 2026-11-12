@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSwitchOffTruck, isLoaded, isStanding, truckCounts, truckSaveDecision } from "./truck-rules";
+import { activeLoadedTrucks, canSwitchOffTruck, isLoaded, isStanding, truckCounts, truckSaveDecision } from "./truck-rules";
 
 describe("truckCounts", () => {
   it("counts only switched-on trucks", () => {
@@ -22,6 +22,18 @@ describe("truckCounts", () => {
     expect(isStanding({ active: true, bags: 1 })).toBe(false);
     expect(isLoaded({ active: false, bags: 1 })).toBe(false);
     expect(isStanding({ active: false, bags: 0 })).toBe(false);
+  });
+});
+
+describe("activeLoadedTrucks", () => {
+  it("keeps only active trucks with bags > 0 and removes 0-bag or hidden trucks from UI", () => {
+    const rows = [
+      { number: "UP65AA1111", active: true, bags: 120 },
+      { number: "UP65BB2222", active: true, bags: 0 },
+      { number: "UP65CC3333", active: false, bags: 50 },
+      { number: "UP65DD4444", active: true, bags: 1 },
+    ];
+    expect(activeLoadedTrucks(rows).map((r) => r.number)).toEqual(["UP65AA1111", "UP65DD4444"]);
   });
 });
 

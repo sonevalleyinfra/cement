@@ -21,7 +21,6 @@ import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
 import { DEFAULT_PURCHASE_SOURCES, PURCHASE_NOTE_MAX, purchaseNote } from "@/lib/purchase-rules";
 import { reasonHint } from "@/lib/reason-codes";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
-import { cleanTruckLabel, findKnownTruck } from "@/lib/vehicle-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { useSubmit } from "@/lib/use-submit";
 import { bagsText } from "@/lib/words";
@@ -110,11 +109,9 @@ export function StockForm({
   const router = useRouter();
   const { pending, run } = useSubmit();
   const purchase = mode === "purchase";
-  const availablePlaces = purchase ? places.filter((p) => p.kind === "vehicle") : places;
+  const availablePlaces = places;
   const [pick, setPick] = useState({ brandId: products[0]?.brandId ?? "", channel: "", typeId: "", gradeId: "" });
-  const [place, setPlace] = useState(
-    purchase ? (availablePlaces[0]?.key ?? NEW_TRUCK_PLACE) : (places[0]?.key ?? "")
-  );
+  const [place, setPlace] = useState(purchase ? NEW_TRUCK_PLACE : (places[0]?.key ?? ""));
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
@@ -124,30 +121,11 @@ export function StockForm({
   const [invoiceNo, setInvoiceNo] = useState("");
   const [today] = useState(() => toISTDateKey(new Date()));
   const [invoiceDate, setInvoiceDate] = useState(today);
-  // The truck and driver of a purchase: nothing about the driver is saved for next time.
+  // The truck and driver of a purchase: typed directly; nothing needs pre-adding on Trucks.
   const [truck, setTruck] = useState(NO_TRUCK);
   const [purchaseSource, setPurchaseSource] = useState<string>(DEFAULT_PURCHASE_SOURCES[0]);
   const [otherSource, setOtherSource] = useState("");
-  const newTruck = purchase && place === NEW_TRUCK_PLACE;
-  // A purchase into a truck already in the list keeps that truck's number.
-  const rawPlaceTruck = purchase && place.startsWith("vehicle:") ? places.find((p) => p.key === place)?.name : undefined;
-  const placeTruck = rawPlaceTruck ? cleanTruckLabel(rawPlaceTruck) : undefined;
-  // Same sync as an effect would do, done during render (adjust state when inputs change).
-  const [syncedTruck, setSyncedTruck] = useState<{ placeTruck?: string; trucks: typeof trucks }>({ trucks: [] });
-  if (syncedTruck.placeTruck !== placeTruck || syncedTruck.trucks !== trucks) {
-    const truckChanged = syncedTruck.placeTruck !== placeTruck;
-    setSyncedTruck({ placeTruck, trucks });
-    if (placeTruck) {
-      const match = findKnownTruck(trucks, placeTruck);
-      setTruck((prev) => ({
-        number: placeTruck,
-        driverName: truckChanged ? (match?.driverName ?? "") : prev.driverName || match?.driverName || "",
-        driverPhone: truckChanged ? (match?.driverPhone ?? "") : prev.driverPhone || match?.driverPhone || "",
-      }));
-    } else if (truckChanged) {
-      setTruck(NO_TRUCK);
-    }
-  }
+  const newTruck = purchase;
   // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
   const [done, setDone] = useState("");
   const { error, setError, clearError } = useFormError([
@@ -178,7 +156,7 @@ export function StockForm({
   const hint = firstMissing([
     [!product, "Pick a product"],
     [!place, "Pick a place"],
-    [purchase && !placeTruck && !truck.number.trim(), "Enter the truck number"],
+    [purchase && !truck.number.trim(), "Enter the truck number"],
     [purchase && !truck.driverName.trim(), "Enter the driver name"],
     [purchase && !isValidIndianMobile(normalizePhone(truck.driverPhone)), "Enter the driver mobile (10 digits)"],
     [purchase && !invoiceNo.trim(), "Enter the invoice no."],
@@ -225,9 +203,7 @@ export function StockForm({
           setCostText("");
           setInvoiceNo("");
           setInvoiceDate(today);
-          setTruck((prev) =>
-            placeTruck ? { number: placeTruck, driverName: prev.driverName, driverPhone: prev.driverPhone } : NO_TRUCK,
-          );
+          setTruck(NO_TRUCK);
           router.refresh();
         } else setError(res.error);
       },
@@ -282,15 +258,14 @@ export function StockForm({
           <span className="font-semibold text-foreground">{product.name}</span>
         </div>
       )}
-      <SelectField
-        label={purchase ? "Truck" : "Place"}
-        value={place}
-        onChange={setPlace}
-        groups={[
-          ...placeGroups(availablePlaces),
-          ...(purchase ? [{ label: "Hired truck", options: [{ value: NEW_TRUCK_PLACE, label: "New truck…" }] }] : []),
-        ]}
-      />
+      {!purchase && (
+        <SelectField
+          label="Place"
+          value={place}
+          onChange={setPlace}
+          groups={placeGroups(availablePlaces)}
+        />
+      )}
       {!newTruck && <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>}
       {purchase && (
         <>
@@ -320,7 +295,7 @@ export function StockForm({
               />
             )}
           </div>
-          <TruckFields value={truck} onChange={setTruck} fixedNumber={placeTruck} knownTrucks={trucks} />
+          <TruckFields value={truck} onChange={setTruck} directEntry knownTrucks={trucks} />
           <div className="grid grid-cols-2 gap-3">
             <SmallField label="Invoice no." value={invoiceNo} onChange={setInvoiceNo} maxLength={60} />
             <SmallField label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} max={today} />

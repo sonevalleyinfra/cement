@@ -47,7 +47,7 @@ export async function getTrucks(): Promise<TruckRow[]> {
   return rows.map((r) => ({ ...r, bags: Math.max(r.bags, 0) }));
 }
 
-/** Active trucks list for dropdowns and auto-fill. */
+/** Active loaded trucks list (`bags > 0`) for operational dropdowns and auto-fill. */
 export async function getActiveTrucks(): Promise<{ number: string; driverName: string; driverPhone: string }[]> {
   const effectiveDriverName = sql<string>`coalesce(
     nullif(${vehicles.driverName}, ''),
@@ -69,7 +69,10 @@ export async function getActiveTrucks(): Promise<{ number: string; driverName: s
       driverPhone: effectiveDriverPhone,
     })
     .from(vehicles)
+    .leftJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
     .where(eq(vehicles.active, true))
+    .groupBy(vehicles.id, vehicles.number, vehicles.driverName, vehicles.driverPhone)
+    .having(sql`coalesce(sum(${stockMovements.bags}), 0) > 0`)
     .orderBy(asc(vehicles.number));
 }
 

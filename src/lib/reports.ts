@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, inArray, lt, lte, sql, type Column } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, lt, lte, or, sql, type Column } from "drizzle-orm";
 import { db } from "@/db";
 import {
   brands,
@@ -34,6 +34,7 @@ import {
   type PurchaseCostRow,
   type SaleRow,
 } from "@/lib/sales-report";
+import { buildPurchaseReport, type PurchaseReport, type RawPurchaseRow, type RawTruckDispatchEvent, type RawTruckMovementEvent } from "@/lib/purchase-report";
 import { getVehicleInflowOrigins } from "@/lib/truck-origins";
 import { cashByPerson, onlineWaiting, paymentsByMode, staffActivity } from "@/lib/staff-report";
 import { buildStatement, byDay, byMoment } from "@/lib/statement-rules";
@@ -64,37 +65,47 @@ async function salesRows(range: ReportRange): Promise<SaleRow[]> {
 }
 
 async function salesQuery(range: ReportRange) {
-  const rows = await db
-    .select({
-      bags: dispatches.bags,
-      ratePaise: dispatches.ratePaise,
-      createdAt: dispatches.createdAt,
-      productId: orders.productId,
-      productName: products.name,
-      retailerId: orders.retailerId,
-      retailerName: retailers.name,
-      retailerPlace: retailers.place,
-      vehicleId: dispatches.vehicleId,
-      vehicleNumber: vehicles.number,
-      driverName: dispatches.driverName,
-      driverPhone: dispatches.driverPhone,
-      fromGodownId: dispatches.fromGodownId,
-      fromVehicleId: dispatches.fromVehicleId,
-      godownName: godowns.name,
-      // The sales person saved on the dispatch (when the bags left), so a later change of the shop's
-      // sales person does not move old sales.
-      salesRepId: dispatches.salesRepId,
-      salesRepName: user.name,
-    })
-    .from(dispatches)
-    .innerJoin(orders, eq(orders.id, dispatches.orderId))
-    .innerJoin(products, eq(products.id, orders.productId))
-    .innerJoin(retailers, eq(retailers.id, orders.retailerId))
-    .leftJoin(vehicles, eq(vehicles.id, dispatches.vehicleId))
-    .leftJoin(godowns, eq(godowns.id, dispatches.fromGodownId))
-    .leftJoin(user, eq(user.id, dispatches.salesRepId))
-    .where(and(gte(dispatches.createdAt, range.start), lt(dispatches.createdAt, range.end)))
-    .orderBy(asc(dispatches.createdAt));
+  const [rows, names] = await Promise.all([
+    db
+      .select({
+        bags: dispatches.bags,
+        ratePaise: dispatches.ratePaise,
+        createdAt: dispatches.createdAt,
+        productId: orders.productId,
+        productName: products.name,
+        retailerId: orders.retailerId,
+        retailerName: retailers.name,
+        retailerPlace: retailers.place,
+        deliverTo: orders.deliverTo,
+        siteAddress: orders.siteAddress,
+        receiverName: orders.receiverName,
+        receiverPhone: orders.receiverPhone,
+        dispatchedBy: dispatches.dispatchedBy,
+        reasonCode: dispatches.reasonCode,
+        reasonNote: dispatches.reasonNote,
+        vehicleId: dispatches.vehicleId,
+        vehicleNumber: vehicles.number,
+        driverName: dispatches.driverName,
+        driverPhone: dispatches.driverPhone,
+        fromGodownId: dispatches.fromGodownId,
+        fromVehicleId: dispatches.fromVehicleId,
+        godownName: godowns.name,
+        // The sales person saved on the dispatch (when the bags left), so a later change of the shop's
+        // sales person does not move old sales.
+        salesRepId: dispatches.salesRepId,
+        salesRepName: user.name,
+      })
+      .from(dispatches)
+      .innerJoin(orders, eq(orders.id, dispatches.orderId))
+      .innerJoin(products, eq(products.id, orders.productId))
+      .innerJoin(retailers, eq(retailers.id, orders.retailerId))
+      .leftJoin(vehicles, eq(vehicles.id, dispatches.vehicleId))
+      .leftJoin(godowns, eq(godowns.id, dispatches.fromGodownId))
+      .leftJoin(user, eq(user.id, dispatches.salesRepId))
+      .where(and(gte(dispatches.createdAt, range.start), lt(dispatches.createdAt, range.end)))
+      .orderBy(asc(dispatches.createdAt)),
+    nameMaps(),
+  ]);
 
   const vehicleNumbers = [...new Set(rows.map((r) => r.vehicleNumber).filter(Boolean))] as string[];
   const fromVehicleIds = [...new Set(rows.map((r) => r.fromVehicleId).filter((id): id is string => id !== null))];
@@ -137,6 +148,7 @@ async function salesQuery(range: ReportRange) {
     return {
       ...r,
       vehicleNumber: r.vehicleNumber || "Unknown truck",
+      dispatchedByName: names.people.get(r.dispatchedBy) ?? null,
       ...origin,
     };
   });
@@ -416,4 +428,285 @@ export async function getStaffReport(range: ReportRange) {
     nameMaps(),
   ]);
   return staffActivity({ orders: placed, decisions, dispatches: loads, payments, cash: holders }, names.people);
+}
+
+
+/** Fast summary totals of purchases recorded in `range` (for dashboard cards and KPIs). */
+export async function getPurchaseTotals(range: ReportRange): Promise<{ count: number; billedBags: number; receivedBags: number; valuePaise: number }> {
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)`.mapWith(Number),
+      billedBags: sql<number>`coalesce(sum(${purchases.billedBags}), 0)`.mapWith(Number),
+      receivedBags: sql<number>`coalesce(sum(${purchases.receivedBags}), 0)`.mapWith(Number),
+      valuePaise: sql<number>`coalesce(sum(${purchases.receivedBags}::bigint * ${purchases.landedUnitCostPaise}::bigint), 0)`.mapWith(Number),
+    })
+    .from(purchases)
+    .where(and(gte(purchases.createdAt, range.start), lt(purchases.createdAt, range.end)));
+  return row ?? { count: 0, billedBags: 0, receivedBags: 0, valuePaise: 0 };
+}
+
+/**
+ * Full Purchase Register + Truck Purchase-to-Dispatch Journey for `range`.
+ * Traces every purchased truck forward until its bags reach 0 (or the next purchase of the same product on that truck).
+ */
+export async function getPurchaseReport(range: ReportRange): Promise<PurchaseReport> {
+  const [rawPurchases, names, label] = await Promise.all([
+    db
+      .select({
+        id: purchases.id,
+        movementId: purchases.stockMovementId,
+        createdAt: purchases.createdAt,
+        invoiceDate: purchases.invoiceDate,
+        invoiceNo: purchases.invoiceNo,
+        productId: stockMovements.productId,
+        rawProductName: products.name,
+        brandName: brands.name,
+        vehicleId: stockMovements.vehicleId,
+        godownName: godowns.name,
+        vehicleNum: vehicles.number,
+        truckNumber: purchases.truckNumber,
+        driverName: purchases.driverName,
+        driverPhone: purchases.driverPhone,
+        billedBags: purchases.billedBags,
+        shortBags: purchases.shortBags,
+        burstBags: purchases.burstBags,
+        receivedBags: purchases.receivedBags,
+        shortMovementId: purchases.shortMovementId,
+        burstMovementId: purchases.burstMovementId,
+        unitCostPaise: stockMovements.unitCostPaise,
+        freightPaise: purchases.freightPaise,
+        unloadingPaise: purchases.unloadingPaise,
+        landedUnitCostPaise: purchases.landedUnitCostPaise,
+        claimStatus: purchases.claimStatus,
+        actorId: purchases.actorId,
+        note: stockMovements.reason,
+      })
+      .from(purchases)
+      .innerJoin(stockMovements, eq(stockMovements.id, purchases.stockMovementId))
+      .innerJoin(products, eq(products.id, stockMovements.productId))
+      .innerJoin(brands, eq(brands.id, products.brandId))
+      .leftJoin(godowns, eq(godowns.id, stockMovements.godownId))
+      .leftJoin(vehicles, eq(vehicles.id, stockMovements.vehicleId))
+      .where(and(gte(purchases.createdAt, range.start), lt(purchases.createdAt, range.end)))
+      .orderBy(asc(purchases.createdAt), asc(purchases.id)),
+    nameMaps(),
+    productLabeler(),
+  ]);
+
+  if (rawPurchases.length === 0) {
+    return buildPurchaseReport({ inRangePurchases: [] });
+  }
+
+  const inRangePurchases: RawPurchaseRow[] = rawPurchases.map((p) => ({
+    id: p.id,
+    movementId: p.movementId,
+    createdAt: p.createdAt,
+    invoiceDate: p.invoiceDate,
+    invoiceNo: p.invoiceNo,
+    productId: p.productId,
+    productName: label(p.rawProductName),
+    brandName: p.brandName,
+    vehicleId: p.vehicleId,
+    placeName: p.godownName ?? (p.vehicleNum ? `Truck ${p.vehicleNum}` : `Truck ${p.truckNumber}`),
+    truckNumber: p.truckNumber,
+    driverName: p.driverName,
+    driverPhone: p.driverPhone,
+    billedBags: p.billedBags,
+    shortBags: p.shortBags,
+    burstBags: p.burstBags,
+    receivedBags: p.receivedBags,
+    shortMovementId: p.shortMovementId,
+    burstMovementId: p.burstMovementId,
+    unitCostPaise: p.unitCostPaise ?? 0,
+    freightPaise: p.freightPaise,
+    unloadingPaise: p.unloadingPaise,
+    landedUnitCostPaise: p.landedUnitCostPaise,
+    claimStatus: p.claimStatus,
+    actorName: names.people.get(p.actorId) ?? "Staff",
+    note: p.note,
+  }));
+
+  const vehicleIds = [...new Set(inRangePurchases.map((p) => p.vehicleId).filter((v): v is string => v !== null))];
+  const movementIds = inRangePurchases.map((p) => p.movementId);
+  const earliest = inRangePurchases.reduce((min, p) => (p.createdAt < min ? p.createdAt : min), inRangePurchases[0].createdAt);
+  const earliestDate = earliest instanceof Date ? earliest : new Date(earliest);
+
+  const [allSameTruckPurchases, rawDispatches, rawMovements, godownIns, rawBalances] = await Promise.all([
+    vehicleIds.length > 0
+      ? db
+          .select({
+            id: purchases.id,
+            vehicleId: stockMovements.vehicleId,
+            productId: stockMovements.productId,
+            createdAt: purchases.createdAt,
+          })
+          .from(purchases)
+          .innerJoin(stockMovements, eq(stockMovements.id, purchases.stockMovementId))
+          .where(inArray(stockMovements.vehicleId, vehicleIds))
+      : Promise.resolve([]),
+    vehicleIds.length > 0
+      ? db
+          .select({
+            fromVehicleId: dispatches.fromVehicleId,
+            productId: orders.productId,
+            createdAt: dispatches.createdAt,
+            bags: dispatches.bags,
+            ratePaise: dispatches.ratePaise,
+            retailerName: retailers.name,
+            retailerPlace: retailers.place,
+            deliverTo: orders.deliverTo,
+            siteAddress: orders.siteAddress,
+            receiverName: orders.receiverName,
+            receiverPhone: orders.receiverPhone,
+            salesRepId: dispatches.salesRepId,
+            dispatchedBy: dispatches.dispatchedBy,
+            reasonCode: dispatches.reasonCode,
+            reasonNote: dispatches.reasonNote,
+          })
+          .from(dispatches)
+          .innerJoin(orders, eq(orders.id, dispatches.orderId))
+          .innerJoin(retailers, eq(retailers.id, orders.retailerId))
+          .where(and(inArray(dispatches.fromVehicleId, vehicleIds), gte(dispatches.createdAt, earliestDate)))
+          .orderBy(asc(dispatches.createdAt))
+      : Promise.resolve([]),
+    vehicleIds.length > 0
+      ? db
+          .select({
+            id: stockMovements.id,
+            vehicleId: stockMovements.vehicleId,
+            productId: stockMovements.productId,
+            type: stockMovements.type,
+            bags: stockMovements.bags,
+            createdAt: stockMovements.createdAt,
+            reversesMovementId: stockMovements.reversesMovementId,
+            reasonCode: stockMovements.reasonCode,
+            reason: stockMovements.reason,
+            actorId: stockMovements.actorId,
+          })
+          .from(stockMovements)
+          .where(
+            or(
+              and(inArray(stockMovements.vehicleId, vehicleIds), gte(stockMovements.createdAt, earliestDate)),
+              inArray(stockMovements.reversesMovementId, movementIds),
+            ),
+          )
+          .orderBy(asc(stockMovements.createdAt))
+      : db
+          .select({
+            id: stockMovements.id,
+            vehicleId: stockMovements.vehicleId,
+            productId: stockMovements.productId,
+            type: stockMovements.type,
+            bags: stockMovements.bags,
+            createdAt: stockMovements.createdAt,
+            reversesMovementId: stockMovements.reversesMovementId,
+            reasonCode: stockMovements.reasonCode,
+            reason: stockMovements.reason,
+            actorId: stockMovements.actorId,
+          })
+          .from(stockMovements)
+          .where(inArray(stockMovements.reversesMovementId, movementIds))
+          .orderBy(asc(stockMovements.createdAt)),
+    vehicleIds.length > 0
+      ? db
+          .select({
+            productId: stockMovements.productId,
+            bags: stockMovements.bags,
+            createdAt: stockMovements.createdAt,
+            godownName: godowns.name,
+          })
+          .from(stockMovements)
+          .innerJoin(godowns, eq(godowns.id, stockMovements.godownId))
+          .where(and(eq(stockMovements.type, "transfer"), gt(stockMovements.bags, 0), isNotNull(stockMovements.godownId), gte(stockMovements.createdAt, earliestDate)))
+          .orderBy(asc(stockMovements.createdAt))
+      : Promise.resolve([]),
+    vehicleIds.length > 0
+      ? db
+          .select({
+            vehicleId: stockMovements.vehicleId,
+            productId: stockMovements.productId,
+            bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
+          })
+          .from(stockMovements)
+          .where(inArray(stockMovements.vehicleId, vehicleIds))
+          .groupBy(stockMovements.vehicleId, stockMovements.productId)
+      : Promise.resolve([]),
+  ]);
+
+  const dispatchEvents: RawTruckDispatchEvent[] = rawDispatches.flatMap((d) =>
+    d.fromVehicleId === null
+      ? []
+      : [
+          {
+            fromVehicleId: d.fromVehicleId,
+            productId: d.productId,
+            createdAt: d.createdAt,
+            bags: d.bags,
+            ratePaise: d.ratePaise,
+            retailerName: d.retailerName,
+            retailerPlace: d.retailerPlace,
+            deliverTo: d.deliverTo,
+            siteAddress: d.siteAddress,
+            receiverName: d.receiverName,
+            receiverPhone: d.receiverPhone,
+            salesRepName: d.salesRepId ? (names.people.get(d.salesRepId) ?? null) : null,
+            actorName: names.people.get(d.dispatchedBy) ?? "Staff",
+            reasonCode: d.reasonCode,
+            reasonNote: d.reasonNote,
+          },
+        ],
+  );
+
+  const usedGodownIns = new Set<number>();
+  const movementEvents: RawTruckMovementEvent[] = rawMovements.flatMap((m) => {
+    if (m.vehicleId === null) return [];
+    let transferToGodownName: string | null = null;
+    if (m.type === "transfer" && m.bags < 0) {
+      const tOut = m.createdAt.getTime();
+      let bestIdx = -1;
+      let bestDiff = 5001;
+      for (let idx = 0; idx < godownIns.length; idx++) {
+        if (usedGodownIns.has(idx)) continue;
+        const g = godownIns[idx];
+        if (g.productId !== m.productId || g.bags !== -m.bags) continue;
+        const diff = Math.abs(g.createdAt.getTime() - tOut);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = idx;
+        }
+      }
+      if (bestIdx !== -1) {
+        usedGodownIns.add(bestIdx);
+        transferToGodownName = godownIns[bestIdx].godownName;
+      }
+    }
+    return [
+      {
+        id: m.id,
+        vehicleId: m.vehicleId,
+        productId: m.productId,
+        type: m.type,
+        bags: m.bags,
+        createdAt: m.createdAt,
+        reversesMovementId: m.reversesMovementId,
+        reasonCode: m.reasonCode,
+        reason: m.reason,
+        actorName: m.actorId ? (names.people.get(m.actorId) ?? "Staff") : "Staff",
+        transferToGodownName,
+      },
+    ];
+  });
+
+  const currentBalances = new Map<string, number>();
+  for (const b of rawBalances) {
+    if (b.vehicleId) currentBalances.set(`${b.vehicleId}:${b.productId}`, b.bags);
+  }
+
+  return buildPurchaseReport({
+    inRangePurchases,
+    allSameTruckPurchases,
+    dispatchEvents,
+    movementEvents,
+    currentBalances,
+  });
 }

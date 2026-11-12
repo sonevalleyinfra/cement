@@ -3,6 +3,7 @@ import { DataTable } from "@/components/app/data-table";
 import { formatDate, formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
 import { rolesFor } from "@/lib/permissions";
+import { reasonLabel } from "@/lib/reason-codes";
 import { previousRange } from "@/lib/report-compare";
 import { param, rangeQuery, reportRange } from "@/lib/report-range";
 import { getSalesReport } from "@/lib/reports";
@@ -45,7 +46,28 @@ function DispatchRegister({ dispatches }: { dispatches: SaleRow[] }) {
       <ul className="flex flex-col gap-3">
         {sorted.map((d, i) => {
           const value = saleValuePaise(d.bags, d.ratePaise);
-          const from = [d.driverName && `Driver ${d.driverName}`, d.fromPlaceName, d.purchaseSource && !d.fromPlaceName?.includes(d.purchaseSource) ? d.purchaseSource : null].filter(Boolean).join(" · ");
+          const driverInfo = [d.driverName && `Driver ${d.driverName}`, d.driverPhone].filter(Boolean).join(" · ");
+          const from = [
+            driverInfo,
+            d.fromPlaceName,
+            d.purchaseSource && !d.fromPlaceName?.includes(d.purchaseSource) ? d.purchaseSource : null,
+            d.salesRepName ? `Sales: ${d.salesRepName}` : null,
+            d.dispatchedByName ? `By ${d.dispatchedByName}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          const deliveryInfo =
+            d.deliverTo === "site"
+              ? `Site${d.siteAddress ? `: ${d.siteAddress}` : ""}`
+              : d.deliverTo === "shop"
+                ? "Shop delivery"
+                : null;
+          const receiverInfo = d.receiverName ? `Recv: ${d.receiverName}${d.receiverPhone ? ` (${d.receiverPhone})` : ""}` : null;
+          const reversalReason =
+            d.bags < 0
+              ? ["Reversed", reasonLabel(d.reasonCode, "reversal"), d.reasonNote?.trim()].filter(Boolean).join(" · ")
+              : null;
+
           return (
             <li key={i} className="flex flex-col gap-1 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
               <div className="flex items-center justify-between gap-3">
@@ -53,6 +75,11 @@ function DispatchRegister({ dispatches }: { dispatches: SaleRow[] }) {
                   <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-xs font-semibold text-accent-foreground">
                     {d.vehicleNumber || "Truck"}
                   </span>
+                  {reversalReason && (
+                    <span className="shrink-0 rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                      {reversalReason}
+                    </span>
+                  )}
                   <span className="truncate text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</span>
                 </div>
                 <span className={`tabular shrink-0 text-sm font-bold ${d.bags < 0 ? "text-destructive" : ""}`}>
@@ -66,6 +93,11 @@ function DispatchRegister({ dispatches }: { dispatches: SaleRow[] }) {
               <div className="tabular text-xs text-muted-foreground">
                 {d.productName} · {d.bags} bags @ {formatINR(d.ratePaise)}/bag
               </div>
+              {(deliveryInfo || receiverInfo) && (
+                <div className="text-xs text-muted-foreground">
+                  {[deliveryInfo, receiverInfo].filter(Boolean).join(" · ")}
+                </div>
+              )}
               {from && <div className="text-xs text-muted-foreground">{from}</div>}
             </li>
           );
@@ -81,7 +113,7 @@ export default async function SalesReportPage({ searchParams }: { searchParams: 
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
   const [r, before] = await Promise.all([getSalesReport(range), getSalesReport(previousRange(range))]);
   return (
-    <ReportFrame title="Sales" range={range} csvHref={`/reports/sales/csv?${rangeQuery(range)}`}>
+    <ReportFrame title="Sales & dispatch" range={range} csvHref={`/reports/sales/csv?${rangeQuery(range)}`}>
       <Stats
         items={[
           { label: "Value", value: money(r.valuePaise), compare: compareOf(r.valuePaise, before.valuePaise, money) },

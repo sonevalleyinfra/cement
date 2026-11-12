@@ -14,8 +14,8 @@ export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type Place = { key: string; kind: PlaceKind; id: string; name: string; active: boolean };
 
 /**
- * Places for stock forms: every active godown (by name) and all active trucks (by number).
- * Server-only.
+ * Places for stock forms: every active godown (by name) and active trucks holding stock (`bags > 0`).
+ * Server-only. Trucks at 0 bags stay in DB & reports and leave operational UI lists automatically.
  */
 export async function getPlaces(): Promise<Place[]> {
   const [g, v] = await Promise.all([
@@ -27,7 +27,10 @@ export async function getPlaces(): Promise<Place[]> {
     db
       .select({ id: vehicles.id, name: vehicles.number, active: vehicles.active })
       .from(vehicles)
+      .leftJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
       .where(eq(vehicles.active, true))
+      .groupBy(vehicles.id, vehicles.number, vehicles.active)
+      .having(sql`coalesce(sum(${stockMovements.bags}), 0) > 0`)
       .orderBy(asc(vehicles.number)),
   ]);
   return [

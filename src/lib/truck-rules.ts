@@ -15,6 +15,11 @@ export function isStanding(t: TruckState): boolean {
   return t.active && t.bags === 0;
 }
 
+/** Trucks visible in operational UI: active trucks holding bags (0-bag trucks stay in DB & reports only). */
+export function activeLoadedTrucks<T extends TruckState>(trucks: readonly T[]): T[] {
+  return trucks.filter(isLoaded);
+}
+
 export function truckCounts(trucks: TruckState[]): { loaded: number; standing: number } {
   return {
     loaded: trucks.filter(isLoaded).length,

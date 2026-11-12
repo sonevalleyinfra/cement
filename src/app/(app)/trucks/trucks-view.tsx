@@ -1,47 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Plus } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { CallButton } from "@/components/app/call-button";
-import { ChipCount, chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
 import { PageHeader } from "@/components/app/page-header";
-import { PinnedAction } from "@/components/app/pinned-action";
 import { Sheet } from "@/components/app/sheet";
 import { Stat } from "@/components/app/stat";
 import { StatusChip } from "@/components/app/status-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isLoaded, isStanding, truckCounts } from "@/lib/truck-rules";
+import { activeLoadedTrucks } from "@/lib/truck-rules";
 import type { TruckRow } from "@/lib/trucks";
 import { useFormError } from "@/lib/use-form-error";
 import { cn } from "@/lib/utils";
 import { bagsText, formatCount } from "@/lib/words";
-import { addTruck, editTruck, setTruckActive } from "./actions";
-
-type Filter = "all" | "loaded" | "standing";
-
-const FILTER_LABELS: Record<Filter, string> = { all: "All", loaded: "Loaded", standing: "Standing" };
+import { editTruck, setTruckActive } from "./actions";
 
 const counterClass = "rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6";
-
-function matchesFilter(r: TruckRow, filter: Filter): boolean {
-  if (filter === "loaded") return isLoaded(r);
-  if (filter === "standing") return isStanding(r);
-  return true;
-}
 
 export function TrucksView({ rows }: { rows: TruckRow[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [sheet, setSheet] = useState<{ mode: "add" } | { mode: "edit"; truck: TruckRow } | null>(null);
+  const [sheet, setSheet] = useState<{ truck: TruckRow } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
-  const searchParams = useSearchParams();
-  const tabParam = searchParams.get("tab");
-  const [filter, setFilter] = useState<Filter>(tabParam === "loaded" || tabParam === "standing" ? tabParam : "all");
 
   const trimmed = query.trim();
   const normalized = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -53,53 +38,45 @@ export function TrucksView({ rows }: { rows: TruckRow[] }) {
     return matchNum || matchDriver || matchPhone;
   }
 
-  const visibleRows = rows.filter((r) => r.active);
-  const hiddenRows = rows.filter((r) => !r.active);
-  const shown = visibleRows.filter((r) => matchesFilter(r, filter) && matchesQuery(r));
+  // Only trucks currently holding bags (`bags > 0`) stay in active UI. Once 0 bags, they stay in DB & reports only.
+  const visibleRows = activeLoadedTrucks(rows);
+  const hiddenRows = rows.filter((r) => !r.active && r.bags > 0);
+  const shown = visibleRows.filter(matchesQuery);
   const shownHidden = hiddenRows.filter(matchesQuery);
-
-  const counts = truckCounts(visibleRows);
-  const tabCount: Record<Filter, number> = { all: visibleRows.length, ...counts };
+  const totalBagsOnTrucks = visibleRows.reduce((sum, r) => sum + r.bags, 0);
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Trucks" back="/more" />
 
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Loaded" value={formatCount(counts.loaded)} className={counterClass} />
-        <Stat label="Standing" value={formatCount(counts.standing)} className={counterClass} />
+        <Stat label="Loaded trucks" value={formatCount(visibleRows.length)} className={counterClass} />
+        <Stat label="Bags on trucks" value={formatCount(totalBagsOnTrucks)} className={counterClass} />
       </div>
 
-      {rows.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search truck no., driver, phone"
-            aria-label="Search trucks"
-            autoComplete="off"
-          />
-          <div className="scroll-x-fade -mx-4 flex gap-2 px-4 pb-1">
-            {(["all", "loaded", "standing"] as const).map((f) => (
-              <button key={f} type="button" className={chipClass(filter === f)} onClick={() => setFilter(f)}>
-                {FILTER_LABELS[f]}
-                <ChipCount n={tabCount[f]} on={filter === f} />
-              </button>
-            ))}
-          </div>
-        </div>
+      {visibleRows.length > 0 && (
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search truck no., driver, phone"
+          aria-label="Search trucks"
+          autoComplete="off"
+        />
       )}
 
       {visibleRows.length === 0 ? (
-        <EmptyState title={hiddenRows.length > 0 ? "All trucks are hidden" : "No trucks added yet"} />
+        <EmptyState
+          title="No loaded trucks right now"
+          action={<p className="max-w-xs text-xs text-muted-foreground">Add truck details when recording a Purchase. Once bags reach 0, trucks stay in Reports &amp; CSV only.</p>}
+        />
       ) : shown.length === 0 ? (
         <EmptyState title="No matching trucks" />
       ) : (
         <ul className="flex flex-col gap-3">
           {shown.map((r) => (
             <li key={r.id}>
-              <TruckCard truck={r} onEdit={() => setSheet({ mode: "edit", truck: r })} />
+              <TruckCard truck={r} onEdit={() => setSheet({ truck: r })} />
             </li>
           ))}
         </ul>
@@ -120,7 +97,7 @@ export function TrucksView({ rows }: { rows: TruckRow[] }) {
             <ul className="flex flex-col gap-3">
               {shownHidden.map((r) => (
                 <li key={r.id}>
-                  <TruckCard truck={r} onEdit={() => setSheet({ mode: "edit", truck: r })} />
+                  <TruckCard truck={r} onEdit={() => setSheet({ truck: r })} />
                 </li>
               ))}
             </ul>
@@ -128,22 +105,15 @@ export function TrucksView({ rows }: { rows: TruckRow[] }) {
         </div>
       )}
 
-      <PinnedAction>
-        <Button onClick={() => setSheet({ mode: "add" })} className="flex items-center gap-2">
-          <Plus className="size-4" />
-          Add truck
-        </Button>
-      </PinnedAction>
-
       <Sheet
         open={sheet !== null}
         onOpenChange={(o) => !o && setSheet(null)}
-        title={sheet?.mode === "edit" ? "Edit truck" : "Add truck"}
+        title="Edit truck"
       >
         {sheet && (
           <TruckForm
-            key={sheet.mode === "edit" ? sheet.truck.id : "add"}
-            initial={sheet.mode === "edit" ? sheet.truck : undefined}
+            key={sheet.truck.id}
+            initial={sheet.truck}
             onDone={() => {
               setSheet(null);
               router.refresh();
@@ -225,10 +195,10 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
   );
 }
 
-function TruckForm({ initial, onDone }: { initial?: TruckRow; onDone: () => void }) {
-  const [number, setNumber] = useState(initial?.number ?? "");
-  const [driverName, setDriverName] = useState(initial?.driverName ?? "");
-  const [driverPhone, setDriverPhone] = useState(initial?.driverPhone ?? "");
+function TruckForm({ initial, onDone }: { initial: TruckRow; onDone: () => void }) {
+  const [number, setNumber] = useState(initial.number);
+  const [driverName, setDriverName] = useState(initial.driverName);
+  const [driverPhone, setDriverPhone] = useState(initial.driverPhone);
   const { error, setError, clearError } = useFormError([number, driverName, driverPhone]);
   const [pending, start] = useTransition();
 
@@ -237,7 +207,7 @@ function TruckForm({ initial, onDone }: { initial?: TruckRow; onDone: () => void
     clearError();
     start(async () => {
       const payload = { number, driverName, driverPhone };
-      const res = initial ? await editTruck(initial.id, payload) : await addTruck(payload);
+      const res = await editTruck(initial.id, payload);
       if (res.ok) {
         onDone();
       } else {
@@ -286,7 +256,7 @@ function TruckForm({ initial, onDone }: { initial?: TruckRow; onDone: () => void
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Button type="submit" disabled={pending || !number.trim() || !driverName.trim()} className="w-full">
-        {initial ? "Save changes" : "Save truck"}
+        Save changes
       </Button>
     </form>
   );

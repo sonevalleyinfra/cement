@@ -1,4 +1,4 @@
-import { BookOpen, ChartColumn, CircleAlert, Coins, Factory, Hourglass, Package, PackageX, Users, Wallet, type LucideIcon } from "lucide-react";
+import { BookOpen, ChartColumn, CircleAlert, Coins, Factory, Hourglass, Package, PackagePlus, PackageX, Users, Wallet, type LucideIcon } from "lucide-react";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
 import { ListCard } from "@/components/app/list-card";
 import { PageHeader } from "@/components/app/page-header";
@@ -7,7 +7,7 @@ import { Stat } from "@/components/app/stat";
 import { getOverrideTotals } from "@/lib/credit-check";
 import { rolesFor } from "@/lib/permissions";
 import { param, rangeQuery, reportRange } from "@/lib/report-range";
-import { getCashHolders, getDuesAging, getLossReport, getProfitReport, getSalesReport, getSupplierClosings } from "@/lib/reports";
+import { getCashHolders, getDuesAging, getLossReport, getProfitReport, getPurchaseTotals, getSalesReport, getSupplierClosings } from "@/lib/reports";
 import { requireRole } from "@/lib/session";
 import { supplierHomeLines } from "@/lib/supplier-rules";
 import { money, num } from "./report-frame";
@@ -18,8 +18,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   await requireRole(...rolesFor("viewReports"));
   const sp = await searchParams;
   const range = reportRange({ from: param(sp.from), to: param(sp.to) });
-  const [sales, dues, cash, suppliers, profit, losses, overrides] = await Promise.all([
+  const [sales, purchaseTotals, dues, cash, suppliers, profit, losses, overrides] = await Promise.all([
     getSalesReport(range),
+    getPurchaseTotals(range),
     getDuesAging(range),
     getCashHolders(),
     getSupplierClosings(range),
@@ -29,7 +30,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   ]);
   const q = rangeQuery(range);
   const cards: Card[] = [
-    { href: `/reports/sales?${q}`, title: "Sales", icon: ChartColumn, tone: "orange", stats: [{ label: "Value", value: money(sales.valuePaise) }, { label: "Bags", value: num(sales.bags) }] },
+    { href: `/reports/sales?${q}`, title: "Sales & dispatch", icon: ChartColumn, tone: "orange", stats: [{ label: "Value", value: money(sales.valuePaise) }, { label: "Bags", value: num(sales.bags) }] },
+    { href: `/reports/purchases?${q}`, title: "Purchases & truck journey", icon: PackagePlus, tone: "blue", stats: [{ label: "Value", value: money(purchaseTotals.valuePaise) }, { label: "Received bags", value: num(purchaseTotals.receivedBags) }] },
     { href: `/reports/profit?${q}`, title: "Profit", icon: Coins, tone: "green", stats: [{ label: "Profit", value: money(profit.total.profitPaise) }] },
     { href: `/reports/dues?${q}`, title: "Dues and aging", icon: Hourglass, tone: "rose", stats: [{ label: "Due", value: money(dues.total.duePaise) }, { label: "Over 90 days", value: money(dues.total.buckets.d90plus) }] },
     { href: `/reports/statement?${q}`, title: "Retailer statement", icon: BookOpen, tone: "rose", stats: [] },

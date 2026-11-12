@@ -14,7 +14,7 @@ const OTHER = "__other__";
  * The quick truck form: number, driver, phone (purchase and move bags). The phone is required
  * unless `phoneOptional` (moving bags). With `fixedNumber` (a purchase into a truck already in the
  * list) the number is shown as text instead of typed.
- * With `knownTrucks` the number is picked from a list (driver and phone filled in), or "Other truck" to type it.
+ * With `directEntry` (purchases) the user always types the truck number directly without picking from a pre-saved list.
  */
 export function TruckFields({
   value,
@@ -22,12 +22,14 @@ export function TruckFields({
   phoneOptional = false,
   fixedNumber,
   knownTrucks = [],
+  directEntry = false,
 }: {
   value: TruckInput;
   onChange: (next: TruckInput) => void;
   phoneOptional?: boolean;
   fixedNumber?: string;
   knownTrucks?: { number: string; driverName: string; driverPhone: string }[];
+  directEntry?: boolean;
 }) {
   const id = useId();
 
@@ -46,7 +48,7 @@ export function TruckFields({
   }
 
   const [typing, setTyping] = useState(false);
-  const isKnownTruck = knownTrucks.some((t) => t.number === value.number);
+  const isKnownTruck = !directEntry && knownTrucks.some((t) => t.number === value.number);
 
   function onPick(sel: string) {
     if (sel === OTHER) {
@@ -72,7 +74,7 @@ export function TruckFields({
         </p>
       ) : (
         <div className="flex flex-col gap-2">
-          {knownTrucks.length > 0 && (
+          {!directEntry && knownTrucks.length > 0 && (
             <SelectField
               label="Truck"
               value={isKnownTruck ? value.number : typing || value.number ? OTHER : ""}
@@ -84,7 +86,7 @@ export function TruckFields({
               ]}
             />
           )}
-          {(knownTrucks.length === 0 || (!isKnownTruck && (typing || value.number))) && (
+          {(directEntry || knownTrucks.length === 0 || (!isKnownTruck && (typing || value.number))) && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${id}-number`}>Truck number</Label>
               <Input

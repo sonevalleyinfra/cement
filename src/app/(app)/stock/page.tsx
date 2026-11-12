@@ -31,7 +31,8 @@ export default async function StockPage() {
   ]);
 
   const godownBags = balances.filter((b) => b.kind === "godown").reduce((sum, b) => sum + b.bags, 0);
-  const { loaded, standing } = truckCounts(trucks);
+  const truckBags = balances.filter((b) => b.kind === "vehicle").reduce((sum, b) => sum + b.bags, 0);
+  const { loaded } = truckCounts(trucks);
 
   const tiles: { href: string; label: string; icon: LucideIcon }[] = [
     ...(can(session.user.role, "recordPurchase")
@@ -54,8 +55,8 @@ export default async function StockPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Link href="/godowns" className="transition-transform active:scale-[0.98]"><Stat label="Godown" value={`${formatCount(godownBags)} bags`} className="rounded-2xl bg-primary/10 p-3 text-primary ring-1 ring-primary/20" /></Link>
-        <Link href="/trucks?tab=standing" className="transition-transform active:scale-[0.98]"><Stat label="Standing" value={formatCount(standing)} className={counterClass} /></Link>
-        <Link href="/trucks?tab=loaded" className="transition-transform active:scale-[0.98]"><Stat label="Loaded" value={formatCount(loaded)} className={counterClass} /></Link>
+        <Link href="/trucks" className="transition-transform active:scale-[0.98]"><Stat label="Loaded trucks" value={formatCount(loaded)} className={counterClass} /></Link>
+        <Link href="/trucks" className="transition-transform active:scale-[0.98]"><Stat label="On trucks" value={`${formatCount(truckBags)} bags`} className={counterClass} /></Link>
         <Stat label="Sent today" value={formatCount(sentToday)} className={counterClass} />
       </div>
 

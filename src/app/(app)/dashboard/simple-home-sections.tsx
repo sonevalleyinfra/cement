@@ -630,15 +630,18 @@ export async function SimpleAdminHome() {
 
   const salesPaise = today?.salesPaise ?? 0;
   const bags = today?.bags ?? 0;
+  const todayPurchasePaise = today?.purchasePaise ?? 0;
+  const todayPurchaseBags = today?.purchaseBags ?? 0;
   const todayTotalCollected = today?.collected.totalPaise ?? 0;
   const todayCash = today?.collected.cashPaise ?? 0;
   const todayOnline = today?.collected.onlinePaise ?? 0;
 
   const monthSalesPaise = month?.sales.paise ?? 0;
   const monthBags = month?.sales.bags ?? 0;
+  const monthPurchasePaise = month?.purchase.paise ?? 0;
+  const monthPurchaseBags = month?.purchase.bags ?? 0;
   const marginPaise = month?.margin.paise ?? 0;
   const marginPerBag = month?.margin.perBagPaise ?? null;
-  const monthCollected = month?.collected.totalPaise ?? 0;
   const salesDelta = month ? deltaPct(month.sales.paise, month.prevSales.paise) : null;
 
   const marketDues = risk?.outstandingPaise ?? 0;
@@ -679,13 +682,21 @@ export async function SimpleAdminHome() {
           </div>
         </div>
 
-        {/* Collected Today Strip */}
+        {/* Collected & Purchased Today Strips */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-1 rounded-xl bg-muted/40 px-3.5 py-2 text-xs">
           <span className="font-semibold text-muted-foreground">
             Collected Today: <strong className="text-foreground">{money(todayTotalCollected)}</strong>
           </span>
           <span className="text-muted-foreground text-[11px]">
             Cash: <strong className="text-foreground">{money(todayCash)}</strong> · Online: <strong className="text-foreground">{money(todayOnline)}</strong>
+          </span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-1 rounded-xl bg-blue-500/8 px-3.5 py-2 text-xs">
+          <span className="font-semibold text-muted-foreground">
+            Today&apos;s Purchase: <strong className="text-foreground">{short(todayPurchasePaise)}</strong> ({num(todayPurchaseBags)} bags)
+          </span>
+          <span className="text-muted-foreground text-[11px]">
+            Month Purchase: <strong className="text-foreground">{short(monthPurchasePaise)}</strong> ({num(monthPurchaseBags)} bags)
           </span>
         </div>
 
@@ -876,25 +887,30 @@ export async function SimpleAdminHome() {
         </div>
       )}
 
-      {/* 3. QUICK ACTIONS (2x2 Grid from Prototype) */}
+      {/* 3. QUICK ACTIONS (Reports-focused 2x2 Grid) */}
       <div>
-        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
+        <div className="mb-2.5 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">Quick Actions</h2>
+          <Link href="/stock/purchase" className="text-xs font-bold text-primary hover:underline">
+            + Record Purchase
+          </Link>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <QuickActionTile
-            href={`/reports/sales?from=${w.today}&to=${w.today}`}
-            line1="Reports &"
-            line2="Export"
-            sub="Register & CSV"
-            icon={FileSpreadsheet}
+            href={`/reports/purchases?from=${w.today}&to=${w.today}`}
+            line1="Purchase"
+            line2="Report"
+            sub={todayPurchaseBags > 0 ? `${short(todayPurchasePaise)} · ${num(todayPurchaseBags)} bags` : "Truck journey & CSV"}
+            icon={PackagePlus}
             gradient="bg-gradient-to-br from-blue-600 to-indigo-700"
           />
 
           <QuickActionTile
-            href="/suppliers"
-            line1="Factory"
-            line2="Supplier"
-            sub={topSupplier ? `${topSupplier.name}` : "Prism Cement"}
-            icon={Building2}
+            href={`/reports/sales?from=${w.today}&to=${w.today}`}
+            line1="Dispatch"
+            line2="Report"
+            sub={bags > 0 ? `${short(salesPaise)} · ${num(bags)} bags` : "Register & CSV"}
+            icon={Truck}
             gradient="bg-gradient-to-br from-sky-600 to-blue-700"
           />
 
@@ -908,11 +924,11 @@ export async function SimpleAdminHome() {
           />
 
           <QuickActionTile
-            href="/wallet"
-            line1="Team &"
-            line2="Stock"
-            sub={`${money(totalStaffCash)} cash`}
-            icon={Users}
+            href="/reports"
+            line1="All Reports"
+            line2="& CSV"
+            sub="Profit, Stock & Dues"
+            icon={FileSpreadsheet}
             gradient="bg-gradient-to-br from-emerald-600 to-emerald-700"
           />
         </div>
