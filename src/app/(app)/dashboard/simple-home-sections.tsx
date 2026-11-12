@@ -27,6 +27,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { StatusChip } from "@/components/app/status-chip";
+import { OrderAgeTimer } from "./order-age-timer";
 import { isOrderStatus } from "@/lib/order-rules";
 import {
   getAccountsHome,
@@ -350,7 +351,10 @@ export async function SimpleLogisticsHome() {
                       </span>
                     </p>
                   </div>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <OrderAgeTimer sinceIso={o.createdAt.toISOString()} initialNowMs={now.getTime()} />
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  </div>
                 </Link>
               );
             })}
@@ -358,38 +362,6 @@ export async function SimpleLogisticsHome() {
         ) : (
           <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
             No orders waiting to dispatch
-          </div>
-        )}
-      </div>
-
-      {/* Godown Stock (Product-wise breakdown) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">
-            Godown Stock ({num(s.godown.bags)} bags)
-          </h2>
-          <Link href="/godowns" className="text-xs font-bold text-primary hover:underline">
-            All godowns
-          </Link>
-        </div>
-
-        {s.godown.products.length > 0 ? (
-          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
-            {s.godown.products.map((p) => (
-              <div
-                key={p.productId}
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-              >
-                <span className="font-semibold text-foreground">{p.name}</span>
-                <span className="shrink-0 font-extrabold text-foreground">
-                  {num(p.bags)} bags
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No stock in godowns
           </div>
         )}
       </div>
@@ -451,6 +423,38 @@ export async function SimpleLogisticsHome() {
           </div>
         )}
       </div>
+      {/* Godown Stock (Product-wise breakdown) */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">
+            Godown Stock ({num(s.godown.bags)} bags)
+          </h2>
+          <Link href="/godowns" className="text-xs font-bold text-primary hover:underline">
+            All godowns
+          </Link>
+        </div>
+
+        {s.godown.products.length > 0 ? (
+          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
+            {s.godown.products.map((p) => (
+              <div
+                key={p.productId}
+                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+              >
+                <span className="font-semibold text-foreground">{p.name}</span>
+                <span className="shrink-0 font-extrabold text-foreground">
+                  {num(p.bags)} bags
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No stock in godowns
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

@@ -113,6 +113,7 @@ export async function getSalesHome(userId: string, now = new Date()) {
         status: orders.status,
         deliverTo: orders.deliverTo,
         siteAddress: orders.siteAddress,
+        createdAt: orders.createdAt,
       })
       .from(orders)
       .innerJoin(retailers, eq(retailers.id, orders.retailerId))
@@ -249,6 +250,7 @@ export async function getLogisticsHome(now = new Date()) {
         status: orders.status,
         deliverTo: orders.deliverTo,
         siteAddress: orders.siteAddress,
+        createdAt: orders.createdAt,
       })
       .from(orders)
       .innerJoin(retailers, eq(retailers.id, orders.retailerId))
