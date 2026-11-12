@@ -51,6 +51,7 @@ export function orderFilterTabs(role: string | null | undefined): OrderFilter[] 
 
 /** The tab shown when the address has none: the person's own job, admin and anyone unknown "All". */
 export function defaultOrderFilter(role: string | null | undefined): OrderFilter {
+  if (hasRole(role, "logistics") && !isAdmin(role)) return "open";
   const tabs = orderFilterTabs(role);
   return (tabs as string[]).includes("all") ? "all" : (tabs[0] ?? "all");
 }

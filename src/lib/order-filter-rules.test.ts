@@ -53,7 +53,7 @@ describe("defaultOrderFilter", () => {
   it("lands each role on its job", () => {
     expect(defaultOrderFilter("sales")).toBe("all");
     expect(defaultOrderFilter("accounts")).toBe("all");
-    expect(defaultOrderFilter("logistics")).toBe("all");
+    expect(defaultOrderFilter("logistics")).toBe("open");
     expect(defaultOrderFilter("retailer")).toBe("all");
     expect(defaultOrderFilter("admin")).toBe("all");
     expect(defaultOrderFilter(null)).toBe("all");
@@ -117,6 +117,8 @@ describe("orderFilterValue", () => {
     expect(orderFilterValue("all", "sales")).toBe("");
     expect(orderFilterValue("rate", "sales")).toBe("rate");
     expect(orderFilterValue("rate", "admin")).toBe("rate");
+    expect(orderFilterValue("open", "logistics")).toBe("");
+    expect(orderFilterValue("all", "logistics")).toBe("all");
   });
 });
 

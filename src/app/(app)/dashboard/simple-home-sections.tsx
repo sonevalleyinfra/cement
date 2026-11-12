@@ -277,19 +277,10 @@ export async function SimpleLogisticsHome() {
 
   return (
     <div className="flex flex-col gap-4 font-sans">
-      {/* Quick Actions (3 Vibrant Portrait Cards in a row) */}
+      {/* Quick Actions (2 Vibrant Portrait Cards in a row) */}
       <div>
         <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
-        <div className="grid grid-cols-3 gap-2.5">
-          <QuickActionTile
-            href="/dispatch"
-            line1="Dispatch"
-            line2="Truck"
-            sub={`${s.ready} ready`}
-            icon={Truck}
-            gradient="bg-gradient-to-b from-blue-600 to-indigo-700"
-          />
-
+        <div className="grid grid-cols-2 gap-2.5">
           <QuickActionTile
             href="/stock/purchase"
             line1="Factory"
@@ -314,7 +305,7 @@ export async function SimpleLogisticsHome() {
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-extrabold text-foreground">Current Orders</h2>
-          <Link href="/dispatch" className="text-xs font-bold text-primary hover:underline">
+          <Link href="/orders" className="text-xs font-bold text-primary hover:underline">
             View all
           </Link>
         </div>
