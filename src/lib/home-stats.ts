@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, min, or, notExists, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, min, or, notExists, notInArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   dispatches,
@@ -169,18 +169,68 @@ export async function getMyCash(userId: string) {
 
 /** Orders waiting for logistics (the same ones the dispatch list shows) and the bags on each truck now. */
 export async function getLogisticsHome(now = new Date()) {
-  const [open, oldestToDispatch, balances, names, dispatched14] = await Promise.all([
+  const [open, oldestToDispatch, balances, names, dispatched14, topOrders] = await Promise.all([
     db.select({ status: orders.status }).from(orders).where(toDispatch),
     oldestOrder(toDispatch),
     getBalances(),
     db.select({ id: products.id, name: products.name }).from(products),
     dispatchedBagsSince(new Date(now.getTime() - 14 * 86_400_000)),
+    db
+      .select({
+        id: orders.id,
+        retailerName: retailers.name,
+        retailerPlace: retailers.place,
+        productName: products.name,
+        bags: orders.bags,
+        status: orders.status,
+        deliverTo: orders.deliverTo,
+        siteAddress: orders.siteAddress,
+      })
+      .from(orders)
+      .innerJoin(retailers, eq(retailers.id, orders.retailerId))
+      .innerJoin(products, eq(products.id, orders.productId))
+      .where(toDispatch)
+      .orderBy(asc(orders.createdAt))
+      .limit(3),
   ]);
+  const sentRows =
+    topOrders.length > 0
+      ? await db
+          .select({
+            orderId: dispatches.orderId,
+            sent: sql<number>`coalesce(sum(${dispatches.bags}), 0)`.mapWith(Number),
+          })
+          .from(dispatches)
+          .where(inArray(dispatches.orderId, topOrders.map((o) => o.id)))
+          .groupBy(dispatches.orderId)
+      : [];
+  const sentByOrder = new Map(sentRows.map((r) => [r.orderId, r.sent]));
+  const currentOrders = topOrders.map((o) => ({
+    ...o,
+    remainingBags: Math.max(0, o.bags - (sentByOrder.get(o.id) ?? 0)),
+  }));
+
   const productName = new Map(names.map((p) => [p.id, p.name]));
   const trucks = truckLoads(balances.map((b) => ({ ...b, productName: productName.get(b.productId) ?? "Product" })));
-  // Bags in switched-on godowns, and how many days they last at the last 14 days' pace.
-  const bags = balances.filter((b) => b.kind === "godown" && b.placeActive).reduce((s, b) => s + b.bags, 0);
-  return { ...logisticsCounts(open), oldestToDispatch, trucks, godown: { bags, coverDays: daysOfCover(bags, dispatched14) } };
+  // Bags in switched-on godowns, broken down by product and total.
+  const godownMap = new Map<string, { productId: string; name: string; bags: number }>();
+  let bags = 0;
+  for (const b of balances) {
+    if (b.kind !== "godown" || !b.placeActive || b.bags <= 0) continue;
+    bags += b.bags;
+    const prev = godownMap.get(b.productId);
+    if (prev) prev.bags += b.bags;
+    else godownMap.set(b.productId, { productId: b.productId, name: productName.get(b.productId) ?? "Product", bags: b.bags });
+  }
+  const godownProducts = [...godownMap.values()].sort((a, b) => b.bags - a.bags);
+
+  return {
+    ...logisticsCounts(open),
+    oldestToDispatch,
+    trucks,
+    currentOrders,
+    godown: { bags, coverDays: daysOfCover(bags, dispatched14), products: godownProducts },
+  };
 }
 
 /**

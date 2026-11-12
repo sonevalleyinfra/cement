@@ -26,6 +26,8 @@ import {
 import Link from "next/link";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/app/empty-state";
+import { StatusChip } from "@/components/app/status-chip";
+import { isOrderStatus } from "@/lib/order-rules";
 import {
   getAccountsHome,
   getAdminHome,
@@ -73,7 +75,7 @@ function QuickActionTile({ href, line1, line2, sub, icon: Icon, gradient }: Quic
     >
       <div className="flex size-10 items-center justify-center rounded-xl bg-white/20 transition-transform group-hover:scale-105">
         {Icon === "rupee" ? (
-          <span className="text-lg font-black leading-none">₹</span>
+          <span className="text-lg font-black leading-none">â‚¹</span>
         ) : (
           <Icon className="size-5 text-white" strokeWidth={2.4} />
         )}
@@ -243,54 +245,6 @@ export async function SimpleLogisticsHome() {
 
   return (
     <div className="flex flex-col gap-4 font-sans">
-      {/* Top Hero: Fleet Status Card with Stock breakdown */}
-      <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-xs font-semibold text-muted-foreground">Loaded Trucks:</span>
-            <p className="mt-0.5 text-3xl font-black tracking-tight text-foreground">
-              {s.trucks.length} Trucks
-            </p>
-          </div>
-
-          <Link
-            href="/godowns"
-            className="inline-flex items-center justify-center rounded-2xl border border-border bg-muted/60 px-4 py-2.5 text-sm font-bold text-foreground transition-all duration-150 active:scale-95 hover:bg-muted"
-          >
-            Godowns ({num(s.godown.bags)} bags)
-          </Link>
-        </div>
-
-        {/* Stock & Fleet Breakdown */}
-        <div className="mt-3.5 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 text-xs">
-          <Link
-            href="/godowns"
-            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
-          >
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-semibold">Godown Stock</span>
-              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <span className="mt-0.5 text-sm font-black text-foreground">{num(s.godown.bags)} bags</span>
-          </Link>
-          <Link
-            href="/dispatch"
-            className="group flex flex-col rounded-xl bg-muted/30 p-2.5 transition-all duration-150 hover:bg-muted/60 active:scale-[0.98] ring-1 ring-border/40 hover:ring-primary/30"
-          >
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span className="text-[11px] font-semibold">Ready to Dispatch</span>
-              <ChevronRight className="size-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-            </div>
-            <span className="mt-0.5 text-sm font-black text-orange-600 dark:text-orange-400">{s.ready} orders</span>
-          </Link>
-        </div>
-
-        <div className="mt-2.5 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Partly sent: <strong className="text-foreground">{s.partly} orders</strong></span>
-          <span>Cover: <strong>{s.godown.coverDays ? `${s.godown.coverDays} days` : "Normal"}</strong></span>
-        </div>
-      </div>
-
       {/* Quick Actions (3 Vibrant Portrait Cards in a row) */}
       <div>
         <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
@@ -324,6 +278,91 @@ export async function SimpleLogisticsHome() {
         </div>
       </div>
 
+      {/* Current Orders (Top 3 waiting to dispatch) */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">Current Orders</h2>
+          <Link href="/dispatch" className="text-xs font-bold text-primary hover:underline">
+            View all
+          </Link>
+        </div>
+
+        {s.currentOrders.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {s.currentOrders.map((o) => {
+              const location =
+                o.deliverTo === "site"
+                  ? o.siteAddress
+                    ? `Site: ${o.siteAddress}`
+                    : "Site delivery"
+                  : o.retailerPlace;
+              return (
+                <Link
+                  key={o.id}
+                  href={`/orders/${o.id}`}
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-extrabold text-foreground">
+                        {o.retailerName}
+                      </p>
+                      {isOrderStatus(o.status) && <StatusChip status={o.status} />}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {location}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-foreground">
+                      {o.productName} ?{" "}
+                      <span className="font-extrabold text-orange-600 dark:text-orange-400">
+                        {num(o.remainingBags)} bags left
+                      </span>
+                    </p>
+                  </div>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No orders waiting to dispatch
+          </div>
+        )}
+      </div>
+
+      {/* Godown Stock (Product-wise breakdown) */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-extrabold text-foreground">
+            Godown Stock ({num(s.godown.bags)} bags)
+          </h2>
+          <Link href="/godowns" className="text-xs font-bold text-primary hover:underline">
+            All godowns
+          </Link>
+        </div>
+
+        {s.godown.products.length > 0 ? (
+          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
+            {s.godown.products.map((p) => (
+              <div
+                key={p.productId}
+                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+              >
+                <span className="font-semibold text-foreground">{p.name}</span>
+                <span className="shrink-0 font-extrabold text-foreground">
+                  {num(p.bags)} bags
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
+            No stock in godowns
+          </div>
+        )}
+      </div>
+
       {/* Loaded Trucks (Stock on Wheels) */}
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -338,28 +377,39 @@ export async function SimpleLogisticsHome() {
             {s.trucks.map((t) => (
               <div
                 key={t.truck}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
+                className="rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
               >
-                <div className="min-w-0">
-                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">Truck Registration</span>
-                  <p className="text-base font-black text-foreground">{t.truck}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                    {t.products.map((p) => `${p.bags} bags ${p.name}`).join(", ")}
-                  </p>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                      Truck Registration
+                    </span>
+                    <p className="text-base font-black text-foreground">{t.truck}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Link
+                      href="/stock/transfer"
+                      className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-muted/60 px-2.5 py-1 text-xs font-bold text-foreground transition-all duration-150 hover:bg-muted active:scale-95"
+                    >
+                      Unload
+                    </Link>
+                    <Link
+                      href="/dispatch"
+                      className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-all duration-150 hover:bg-primary/20 active:scale-95"
+                    >
+                      Dispatch
+                    </Link>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Link
-                    href="/stock/transfer"
-                    className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-muted/60 px-2.5 py-1 text-xs font-bold text-foreground transition-all duration-150 hover:bg-muted active:scale-95"
-                  >
-                    Unload
-                  </Link>
-                  <Link
-                    href="/dispatch"
-                    className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-all duration-150 hover:bg-primary/20 active:scale-95"
-                  >
-                    Dispatch
-                  </Link>
+                <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-border/50 pt-2.5">
+                  {t.products.map((p) => (
+                    <span
+                      key={p.name}
+                      className="inline-flex items-center rounded-lg bg-muted/60 px-2.5 py-1 text-xs font-semibold text-foreground"
+                    >
+                      {p.name} ? {num(p.bags)} bags
+                    </span>
+                  ))}
                 </div>
               </div>
             ))}
@@ -373,10 +423,6 @@ export async function SimpleLogisticsHome() {
     </div>
   );
 }
-
-/* =========================================================================
-   3. ACCOUNTS SCREEN (Exact Match to Image 2: 3 Cards in a row)
-   ========================================================================= */
 
 export async function SimpleAccountsHome() {
   const s = await getAccountsHome();
@@ -688,7 +734,7 @@ export async function SimpleAdminHome() {
             Collected Today: <strong className="text-foreground">{money(todayTotalCollected)}</strong>
           </span>
           <span className="text-muted-foreground text-[11px]">
-            Cash: <strong className="text-foreground">{money(todayCash)}</strong> · Online: <strong className="text-foreground">{money(todayOnline)}</strong>
+            Cash: <strong className="text-foreground">{money(todayCash)}</strong> Â· Online: <strong className="text-foreground">{money(todayOnline)}</strong>
           </span>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-1 rounded-xl bg-blue-500/8 px-3.5 py-2 text-xs">
@@ -802,7 +848,7 @@ export async function SimpleAdminHome() {
           <div className="flex items-center gap-2">
             {marginPerBag !== null && (
               <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
-                ₹{money(marginPerBag)}/bag
+                â‚¹{money(marginPerBag)}/bag
               </span>
             )}
             {salesDelta !== null && (
@@ -900,7 +946,7 @@ export async function SimpleAdminHome() {
             href={`/reports/purchases?from=${w.today}&to=${w.today}`}
             line1="Purchase"
             line2="Report"
-            sub={todayPurchaseBags > 0 ? `${short(todayPurchasePaise)} · ${num(todayPurchaseBags)} bags` : "Truck journey & CSV"}
+            sub={todayPurchaseBags > 0 ? `${short(todayPurchasePaise)} Â· ${num(todayPurchaseBags)} bags` : "Truck journey & CSV"}
             icon={PackagePlus}
             gradient="bg-gradient-to-br from-blue-600 to-indigo-700"
           />
@@ -909,7 +955,7 @@ export async function SimpleAdminHome() {
             href={`/reports/sales?from=${w.today}&to=${w.today}`}
             line1="Dispatch"
             line2="Report"
-            sub={bags > 0 ? `${short(salesPaise)} · ${num(bags)} bags` : "Register & CSV"}
+            sub={bags > 0 ? `${short(salesPaise)} Â· ${num(bags)} bags` : "Register & CSV"}
             icon={Truck}
             gradient="bg-gradient-to-br from-sky-600 to-blue-700"
           />
@@ -967,7 +1013,7 @@ export async function SimpleAdminHome() {
           <div className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs">
             <span className="text-xs font-semibold text-muted-foreground">DSO (Collection Speed)</span>
             <span className="mt-1 text-lg font-black text-foreground">
-              {!risk || risk.dso === null ? "—" : daysText(risk.dso)}
+              {!risk || risk.dso === null ? "â€”" : daysText(risk.dso)}
             </span>
             <span className="text-[11px] text-muted-foreground font-medium">Average days</span>
           </div>
