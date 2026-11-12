@@ -183,7 +183,7 @@ export async function getAccountsHome() {
       .innerJoin(retailers, eq(retailers.id, orders.retailerId))
       .innerJoin(products, eq(products.id, orders.productId))
       .where(waitingApproval)
-      .orderBy(asc(orders.createdAt))
+      .orderBy(desc(orders.updatedAt))
       .limit(3),
     db
       .select({
@@ -195,7 +195,7 @@ export async function getAccountsHome() {
       .from(receipts)
       .innerJoin(retailers, eq(retailers.id, receipts.retailerId))
       .where(unverifiedOnline)
-      .orderBy(asc(receipts.createdAt))
+      .orderBy(desc(receipts.createdAt))
       .limit(3),
     db
       .select({
@@ -206,7 +206,7 @@ export async function getAccountsHome() {
       .from(walletMovements)
       .innerJoin(user, eq(user.id, walletMovements.collectorId))
       .where(unansweredHandoverWhere())
-      .orderBy(asc(walletMovements.createdAt))
+      .orderBy(desc(walletMovements.createdAt))
       .limit(3),
   ]);
   return {
@@ -251,12 +251,13 @@ export async function getLogisticsHome(now = new Date()) {
         deliverTo: orders.deliverTo,
         siteAddress: orders.siteAddress,
         createdAt: orders.createdAt,
+        updatedAt: orders.updatedAt,
       })
       .from(orders)
       .innerJoin(retailers, eq(retailers.id, orders.retailerId))
       .innerJoin(products, eq(products.id, orders.productId))
       .where(toDispatch)
-      .orderBy(asc(orders.createdAt))
+      .orderBy(desc(orders.updatedAt))
       .limit(3),
   ]);
   const sentRows =

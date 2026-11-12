@@ -352,7 +352,7 @@ export async function SimpleLogisticsHome() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <OrderAgeTimer sinceIso={o.createdAt.toISOString()} initialNowMs={now.getTime()} />
+                    <OrderAgeTimer sinceIso={o.updatedAt.toISOString()} initialNowMs={now.getTime()} />
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </div>
                 </Link>
