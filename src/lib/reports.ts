@@ -505,6 +505,7 @@ export async function getPurchaseReport(range: ReportRange): Promise<PurchaseRep
     createdAt: p.createdAt,
     invoiceDate: p.invoiceDate,
     invoiceNo: p.invoiceNo,
+    trackingId: p.trackingId,
     productId: p.productId,
     productName: label(p.rawProductName),
     brandName: p.brandName,
