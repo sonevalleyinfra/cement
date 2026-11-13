@@ -277,7 +277,7 @@ export async function SimpleLogisticsHome() {
 
   return (
     <div className="flex flex-col gap-4 font-sans">
-      {/* Quick Actions (2 Vibrant Portrait Cards in a row) */}
+      {/* Quick Actions (6 Vibrant Portrait Cards in a 2x3 grid) */}
       <div>
         <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
         <div className="grid grid-cols-2 gap-2.5">
@@ -294,9 +294,45 @@ export async function SimpleLogisticsHome() {
             href="/stock/transfer"
             line1="Move"
             line2="Bags"
-            sub="Transfer"
+            sub="Transfer / Unload"
             icon={Package}
             gradient="bg-gradient-to-b from-blue-600 to-slate-700"
+          />
+
+          <QuickActionTile
+            href="/dispatch"
+            line1="Dispatch"
+            line2="Orders"
+            sub={`${s.ready} ready`}
+            icon={Truck}
+            gradient="bg-gradient-to-b from-indigo-600 to-blue-700"
+          />
+
+          <QuickActionTile
+            href="/godowns"
+            line1="Godown"
+            line2="Stock"
+            sub={`${num(s.godown.bags)} bags`}
+            icon={Store}
+            gradient="bg-gradient-to-b from-amber-500 to-orange-600"
+          />
+
+          <QuickActionTile
+            href="/trucks?tab=loaded"
+            line1="Loaded"
+            line2="Trucks"
+            sub={`${s.trucks.length} on wheels`}
+            icon={Truck}
+            gradient="bg-gradient-to-b from-rose-500 to-rose-700"
+          />
+
+          <QuickActionTile
+            href="/receipts/new"
+            line1="Collect"
+            line2="Cash"
+            sub="Driver / Party"
+            icon="rupee"
+            gradient="bg-gradient-to-b from-purple-600 to-violet-700"
           />
         </div>
       </div>
