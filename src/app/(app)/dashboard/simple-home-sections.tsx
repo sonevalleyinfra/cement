@@ -340,9 +340,6 @@ export async function SimpleLogisticsHome() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">
-                      Truck Registration
-                    </span>
                     <p className="text-base font-black tracking-tight text-foreground">{t.truck}</p>
                     <span className="mt-0.5 inline-block text-xs font-bold text-primary">
                       Total: {num(t.bags)} bags
