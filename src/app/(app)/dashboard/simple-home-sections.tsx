@@ -59,7 +59,7 @@ const short = (p: number) => (Math.abs(p) >= 1_00_000_00 ? formatINRCompact(p) :
 interface QuickActionTileProps {
   href: string;
   line1: string;
-  line2: string;
+  line2?: string;
   sub?: string;
   icon: LucideIcon | "rupee";
   gradient: string;
@@ -84,8 +84,12 @@ function QuickActionTile({ href, line1, line2, sub, icon: Icon, gradient }: Quic
       <div>
         <span className="text-sm font-black leading-tight block">
           {line1}
-          <br />
-          {line2}
+          {line2 ? (
+            <>
+              <br />
+              {line2}
+            </>
+          ) : null}
         </span>
         {sub && (
           <span className="mt-1 block text-[11px] font-semibold text-white/80 truncate">
@@ -276,8 +280,8 @@ export async function SimpleLogisticsHome() {
   const s = await getLogisticsHome(now);
 
   return (
-    <div className="flex flex-col gap-4 font-sans pt-1">
-      {/* 6 Vibrant Portrait Action Cards */}
+    <div className="flex flex-col gap-5 font-sans pt-1">
+      {/* 4 Vibrant Portrait Action Cards (2x2 Grid) */}
       <div className="grid grid-cols-2 gap-3">
         <QuickActionTile
           href="/stock/purchase"
@@ -298,9 +302,8 @@ export async function SimpleLogisticsHome() {
         />
 
         <QuickActionTile
-          href="/dispatch"
-          line1="Dispatch"
-          line2="Orders"
+          href="/orders"
+          line1="Orders"
           sub={`${s.ready} ready`}
           icon={Truck}
           gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
@@ -314,24 +317,76 @@ export async function SimpleLogisticsHome() {
           icon={Store}
           gradient="bg-gradient-to-br from-violet-400 to-purple-500"
         />
+      </div>
 
-        <QuickActionTile
-          href="/trucks?tab=loaded"
-          line1="Loaded"
-          line2="Trucks"
-          sub={`${s.trucks.length} on wheels`}
-          icon={Truck}
-          gradient="bg-gradient-to-br from-teal-400 to-cyan-500"
-        />
+      {/* Stock on Wheels Section (All loaded trucks with full product details) */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-extrabold text-foreground">Stock on Wheels</h2>
+            <p className="text-xs text-muted-foreground">{s.trucks.length} trucks loaded</p>
+          </div>
+          <Link href="/trucks?tab=loaded" className="text-xs font-bold text-primary hover:underline">
+            Fleet View ({s.trucks.length})
+          </Link>
+        </div>
 
-        <QuickActionTile
-          href="/receipts/new"
-          line1="Collect"
-          line2="Cash"
-          sub="Driver / Party"
-          icon="rupee"
-          gradient="bg-gradient-to-br from-fuchsia-400 to-pink-500"
-        />
+        {s.trucks.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            {s.trucks.map((t) => (
+              <div
+                key={t.truck}
+                className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">
+                      Truck Registration
+                    </span>
+                    <p className="text-base font-black tracking-tight text-foreground">{t.truck}</p>
+                    <span className="mt-0.5 inline-block text-xs font-bold text-primary">
+                      Total: {num(t.bags)} bags
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Link
+                      href="/stock/transfer"
+                      className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-muted/60 px-3 py-1 text-xs font-bold text-foreground transition-all duration-150 hover:bg-muted active:scale-95"
+                    >
+                      Unload
+                    </Link>
+                    <Link
+                      href="/dispatch"
+                      className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary/10 px-3 py-1 text-xs font-bold text-primary transition-all duration-150 hover:bg-primary/20 active:scale-95"
+                    >
+                      Dispatch
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Product Name with Bags list for this truck */}
+                <div className="divide-y divide-border/50 rounded-xl bg-muted/30 px-3 py-1">
+                  {t.products.map((p) => (
+                    <div
+                      key={p.name}
+                      className="flex items-center justify-between py-1.5 text-xs first:pt-1 last:pb-1"
+                    >
+                      <span className="font-semibold text-foreground">{p.name}</span>
+                      <span className="shrink-0 font-extrabold text-foreground">
+                        {num(p.bags)} bags
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-24 flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 p-4 text-center">
+            <Truck className="mb-1 size-6 text-muted-foreground/60" />
+            <p className="text-xs font-semibold text-muted-foreground">No loaded trucks on wheels</p>
+          </div>
+        )}
       </div>
     </div>
   );
