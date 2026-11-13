@@ -15,8 +15,8 @@ describe("navFor", () => {
     expect(thirdTab("sales,accounts").href).toBe("/retailers");
   });
   it("includes Ledger only for roles with viewLedger permission", () => {
-    // logistics does not have viewLedger permission:
-    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/more"]);
+    // logistics has dedicated single-screen card dashboard (no bottom nav):
+    expect(navFor("logistics")).toEqual([]);
     // roles with viewLedger permission:
     expect(navFor("sales").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/ledger", "/more"]);
     expect(navFor("accounts").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/receipts", "/ledger", "/more"]);

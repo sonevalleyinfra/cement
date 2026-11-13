@@ -276,212 +276,63 @@ export async function SimpleLogisticsHome() {
   const s = await getLogisticsHome(now);
 
   return (
-    <div className="flex flex-col gap-4 font-sans">
-      {/* Quick Actions (6 Vibrant Portrait Cards in a 2x3 grid) */}
-      <div>
-        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
-        <div className="grid grid-cols-2 gap-2.5">
-          <QuickActionTile
-            href="/stock/purchase"
-            line1="Factory"
-            line2="Purchase"
-            sub="Plant cement"
-            icon={Warehouse}
-            gradient="bg-gradient-to-b from-emerald-500 to-teal-600"
-          />
+    <div className="flex flex-col gap-4 font-sans pt-1">
+      {/* 6 Vibrant Portrait Action Cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <QuickActionTile
+          href="/stock/purchase"
+          line1="Factory"
+          line2="Purchase"
+          sub="Plant cement"
+          icon={Warehouse}
+          gradient="bg-gradient-to-br from-emerald-400 to-teal-500"
+        />
 
-          <QuickActionTile
-            href="/stock/transfer"
-            line1="Move"
-            line2="Bags"
-            sub="Transfer / Unload"
-            icon={Package}
-            gradient="bg-gradient-to-b from-blue-600 to-slate-700"
-          />
+        <QuickActionTile
+          href="/stock/transfer"
+          line1="Move"
+          line2="Bags"
+          sub="Transfer / Unload"
+          icon={Package}
+          gradient="bg-gradient-to-br from-sky-400 to-blue-500"
+        />
 
-          <QuickActionTile
-            href="/dispatch"
-            line1="Dispatch"
-            line2="Orders"
-            sub={`${s.ready} ready`}
-            icon={Truck}
-            gradient="bg-gradient-to-b from-indigo-600 to-blue-700"
-          />
+        <QuickActionTile
+          href="/dispatch"
+          line1="Dispatch"
+          line2="Orders"
+          sub={`${s.ready} ready`}
+          icon={Truck}
+          gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
+        />
 
-          <QuickActionTile
-            href="/godowns"
-            line1="Godown"
-            line2="Stock"
-            sub={`${num(s.godown.bags)} bags`}
-            icon={Store}
-            gradient="bg-gradient-to-b from-amber-500 to-orange-600"
-          />
+        <QuickActionTile
+          href="/godowns"
+          line1="Godown"
+          line2="Stock"
+          sub={`${num(s.godown.bags)} bags`}
+          icon={Store}
+          gradient="bg-gradient-to-br from-violet-400 to-purple-500"
+        />
 
-          <QuickActionTile
-            href="/trucks?tab=loaded"
-            line1="Loaded"
-            line2="Trucks"
-            sub={`${s.trucks.length} on wheels`}
-            icon={Truck}
-            gradient="bg-gradient-to-b from-rose-500 to-rose-700"
-          />
+        <QuickActionTile
+          href="/trucks?tab=loaded"
+          line1="Loaded"
+          line2="Trucks"
+          sub={`${s.trucks.length} on wheels`}
+          icon={Truck}
+          gradient="bg-gradient-to-br from-teal-400 to-cyan-500"
+        />
 
-          <QuickActionTile
-            href="/receipts/new"
-            line1="Collect"
-            line2="Cash"
-            sub="Driver / Party"
-            icon="rupee"
-            gradient="bg-gradient-to-b from-purple-600 to-violet-700"
-          />
-        </div>
+        <QuickActionTile
+          href="/receipts/new"
+          line1="Collect"
+          line2="Cash"
+          sub="Driver / Party"
+          icon="rupee"
+          gradient="bg-gradient-to-br from-fuchsia-400 to-pink-500"
+        />
       </div>
-
-      {/* Current Orders (Top 3 waiting to dispatch) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">Current Orders</h2>
-          <Link href="/orders" className="text-xs font-bold text-primary hover:underline">
-            View all
-          </Link>
-        </div>
-
-        {s.currentOrders.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {s.currentOrders.map((o) => {
-              const location =
-                o.deliverTo === "site"
-                  ? o.siteAddress
-                    ? `Site: ${o.siteAddress}`
-                    : "Site delivery"
-                  : o.retailerPlace;
-              return (
-                <Link
-                  key={o.id}
-                  href={`/orders/${o.id}`}
-                  className="flex flex-col gap-1 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                      <p className="truncate text-sm font-extrabold text-foreground">
-                        {o.retailerName}
-                      </p>
-                      {isOrderStatus(o.status) && <StatusChip status={o.status} />}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-                      <OrderAgeTimer sinceIso={o.updatedAt.toISOString()} initialNowMs={now.getTime()} />
-                      <ChevronRight className="size-4 text-muted-foreground" />
-                    </div>
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {location}
-                  </p>
-                  <p className="text-xs font-semibold text-foreground">
-                    {o.productName} &middot;{" "}
-                    <span className="font-extrabold text-orange-600 dark:text-orange-400">
-                      {num(o.remainingBags)} bags left
-                    </span>
-                  </p>
-                </Link>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No orders waiting to dispatch
-          </div>
-        )}
-      </div>
-
-      {/* Loaded Trucks (Stock on Wheels) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">Loaded Trucks (Stock on Wheels)</h2>
-          <Link href="/trucks?tab=loaded" className="text-xs font-bold text-primary hover:underline">
-            Fleet View ({s.trucks.length})
-          </Link>
-        </div>
-
-        {s.trucks.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {s.trucks.map((t) => (
-              <div
-                key={t.truck}
-                className="rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">
-                      Truck Registration
-                    </span>
-                    <p className="text-base font-black text-foreground">{t.truck}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Link
-                      href="/stock/transfer"
-                      className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-muted/60 px-2.5 py-1 text-xs font-bold text-foreground transition-all duration-150 hover:bg-muted active:scale-95"
-                    >
-                      Unload
-                    </Link>
-                    <Link
-                      href="/dispatch"
-                      className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary transition-all duration-150 hover:bg-primary/20 active:scale-95"
-                    >
-                      Dispatch
-                    </Link>
-                  </div>
-                </div>
-                <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-border/50 pt-2.5">
-                  {t.products.map((p) => (
-                    <span
-                      key={p.name}
-                      className="inline-flex items-center rounded-lg bg-muted/60 px-2.5 py-1 text-xs font-semibold text-foreground"
-                    >
-                      {p.name} &middot; {num(p.bags)} bags
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No loaded trucks waiting
-          </div>
-        )}
-      </div>
-      {/* Godown Stock (Product-wise breakdown) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">
-            Godown Stock ({num(s.godown.bags)} bags)
-          </h2>
-          <Link href="/godowns" className="text-xs font-bold text-primary hover:underline">
-            All godowns
-          </Link>
-        </div>
-
-        {s.godown.products.length > 0 ? (
-          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
-            {s.godown.products.map((p) => (
-              <div
-                key={p.productId}
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-              >
-                <span className="font-semibold text-foreground">{p.name}</span>
-                <span className="shrink-0 font-extrabold text-foreground">
-                  {num(p.bags)} bags
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No stock in godowns
-          </div>
-        )}
-      </div>
-
     </div>
   );
 }

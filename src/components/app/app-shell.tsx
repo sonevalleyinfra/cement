@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import { BottomNav, type NavItem } from "./bottom-nav";
 import { OfflineNotice } from "./offline-notice";
@@ -44,10 +45,17 @@ export function AppShell({
         {headerRight}
       </header>
       <OfflineNotice />
-      <main className="flex flex-1 flex-col px-4 pt-2 pb-[calc(5rem+env(safe-area-inset-bottom))]">
+      <main
+        className={cn(
+          "flex flex-1 flex-col px-4 pt-2",
+          nav.length > 0
+            ? "pb-[calc(5rem+env(safe-area-inset-bottom))]"
+            : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]",
+        )}
+      >
         {children}
       </main>
-      <BottomNav items={nav} />
+      {nav.length > 0 && <BottomNav items={nav} />}
     </div>
   );
 }
