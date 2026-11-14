@@ -48,7 +48,7 @@ export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) 
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Trucks" back="/more" />
+      <PageHeader title="Trucks" />
 
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Loaded trucks" value={formatCount(visibleRows.length)} className={counterClass} />
@@ -186,12 +186,20 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         {r.bags > 0 ? (
-          <Link
-            href={`/stock/transfer?from=vehicle:${r.id}`}
-            className="inline-flex min-h-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95"
-          >
-            Unload to Godown
-          </Link>
+          <div className="flex items-center gap-1.5">
+            <Link
+              href={`/stock/transfer?from=vehicle:${r.id}`}
+              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95"
+            >
+              Unload to Godown
+            </Link>
+            <Link
+              href={`/dispatch?truck=${encodeURIComponent(r.number)}`}
+              className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-xs transition-all hover:bg-primary/90 active:scale-95"
+            >
+              Dispatch
+            </Link>
+          </div>
         ) : (
           <span />
         )}

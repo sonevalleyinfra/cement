@@ -294,11 +294,11 @@ export async function SimpleLogisticsHome() {
                 key={t.truck}
                 className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className="text-base font-black tracking-tight text-foreground">{t.truck}</p>
-                    <span className="mt-0.5 inline-block text-xs font-bold text-primary">
-                      Total: {num(t.bags)} bags
+                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
+                      {num(t.bags)} bags
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
