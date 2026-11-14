@@ -11,7 +11,7 @@ export default async function Page({
   const sp = searchParams ? await searchParams : {};
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Move bags" back="/stock" />
+      <PageHeader title="Transfer bags" back="/stock" />
       <TransferForm {...data} initialFrom={sp?.from} initialTo={sp?.to} />
     </div>
   );

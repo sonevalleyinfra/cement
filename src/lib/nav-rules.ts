@@ -7,7 +7,7 @@
  */
 import type { NavItem } from "@/components/app/bottom-nav";
 import { can, type Action } from "./permissions";
-import { hasRole, isAdmin } from "./roles";
+import { hasAnyRole, hasRole, isAdmin } from "./roles";
 
 export function thirdTab(role: string | null | undefined): NavItem {
   if (isAdmin(role) || hasRole(role, "sales")) return { href: "/retailers", label: "Retailers", icon: "retailers" };
@@ -17,7 +17,7 @@ export function thirdTab(role: string | null | undefined): NavItem {
 }
 
 export function navFor(role: string | null | undefined): NavItem[] {
-  if (hasRole(role, "logistics") && !isAdmin(role)) {
+  if (hasAnyRole(role, ["logistics", "accounts", "sales"]) && !isAdmin(role)) {
     return [];
   }
   const third = thirdTab(role);

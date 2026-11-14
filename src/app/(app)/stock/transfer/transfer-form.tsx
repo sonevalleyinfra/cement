@@ -319,7 +319,7 @@ export function TransferForm({
             ? `Unload ${bags > 0 ? `${bags} bags ` : ""}from ${fromObj.name} into ${toObj.name}`
             : fromObj?.kind === "godown" && toObj?.kind === "vehicle"
               ? `Load ${bags > 0 ? `${bags} bags ` : ""}into ${toObj.name}`
-              : "Move bags"}
+              : "Transfer bags"}
         </Button>
       </PinnedAction>
     </div>
