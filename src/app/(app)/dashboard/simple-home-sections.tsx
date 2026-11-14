@@ -190,7 +190,7 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
                   <p className="truncate text-base font-extrabold text-foreground">{r.name}</p>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{r.place || "Shop"}</p>
                   {r.overduePaise > 0 ? (
-                    <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
                       Overdue: {money(r.overduePaise)}
                     </p>
                   ) : (
@@ -198,7 +198,7 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
                   )}
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-base font-black text-rose-600 dark:text-rose-400">
+                  <p className="text-base font-black text-foreground">
                     {money(r.duePaise)}
                   </p>
                   <span className="mt-1 inline-block rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
