@@ -269,7 +269,7 @@ export async function SimpleLogisticsHome() {
         <QuickActionTile
           href="/stock"
           line1="Stock"
-          sub={`${num(s.godown.bags)} bags`}
+          sub={`Godown - ${num(s.godown.bags)} bags`}
           icon={Store}
           gradient="bg-gradient-to-br from-violet-400 to-purple-500"
         />
