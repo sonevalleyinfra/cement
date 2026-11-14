@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { type ComponentProps, useId, useState } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
-import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { RateField } from "@/components/app/rate-field";
 import { ReasonPicker } from "@/components/app/reason-picker";
@@ -13,7 +12,7 @@ import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CHANNEL_LABELS, hasManyBrands, pickProductParts, startBrand } from "@/lib/catalogue-rules";
+import { CHANNEL_LABELS, PRODUCT_CHANNELS, hasManyBrands, startBrand, type ProductChannel } from "@/lib/catalogue-rules";
 import { toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
 import { parseRupeesToPaise } from "@/lib/money";
@@ -90,6 +89,19 @@ function NoteField({
  * existing products (brand → trade-type → type → grade); picking a brand starts again at that brand's
  * first product, so nothing new is ever made here (products are added in Catalogue).
  */
+function variantLabel(p: ProductOption, listGrades: { id: string; name: string }[]): string {
+  const gName = listGrades.find((g) => g.id === p.gradeId)?.name;
+  if (p.channel === "non_trade") {
+    if (gName === "NFR" || p.name.includes("NFR")) return "PPC NFR";
+    if (gName === "43" || p.name.includes("OPC 43")) return "OPC 43";
+  }
+  if (p.channel === "trade") {
+    if (gName === "43" || p.name.includes("OPC 43")) return "OPC 43";
+    if (gName) return gName;
+  }
+  return p.name;
+}
+
 export function StockForm({
   mode,
   places,
@@ -110,7 +122,7 @@ export function StockForm({
   const { pending, run } = useSubmit();
   const purchase = mode === "purchase";
   const availablePlaces = places;
-  const [pick, setPick] = useState({ brandId: products[0]?.brandId ?? "", channel: "", typeId: "", gradeId: "" });
+  const [pick, setPick] = useState({ brandId: products[0]?.brandId ?? "", channel: "", typeId: "", gradeId: "", productId: "" });
   const [place, setPlace] = useState(purchase ? NEW_TRUCK_PLACE : (places[0]?.key ?? ""));
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
@@ -144,8 +156,18 @@ export function StockForm({
   // Brand first. With one brand there is no Brand drop-down: that brand is used.
   const brandId = startBrand(lists.brands, pick.brandId);
   const brandName = lists.brands.find((b) => b.id === brandId)?.name ?? "";
-  const parts = pickProductParts(products, lists.types, lists.grades, { ...pick, brandId });
-  const product = parts.product;
+  const brandProducts = products.filter((p) => p.brandId === brandId);
+  const channels = PRODUCT_CHANNELS.filter((c) => brandProducts.some((p) => p.channel === c));
+  const currentChannel = (channels as readonly string[]).includes(pick.channel)
+    ? (pick.channel as ProductChannel)
+    : (channels[0] ?? "trade");
+  const channelProducts = brandProducts.filter((p) => p.channel === currentChannel);
+  const product =
+    channelProducts.find((p) => p.id === pick.productId || p.gradeId === pick.gradeId) ??
+    channelProducts[0] ??
+    null;
+  const gradeId = product?.gradeId ?? "";
+  const typeId = lists.grades.find((g) => g.id === gradeId)?.typeId ?? lists.types[0]?.id ?? "";
 
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
@@ -171,9 +193,9 @@ export function StockForm({
     clearError();
     const input = {
       brandId,
-      channel: parts.channel,
-      typeId: parts.typeId,
-      gradeId: parts.gradeId,
+      channel: currentChannel,
+      typeId,
+      gradeId,
       place,
       truck: purchase ? truck : undefined,
       bags: mode === "adjust" && minus ? -bags : bags,
@@ -229,28 +251,35 @@ export function StockForm({
           label="Brand"
           value={brandId}
           // A new brand starts at its own first product (nothing from the old brand is kept).
-          onChange={(id) => setPick({ brandId: id, channel: "", typeId: "", gradeId: "" })}
+          onChange={(id) => setPick({ brandId: id, channel: "", typeId: "", gradeId: "", productId: "" })}
           options={lists.brands.map((b) => ({ value: b.id, label: b.name }))}
         />
       )}
-      <SelectField
-        label="Trade-type"
-        value={parts.channel}
-        onChange={(channel) => setPick({ ...pick, brandId, channel })}
-        options={parts.channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
-      />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <SelectField
-          label="Type"
-          value={parts.typeId}
-          onChange={(typeId) => setPick({ ...pick, brandId, channel: parts.channel, typeId })}
-          options={parts.typeIds.map((id) => ({ value: id, label: lists.types.find((t) => t.id === id)?.code ?? "" }))}
+          label="Trade-type"
+          value={currentChannel}
+          onChange={(channel) => setPick({ brandId, channel, typeId: "", gradeId: "", productId: "" })}
+          options={channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
         />
         <SelectField
-          label={lists.types.find((t) => t.id === parts.typeId)?.code === "PPC" ? "Cement Name / Variant" : "Grade"}
-          value={parts.gradeId}
-          onChange={(gradeId) => setPick({ ...pick, brandId, channel: parts.channel, typeId: parts.typeId, gradeId })}
-          options={parts.gradeIds.map((id) => ({ value: id, label: lists.grades.find((g) => g.id === id)?.name ?? "" }))}
+          label="Cement Name / Variant"
+          value={product?.id ?? ""}
+          onChange={(prodId) => {
+            const p = channelProducts.find((x) => x.id === prodId);
+            const tId = lists.grades.find((g) => g.id === p?.gradeId)?.typeId ?? "";
+            setPick({
+              brandId,
+              channel: currentChannel,
+              typeId: tId,
+              gradeId: p?.gradeId ?? "",
+              productId: p?.id ?? "",
+            });
+          }}
+          options={channelProducts.map((p) => ({
+            value: p.id,
+            label: variantLabel(p, lists.grades),
+          }))}
         />
       </div>
       {product && (
@@ -321,11 +350,24 @@ export function StockForm({
           </Button>
         </div>
       )}
-      <div className="tabular text-center text-4xl font-bold" aria-live="polite">
-        {mode === "adjust" && minus ? "−" : ""}
-        {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="stock-bags" className="text-sm font-semibold">
+          {mode === "adjust" ? "Bags to adjust" : "Number of bags"}
+        </Label>
+        <Input
+          id="stock-bags"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="Enter bags (e.g. 200)"
+          value={digits}
+          onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="h-12 text-lg font-semibold"
+        />
       </div>
-      <Keypad value={digits} onChange={setDigits} maxLength={6} />
       {purchase && (
         <>
           <NoteField label={copy.purchase.note} value={note} onChange={setNote} maxLength={PURCHASE_NOTE_MAX} />

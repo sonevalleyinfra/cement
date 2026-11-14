@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { FormHint } from "@/components/app/form-hint";
-import { Keypad } from "@/components/app/keypad";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { firstMissing } from "@/lib/form-rules";
 import { useFormError } from "@/lib/use-form-error";
 import { setOpeningBalance } from "../actions";
@@ -41,10 +42,22 @@ export function OpeningForm({ retailerId, onDone }: { retailerId: string; onDone
           Paid in advance
         </Button>
       </div>
-      <div className="tabular text-center text-3xl font-bold" aria-live="polite">
-        ₹{Number(digits || 0).toLocaleString("en-IN")}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="opening-amount" className="text-sm font-semibold">Opening Amount (₹)</Label>
+        <Input
+          id="opening-amount"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="Enter opening amount"
+          value={digits}
+          onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 9))}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="h-12 text-lg font-semibold"
+        />
       </div>
-      <Keypad value={digits} onChange={setDigits} maxLength={9} />
       {error && (
         <p role="status" className="text-sm text-destructive">
           {error}

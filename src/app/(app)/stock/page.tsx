@@ -45,7 +45,7 @@ export default async function StockPage() {
           { href: "/stock/adjust", label: "Adjust", icon: SlidersHorizontal },
         ]
       : []),
-    ...(can(session.user.role, "transferStock") ? [{ href: "/stock/transfer", label: "Transfer bags", icon: ArrowLeftRight }] : []),
+    ...(can(session.user.role, "transferStock") ? [{ href: "/stock/transfer", label: "Transfer Stock", icon: ArrowLeftRight }] : []),
     { href: "/godowns", label: "Godowns", icon: Warehouse },
   ];
 

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
-import { Keypad } from "@/components/app/keypad";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { ReasonPicker } from "@/components/app/reason-picker";
@@ -269,8 +268,30 @@ export function ReceiptForm({
       )}
 
       <section className="flex flex-col gap-3">
-        <div className="tabular text-center text-4xl font-bold">{formatINR(totalPaise, { hidePaise: true })}</div>
-        <Keypad value={digits} onChange={setDigits} decimal />
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="receipt-amount" className="text-sm font-semibold">Amount (₹)</Label>
+          <Input
+            id="receipt-amount"
+            type="text"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={digits}
+            onChange={(e) => {
+              const val = e.target.value.replace(/[^0-9.]/g, "");
+              const parts = val.split(".");
+              if (parts.length > 2) return;
+              if (parts[1] && parts[1].length > 2) return;
+              setDigits(val);
+            }}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className="h-12 text-lg font-semibold"
+          />
+        </div>
+        <div className="tabular text-right text-sm font-semibold text-muted-foreground">
+          Total: {formatINR(totalPaise, { hidePaise: true })}
+        </div>
         {advancePaise > 0 && (
           <p className="text-center text-sm text-muted-foreground">Advance {formatINR(advancePaise)}</p>
         )}

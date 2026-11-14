@@ -6,7 +6,6 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { GroupCaption } from "@/components/app/group-caption";
-import { Keypad } from "@/components/app/keypad";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { RateField } from "@/components/app/rate-field";
@@ -252,11 +251,22 @@ export function NewOrderForm({
         {askRate && <StockHintLine stockBags={current?.stockBags ?? null} bags={Number(bags || 0)} />}
       </div>
 
-      <div className="tabular text-center text-5xl font-bold">
-        {bags || "0"}
-        <span className="ml-2 text-lg font-medium text-muted-foreground">bags</span>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="order-bags" className="text-sm font-semibold">Bags</Label>
+        <Input
+          id="order-bags"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="Enter number of bags"
+          value={bags}
+          onChange={(e) => setBags(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="h-12 text-lg font-semibold"
+        />
       </div>
-      <Keypad value={bags} onChange={setBags} maxLength={6} />
 
       {askRate && (
         <RateField value={rate} onChange={setRate} bags={Number(bags || 0)}>

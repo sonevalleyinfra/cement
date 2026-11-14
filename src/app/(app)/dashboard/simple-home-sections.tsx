@@ -252,7 +252,7 @@ export async function SimpleLogisticsHome() {
         <QuickActionTile
           href="/stock/transfer"
           line1="Transfer"
-          line2="Bags"
+          line2="Stock"
           sub="Transfer / Unload"
           icon={Package}
           gradient="bg-gradient-to-br from-sky-400 to-blue-500"
@@ -309,7 +309,7 @@ export async function SimpleLogisticsHome() {
                       Unload
                     </Link>
                     <Link
-                      href="/dispatch"
+                      href={`/dispatch?truck=${encodeURIComponent(t.truck)}`}
                       className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary/10 px-3 py-1 text-xs font-bold text-primary transition-all duration-150 hover:bg-primary/20 active:scale-95"
                     >
                       Dispatch

@@ -14,16 +14,18 @@ import { can, rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
 import { getActiveTrucks } from "@/lib/trucks";
+import { cleanTruckLabel } from "@/lib/vehicle-rules";
 import { DispatchView } from "./dispatch-view";
 
 export default async function DispatchPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ orderId?: string }>;
+  searchParams?: Promise<{ orderId?: string; truck?: string; vehicle?: string }>;
 }) {
   const { user } = await requireRole(...rolesFor("dispatch"));
   const sp = searchParams ? await searchParams : {};
   const initialOrderId = sp?.orderId ?? null;
+  const filterTruck = (sp?.truck || sp?.vehicle)?.trim() || null;
 
   // Every approved or partly dispatched order: any logistics person may send it.
   // Only currently loaded trucks (`bags > 0`) remain in active UI; 0-bag trucks stay in DB & reports only.
@@ -61,13 +63,22 @@ export default async function DispatchPage({
   ]);
   // The earliest "needed by" first (none last), then the oldest order first.
   const today = toISTDateKey(new Date());
-  const pending = byRequiredBy(rows).map((r) => ({
+  let pending = byRequiredBy(rows).map((r) => ({
     ...r,
     requiredByText: r.requiredBy ? formatDate(r.requiredBy) : null,
     late: isPastRequiredBy(r.requiredBy, today),
   }));
-  // Places with stock history (godown still switched on), godowns first.
-  // Trucks holding bags right now are listed under places.
+
+  // When initiated from a specific loaded truck (?truck=...), only show orders matching products loaded on this truck
+  if (filterTruck) {
+    const truckBalances = balances.filter(
+      (b) => b.kind === "vehicle" && b.bags > 0 && cleanTruckLabel(b.placeName) === cleanTruckLabel(filterTruck),
+    );
+    const truckProductIds = new Set(truckBalances.map((b) => b.productId));
+    pending = pending.filter((r) => truckProductIds.has(r.productId));
+  }
+
+  // Places with stock history. When filterTruck is set, remove godowns completely (direct truck-to-site dispatch).
   const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.placeKey));
   const loadedTruckNumbers = [...loadedTrucks]
     .map((k) => balances.find((b) => b.placeKey === k)?.placeName ?? "")
@@ -80,7 +91,13 @@ export default async function DispatchPage({
   const places = [
     ...new Map(
       balances
-        .filter((b) => b.placeActive && (b.kind !== "vehicle" || loadedTrucks.has(b.placeKey)))
+        .filter((b) => {
+          if (!b.placeActive) return false;
+          if (filterTruck) {
+            return b.kind === "vehicle" && loadedTrucks.has(b.placeKey);
+          }
+          return b.kind !== "vehicle" || loadedTrucks.has(b.placeKey);
+        })
         .sort((a, b) => a.kind.localeCompare(b.kind) || a.placeName.localeCompare(b.placeName))
         .map((b) => [
           b.placeKey,
@@ -141,6 +158,7 @@ export default async function DispatchPage({
         loadedTrucks={loadedTruckNumbers}
         balances={balances.map((b) => ({ productId: b.productId, placeKey: b.placeKey, bags: b.bags }))}
         initialOrderId={initialOrderId}
+        filterTruck={filterTruck}
       />
     </div>
   );

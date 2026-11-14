@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormHint } from "@/components/app/form-hint";
-import { Keypad } from "@/components/app/keypad";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
@@ -294,10 +293,22 @@ export function TransferForm({
         </p>
       )}
 
-      <div className="tabular text-center text-4xl font-bold" aria-live="polite">
-        {bags} <span className="text-base font-medium text-muted-foreground">bags</span>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="transfer-bags" className="text-sm font-semibold">Bags to transfer</Label>
+        <Input
+          id="transfer-bags"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="Enter number of bags"
+          value={digits}
+          onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="h-12 text-lg font-semibold"
+        />
       </div>
-      <Keypad value={digits} onChange={setDigits} maxLength={6} />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="transfer-note">Note (optional)</Label>
         <Input id="transfer-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
@@ -319,7 +330,7 @@ export function TransferForm({
             ? `Unload ${bags > 0 ? `${bags} bags ` : ""}from ${fromObj.name} into ${toObj.name}`
             : fromObj?.kind === "godown" && toObj?.kind === "vehicle"
               ? `Load ${bags > 0 ? `${bags} bags ` : ""}into ${toObj.name}`
-              : "Transfer bags"}
+              : "Transfer Stock"}
         </Button>
       </PinnedAction>
     </div>
