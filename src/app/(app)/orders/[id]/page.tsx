@@ -196,7 +196,7 @@ export default async function OrderDetailPage({
             href={`/receipts/new?retailer=${o.retailerId}`}
             className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition-all"
           >
-            💰 Collect Payment &rarr;
+            Collect Payment &rarr;
           </Link>
         </div>
       )}
@@ -252,20 +252,8 @@ export default async function OrderDetailPage({
       </div>
       {amount && (
         <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-xs text-muted-foreground">{amount.caption}</div>
-              <div className="tabular text-2xl font-bold">{formatINR(amount.totalPaise)}</div>
-            </div>
-            {canCollect && duesPaise > 0 && isDispatched && (
-              <Link
-                href={`/receipts/new?retailer=${o.retailerId}`}
-                className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition-all"
-              >
-                💰 Collect
-              </Link>
-            )}
-          </div>
+          <div className="text-xs text-muted-foreground">{amount.caption}</div>
+          <div className="tabular text-2xl font-bold">{formatINR(amount.totalPaise)}</div>
           {amount.lines.map((line) => (
             <div key={line} className="tabular text-xs text-muted-foreground">
               {line}
