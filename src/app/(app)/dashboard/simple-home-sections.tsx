@@ -1,14 +1,8 @@
 import {
-  ArrowUpRight,
-  BadgeAlert,
   BadgeCheck,
   Building2,
-  CalendarDays,
   ChevronRight,
-  ClipboardList,
-  Coins,
   FileSpreadsheet,
-  HandCoins,
   History,
   Package,
   PackagePlus,
@@ -24,10 +18,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { Suspense } from "react";
 import { EmptyState } from "@/components/app/empty-state";
 import { StatusChip } from "@/components/app/status-chip";
-import { OrderAgeTimer } from "./order-age-timer";
 import { isOrderStatus } from "@/lib/order-rules";
 import {
   getAccountsHome,
@@ -45,7 +37,7 @@ import { overridesMonthText } from "@/lib/credit-check-rules";
 import { rangeQuery } from "@/lib/report-range";
 import { getSuppliers } from "@/lib/suppliers";
 import { cn } from "@/lib/utils";
-import { bagsText, daysText, formatCount, shopsText } from "@/lib/words";
+import { daysText, formatCount, shopsText } from "@/lib/words";
 
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
@@ -285,16 +277,15 @@ export async function SimpleLogisticsHome() {
       <div className="grid grid-cols-2 gap-3">
         <QuickActionTile
           href="/stock/purchase"
-          line1="Factory"
-          line2="Purchase"
-          sub="Plant cement"
+          line1="Purchase"
+          sub="Purchase cement"
           icon={Warehouse}
           gradient="bg-gradient-to-br from-emerald-400 to-teal-500"
         />
 
         <QuickActionTile
           href="/stock/transfer"
-          line1="Move"
+          line1="Transfer"
           line2="Bags"
           sub="Transfer / Unload"
           icon={Package}
@@ -327,7 +318,7 @@ export async function SimpleLogisticsHome() {
             <p className="text-xs text-muted-foreground">{s.trucks.length} trucks loaded</p>
           </div>
           <Link href="/trucks?tab=loaded" className="text-xs font-bold text-primary hover:underline">
-            Fleet View ({s.trucks.length})
+            View all
           </Link>
         </div>
 

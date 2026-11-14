@@ -1,10 +1,16 @@
-import { and, asc, eq, gt, gte, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { dispatches, stockMovements, vehicles } from "@/db/schema";
+import { dispatches, products, stockMovements, vehicles } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { canSwitchOffTruck, truckSaveDecision } from "@/lib/truck-rules";
 import { checkTruck } from "@/lib/vehicle-rules";
+
+export type TruckProduct = {
+  productId: string;
+  name: string;
+  bags: number;
+};
 
 export type TruckRow = {
   id: string;
@@ -13,6 +19,7 @@ export type TruckRow = {
   driverPhone: string;
   active: boolean;
   bags: number;
+  products?: TruckProduct[];
 };
 
 /** Every vehicle in the system, with current loaded bags. Server-only. */
@@ -30,21 +37,49 @@ export async function getTrucks(): Promise<TruckRow[]> {
     ''
   )`;
 
-  const rows = await db
-    .select({
-      id: vehicles.id,
-      number: vehicles.number,
-      driverName: effectiveDriverName,
-      driverPhone: effectiveDriverPhone,
-      active: vehicles.active,
-      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
-    })
-    .from(vehicles)
-    .leftJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
-    .groupBy(vehicles.id, vehicles.number, vehicles.driverName, vehicles.driverPhone, vehicles.active)
-    .orderBy(asc(vehicles.number));
+  const [rows, productRows] = await Promise.all([
+    db
+      .select({
+        id: vehicles.id,
+        number: vehicles.number,
+        driverName: effectiveDriverName,
+        driverPhone: effectiveDriverPhone,
+        active: vehicles.active,
+        bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
+      })
+      .from(vehicles)
+      .leftJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))
+      .groupBy(vehicles.id, vehicles.number, vehicles.driverName, vehicles.driverPhone, vehicles.active)
+      .orderBy(asc(vehicles.number)),
+    db
+      .select({
+        vehicleId: stockMovements.vehicleId,
+        productId: stockMovements.productId,
+        name: products.name,
+        bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
+      })
+      .from(stockMovements)
+      .innerJoin(products, eq(products.id, stockMovements.productId))
+      .where(isNotNull(stockMovements.vehicleId))
+      .groupBy(stockMovements.vehicleId, stockMovements.productId, products.name),
+  ]);
 
-  return rows.map((r) => ({ ...r, bags: Math.max(r.bags, 0) }));
+  const productsByVehicle = new Map<string, TruckProduct[]>();
+  for (const pr of productRows) {
+    if (!pr.vehicleId || pr.bags <= 0) continue;
+    const list = productsByVehicle.get(pr.vehicleId) ?? [];
+    list.push({ productId: pr.productId, name: pr.name, bags: pr.bags });
+    productsByVehicle.set(pr.vehicleId, list);
+  }
+
+  return rows.map((r) => {
+    const prods = (productsByVehicle.get(r.id) ?? []).sort((a, b) => b.bags - a.bags || a.name.localeCompare(b.name));
+    return {
+      ...r,
+      bags: Math.max(r.bags, 0),
+      products: prods,
+    };
+  });
 }
 
 /** Active loaded trucks list (`bags > 0`) for operational dropdowns and auto-fill. */
