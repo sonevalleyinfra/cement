@@ -31,7 +31,8 @@ export function EditBagsForm({
 
   function addQuick(amount: number) {
     const current = Number.parseInt(bagsTextValue, 10) || currentBags;
-    setBagsTextValue(String(current + amount));
+    const next = Math.max(minBags, current + amount);
+    setBagsTextValue(String(next));
   }
 
   function handleSave() {
@@ -72,7 +73,7 @@ export function EditBagsForm({
           setEditing(true);
         }}
       >
-        ✏️ Edit Quantity / Add More
+        ✏️ Edit Quantity (+ / −)
       </Button>
     );
   }
@@ -104,32 +105,59 @@ export function EditBagsForm({
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <span className="text-xs text-muted-foreground self-center">Quick add:</span>
-        <button
-          type="button"
-          onClick={() => addQuick(50)}
-          className="rounded-lg bg-muted px-2.5 py-1 text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-colors"
-          disabled={pending}
-        >
-          +50
-        </button>
-        <button
-          type="button"
-          onClick={() => addQuick(100)}
-          className="rounded-lg bg-muted px-2.5 py-1 text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-colors"
-          disabled={pending}
-        >
-          +100
-        </button>
-        <button
-          type="button"
-          onClick={() => addQuick(200)}
-          className="rounded-lg bg-muted px-2.5 py-1 text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition-colors"
-          disabled={pending}
-        >
-          +200
-        </button>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">Quick adjust quantity:</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => addQuick(-200)}
+            className="rounded-lg bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20 px-2.5 py-1 text-xs font-bold hover:bg-rose-500/20 active:scale-95 transition-all"
+            disabled={pending || (Number.parseInt(bagsTextValue, 10) || currentBags) <= minBags}
+          >
+            −200
+          </button>
+          <button
+            type="button"
+            onClick={() => addQuick(-100)}
+            className="rounded-lg bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20 px-2.5 py-1 text-xs font-bold hover:bg-rose-500/20 active:scale-95 transition-all"
+            disabled={pending || (Number.parseInt(bagsTextValue, 10) || currentBags) <= minBags}
+          >
+            −100
+          </button>
+          <button
+            type="button"
+            onClick={() => addQuick(-50)}
+            className="rounded-lg bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20 px-2.5 py-1 text-xs font-bold hover:bg-rose-500/20 active:scale-95 transition-all"
+            disabled={pending || (Number.parseInt(bagsTextValue, 10) || currentBags) <= minBags}
+          >
+            −50
+          </button>
+          <span className="text-xs text-muted-foreground/60 mx-0.5">|</span>
+          <button
+            type="button"
+            onClick={() => addQuick(50)}
+            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all"
+            disabled={pending}
+          >
+            +50
+          </button>
+          <button
+            type="button"
+            onClick={() => addQuick(100)}
+            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all"
+            disabled={pending}
+          >
+            +100
+          </button>
+          <button
+            type="button"
+            onClick={() => addQuick(200)}
+            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all"
+            disabled={pending}
+          >
+            +200
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
