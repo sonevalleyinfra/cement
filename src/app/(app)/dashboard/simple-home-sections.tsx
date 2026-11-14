@@ -104,81 +104,80 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
   ]);
 
   return (
-    <div className="flex flex-col gap-4 font-sans">
-      {/* Quick Actions (3 Vibrant Portrait Cards in a row) */}
-      <div>
-        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
-        <div className="grid grid-cols-3 gap-2.5">
-          <QuickActionTile
-            href="/orders/new"
-            line1="New"
-            line2="Order"
-            sub="Book cement"
-            icon={ShoppingCart}
-            gradient="bg-gradient-to-b from-blue-600 to-indigo-700"
-          />
+    <div className="flex flex-col gap-5 font-sans pt-1">
+      {/* 4 Vibrant Portrait Action Cards (2x2 Grid) */}
+      <div className="grid grid-cols-2 gap-3">
+        <QuickActionTile
+          href="/orders/new"
+          line1="New"
+          line2="Order"
+          sub="Book cement"
+          icon={ShoppingCart}
+          gradient="bg-gradient-to-br from-emerald-400 to-teal-500"
+        />
 
-          <QuickActionTile
-            href="/receipts/new"
-            line1="Collect"
-            line2="Payment"
-            sub="Cash / UPI"
-            icon="rupee"
-            gradient="bg-gradient-to-b from-emerald-500 to-emerald-600"
-          />
+        <QuickActionTile
+          href="/receipts/new"
+          line1="Collect"
+          line2="Payment"
+          sub="Cash / UPI"
+          icon="rupee"
+          gradient="bg-gradient-to-br from-sky-400 to-blue-500"
+        />
 
-          <QuickActionTile
-            href="/ledger"
-            line1="Shop"
-            line2="Dues"
-            sub={`${s.retailersWithDues} shops`}
-            icon={Store}
-            gradient="bg-gradient-to-b from-blue-600 to-blue-700"
-          />
-        </div>
+        <QuickActionTile
+          href="/orders"
+          line1="Orders"
+          sub={s.pendingRate > 0 ? `${s.pendingRate} need rate` : `${s.today} today`}
+          icon={Truck}
+          gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
+        />
+
+        <QuickActionTile
+          href="/ledger"
+          line1="Shop"
+          line2="Dues"
+          sub={`${s.retailersWithDues} shops`}
+          icon={Store}
+          gradient="bg-gradient-to-br from-violet-400 to-purple-500"
+        />
       </div>
 
-      {/* Compact Summary Strip */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* Cash & Collection Summary Strip */}
+      <div className="grid grid-cols-2 gap-3">
         <Link
           href="/wallet"
           className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
         >
           <span className="text-[11px] font-semibold text-muted-foreground">Cash in Hand</span>
-          <span className="mt-0.5 truncate text-sm font-black text-foreground">{money(cash.heldPaise)}</span>
+          <span className="mt-0.5 truncate text-base font-black text-foreground">{money(cash.heldPaise)}</span>
         </Link>
         <Link
           href="/receipts"
           className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
         >
           <span className="text-[11px] font-semibold text-muted-foreground">Collected Today</span>
-          <span className="mt-0.5 truncate text-sm font-black text-emerald-600 dark:text-emerald-400">
+          <span className="mt-0.5 truncate text-base font-black text-emerald-600 dark:text-emerald-400">
             {money(s.collectedTodayPaise)}
-          </span>
-        </Link>
-        <Link
-          href="/ledger"
-          className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
-        >
-          <span className="text-[11px] font-semibold text-muted-foreground">My Shops Due</span>
-          <span className="mt-0.5 truncate text-sm font-black text-rose-600 dark:text-rose-400">
-            {money(s.duesPaise)}
           </span>
         </Link>
       </div>
 
-      {/* My Recent Orders (Top 3 + View all) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">My Recent Orders</h2>
+      {/* My Recent Orders (Max 3 + View all) */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-extrabold text-foreground">Recent Orders</h2>
+            <p className="text-xs text-muted-foreground">{s.today} orders today</p>
+          </div>
           <Link href="/orders" className="text-xs font-bold text-primary hover:underline">
             View all
           </Link>
         </div>
 
         {s.recentOrders.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {s.recentOrders.map((o) => {
+          <div className="flex flex-col gap-3">
+            {s.recentOrders.slice(0, 3).map((o) => {
               const location =
                 o.deliverTo === "site"
                   ? o.siteAddress
@@ -190,11 +189,11 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
                 <Link
                   key={o.id}
                   href={`/orders/${o.id}`}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-extrabold text-foreground">{o.retailerName}</p>
+                      <p className="truncate text-base font-extrabold text-foreground">{o.retailerName}</p>
                       {isOrderStatus(o.status) && <StatusChip status={o.status} />}
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">{location}</p>
@@ -211,51 +210,18 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
                 </Link>
               );
             })}
+            {s.recentOrders.length > 3 && (
+              <Link
+                href="/orders"
+                className="flex items-center justify-center rounded-xl border border-dashed border-border py-2 text-xs font-bold text-primary hover:bg-muted/40"
+              >
+                View all orders &rarr;
+              </Link>
+            )}
           </div>
         ) : (
           <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
             No orders yet
-          </div>
-        )}
-      </div>
-
-      {/* Collect Today (Top 3 overdue shops) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">Collect Today</h2>
-          <Link href="/ledger?show=overdue" className="text-xs font-bold text-primary hover:underline">
-            View all
-          </Link>
-        </div>
-
-        {s.collect && s.collect.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {s.collect.slice(0, 3).map((r) => (
-              <Link
-                key={r.retailerId}
-                href={`/receipts/new?retailer=${r.retailerId}`}
-                className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/40"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
-                    <Store className="size-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">{r.name}</p>
-                    <p className="text-xs text-muted-foreground">{r.place ?? "Retailer"}</p>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <p className="text-sm font-extrabold text-rose-600 dark:text-rose-400">{money(r.duePaise)}</p>
-                  <span className="text-[11px] font-semibold text-muted-foreground">Due</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No pending collections today
           </div>
         )}
       </div>
@@ -264,7 +230,7 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
 }
 
 /* =========================================================================
-   1. SALES SCREEN (Exact Match to Image 2)
+   2. LOGISTICS SCREEN
    ========================================================================= */
 
 export async function SimpleLogisticsHome() {
@@ -324,7 +290,7 @@ export async function SimpleLogisticsHome() {
 
         {s.trucks.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {s.trucks.map((t) => (
+            {s.trucks.slice(0, 3).map((t) => (
               <div
                 key={t.truck}
                 className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
@@ -368,6 +334,14 @@ export async function SimpleLogisticsHome() {
                 </div>
               </div>
             ))}
+            {s.trucks.length > 3 && (
+              <Link
+                href="/trucks?tab=loaded"
+                className="flex items-center justify-center rounded-xl border border-dashed border-border py-2.5 text-xs font-bold text-primary hover:bg-muted/40"
+              >
+                View all ({s.trucks.length}) trucks &rarr;
+              </Link>
+            )}
           </div>
         ) : (
           <div className="flex min-h-24 flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 p-4 text-center">
@@ -384,61 +358,68 @@ export async function SimpleAccountsHome() {
   const s = await getAccountsHome();
 
   return (
-    <div className="flex flex-col gap-4 font-sans">
-      {/* Quick Actions (3 Vibrant Portrait Cards in a row) */}
-      <div>
-        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
-        <div className="grid grid-cols-3 gap-2.5">
-          <QuickActionTile
-            href="/approvals"
-            line1="Approve"
-            line2="Orders"
-            sub={`${s.approvals} waiting`}
-            icon={BadgeCheck}
-            gradient="bg-gradient-to-b from-emerald-500 to-emerald-600"
-          />
+    <div className="flex flex-col gap-5 font-sans pt-1">
+      {/* 4 Vibrant Portrait Action Cards (2x2 Grid) */}
+      <div className="grid grid-cols-2 gap-3">
+        <QuickActionTile
+          href="/approvals"
+          line1="Approve"
+          line2="Orders"
+          sub={s.approvals > 0 ? `${s.approvals} waiting` : "All clear"}
+          icon={BadgeCheck}
+          gradient="bg-gradient-to-br from-emerald-400 to-teal-500"
+        />
 
-          <QuickActionTile
-            href="/receipts/review"
-            line1="Verify"
-            line2="Online"
-            sub={`${s.unverifiedOnline} UPI`}
-            icon={Receipt}
-            gradient="bg-gradient-to-b from-blue-600 to-blue-700"
-          />
+        <QuickActionTile
+          href="/receipts/review"
+          line1="Verify"
+          line2="Online"
+          sub={s.unverifiedOnline > 0 ? `${s.unverifiedOnline} UPI waiting` : "All verified"}
+          icon={Receipt}
+          gradient="bg-gradient-to-br from-sky-400 to-blue-500"
+        />
 
-          <QuickActionTile
-            href="/wallet"
-            line1="Cash"
-            line2="Handover"
-            sub={money(s.cashToConfirmPaise)}
-            icon={Wallet}
-            gradient="bg-gradient-to-b from-purple-600 to-purple-700"
-          />
-        </div>
+        <QuickActionTile
+          href="/wallet"
+          line1="Cash"
+          line2="Handover"
+          sub={s.handoversToConfirm > 0 ? `${s.handoversToConfirm} requests` : "No pending"}
+          icon={Wallet}
+          gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
+        />
+
+        <QuickActionTile
+          href="/ledger"
+          line1="Shop"
+          line2="Ledger"
+          sub="Accounts & dues"
+          icon={Store}
+          gradient="bg-gradient-to-br from-violet-400 to-purple-500"
+        />
       </div>
 
-      {/* Orders Waiting Approval (Top 3 + View all) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">
-            Orders Waiting Approval ({s.approvals})
-          </h2>
+      {/* Orders Waiting Approval (Max 3 + View all) */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-extrabold text-foreground">Waiting Approval</h2>
+            <p className="text-xs text-muted-foreground">{s.approvals} orders waiting</p>
+          </div>
           <Link href="/approvals" className="text-xs font-bold text-primary hover:underline">
             View all
           </Link>
         </div>
 
         {s.pendingOrders.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {s.pendingOrders.map((o) => (
+          <div className="flex flex-col gap-3">
+            {s.pendingOrders.slice(0, 3).map((o) => (
               <Link
                 key={o.id}
                 href="/approvals"
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-extrabold text-foreground">{o.retailerName}</p>
+                  <p className="truncate text-base font-extrabold text-foreground">{o.retailerName}</p>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{o.retailerPlace}</p>
                   <p className="mt-1 text-xs font-semibold text-foreground">
                     {o.productName} &middot; {num(o.bags)} bags
@@ -450,12 +431,20 @@ export async function SimpleAccountsHome() {
                       {money(o.bags * o.ratePaise)}
                     </p>
                   )}
-                  <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                    Approve
+                  <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                    Approve &rarr;
                   </span>
                 </div>
               </Link>
             ))}
+            {s.pendingOrders.length > 3 && (
+              <Link
+                href="/approvals"
+                className="flex items-center justify-center rounded-xl border border-dashed border-border py-2 text-xs font-bold text-primary hover:bg-muted/40"
+              >
+                View all ({s.approvals}) orders &rarr;
+              </Link>
+            )}
           </div>
         ) : (
           <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
@@ -464,80 +453,46 @@ export async function SimpleAccountsHome() {
         )}
       </div>
 
-      {/* Staff Cash Handovers (Top 3 + View all) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">
-            Staff Cash Handovers ({s.handoversToConfirm})
-          </h2>
-          <Link href="/wallet" className="text-xs font-bold text-primary hover:underline">
-            View all
-          </Link>
+      {/* Staff Cash Handovers & Online UPI Quick Summary */}
+      {(s.handoversToConfirm > 0 || s.unverifiedOnline > 0) && (
+        <div className="grid grid-cols-2 gap-3">
+          {s.handoversToConfirm > 0 && (
+            <Link
+              href="/wallet"
+              className="flex flex-col justify-between rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3.5 transition-all hover:bg-amber-500/10 active:scale-95"
+            >
+              <div>
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-400">Cash Handover</span>
+                <p className="mt-1 text-base font-black text-foreground">{money(s.cashToConfirmPaise)}</p>
+              </div>
+              <span className="mt-2 text-[11px] font-semibold text-muted-foreground">
+                {s.handoversToConfirm} requests pending &rarr;
+              </span>
+            </Link>
+          )}
+
+          {s.unverifiedOnline > 0 && (
+            <Link
+              href="/receipts/review"
+              className="flex flex-col justify-between rounded-2xl border border-blue-500/30 bg-blue-500/5 p-3.5 transition-all hover:bg-blue-500/10 active:scale-95"
+            >
+              <div>
+                <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Online Payments</span>
+                <p className="mt-1 text-base font-black text-foreground">{s.unverifiedOnline} waiting</p>
+              </div>
+              <span className="mt-2 text-[11px] font-semibold text-muted-foreground">
+                Verify UPI &rarr;
+              </span>
+            </Link>
+          )}
         </div>
-
-        {s.pendingCash.length > 0 ? (
-          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
-            {s.pendingCash.map((c) => (
-              <Link
-                key={c.id}
-                href="/wallet"
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm transition-colors hover:bg-muted/40"
-              >
-                <span className="font-semibold text-foreground">{c.collectorName}</span>
-                <span className="shrink-0 font-extrabold text-emerald-600 dark:text-emerald-400">
-                  {money(c.amountPaise)}
-                </span>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No cash handovers pending
-          </div>
-        )}
-      </div>
-
-      {/* Online / UPI to Reconcile (Top 3 + View all) */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">
-            Online / UPI to Verify ({s.unverifiedOnline})
-          </h2>
-          <Link href="/receipts/review" className="text-xs font-bold text-primary hover:underline">
-            View all
-          </Link>
-        </div>
-
-        {s.pendingOnline.length > 0 ? (
-          <div className="divide-y divide-border/50 rounded-2xl border border-border/80 bg-card shadow-xs">
-            {s.pendingOnline.map((r) => (
-              <Link
-                key={r.id}
-                href="/receipts/review"
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm transition-colors hover:bg-muted/40"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-foreground">{r.retailerName}</p>
-                  <p className="text-xs text-muted-foreground">{r.receivedOn}</p>
-                </div>
-                <span className="shrink-0 font-extrabold text-blue-600 dark:text-blue-400">
-                  {money(r.totalPaise)}
-                </span>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            All online payments verified
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
 
 /* =========================================================================
-   4. RETAILER SCREEN (Exact Match to Image 2: 3 Cards in a row)
+   3. RETAILER SCREEN
    ========================================================================= */
 
 export async function SimpleRetailerHome({ userId }: { userId: string }) {
