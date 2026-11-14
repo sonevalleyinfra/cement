@@ -11,6 +11,7 @@ import { StatusChip } from "@/components/app/status-chip";
 import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PostActionDialog } from "@/components/app/post-action-dialog";
 import { placesWithStock, visibleDispatchChips, type TruckChip } from "@/lib/dispatch-rules";
 import { firstMissing } from "@/lib/form-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
@@ -108,6 +109,7 @@ export function DispatchView({
   const [fromPlace, setFromPlace] = useState(initialDefaults?.fromPlace ?? "");
   const [driverName, setDriverName] = useState(initialDefaults?.driverName ?? "");
   const [driverPhone, setDriverPhone] = useState(initialDefaults?.driverPhone ?? "");
+  const [showHomePrompt, setShowHomePrompt] = useState(false);
   const phoneOk = isValidIndianMobile(normalizePhone(driverPhone));
   // Goes away when any field is changed, after a save and when the sheet opens again.
   const { error, setError, clearError } = useFormError([open?.id, bags, truck, fromPlace, driverName, driverPhone]);
@@ -228,6 +230,7 @@ export function DispatchView({
           clearError();
           setOpen(null);
           router.refresh();
+          setShowHomePrompt(true);
         } else setError(res.error);
       },
     );
@@ -506,6 +509,15 @@ export function DispatchView({
           </div>
         )}
       </Sheet>
+      <PostActionDialog
+        open={showHomePrompt}
+        title="Order Dispatched!"
+        message="Maal successfully dispatch ho gaya hai."
+        primaryLabel="Go to Home"
+        secondaryLabel="Stay on Dispatch"
+        primaryHref="/dashboard"
+        onSecondary={() => setShowHomePrompt(false)}
+      />
     </div>
   );
 }

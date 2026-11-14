@@ -72,7 +72,7 @@ export const MONEY_EVENTS = [
 ] as const;
 export type MoneyEvent = (typeof MONEY_EVENTS)[number];
 
-export type NotificationType = NotificationEvent | MoneyEvent | "credit_override";
+export type NotificationType = NotificationEvent | MoneyEvent | "credit_override" | "purchase" | "transfer";
 
 /** One notification ready to save. `link` empty = open the order (or the list). */
 export type NotificationDraft = {

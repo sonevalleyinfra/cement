@@ -104,6 +104,98 @@ export async function notify(
   await insertNotifications(tx, drafts, orderId);
 }
 
+export async function notifyDispatchAlert(
+  tx: DbOrTx,
+  input: {
+    orderId: string;
+    retailerName?: string;
+    bags: number;
+    vehicleNumber: string;
+    actorId?: string;
+  },
+): Promise<void> {
+  const people = await activePeople(tx);
+  const userIds = people
+    .filter(
+      (p) =>
+        isAdmin(p.role) ||
+        hasRole(p.role, "logistics") ||
+        hasRole(p.role, "accounts") ||
+        (input.actorId && p.id === input.actorId),
+    )
+    .map((p) => p.id);
+  const unique = [...new Set(userIds)];
+  const nameSuffix = input.retailerName ? ` for ${input.retailerName}` : "";
+  const drafts: NotificationDraft[] = unique.map((userId) => ({
+    userId,
+    type: "dispatched",
+    title: "Order dispatched",
+    body: `${input.bags} bags dispatched via ${input.vehicleNumber}${nameSuffix}`,
+    link: `/orders/${input.orderId}`,
+  }));
+  await insertNotifications(tx, drafts, input.orderId);
+}
+
+export async function notifyPurchase(
+  tx: DbOrTx,
+  input: {
+    bags: number;
+    productName: string;
+    truckNumber?: string;
+    actorId?: string;
+  },
+): Promise<void> {
+  const people = await activePeople(tx);
+  const userIds = people
+    .filter(
+      (p) =>
+        isAdmin(p.role) ||
+        hasRole(p.role, "logistics") ||
+        hasRole(p.role, "accounts") ||
+        (input.actorId && p.id === input.actorId),
+    )
+    .map((p) => p.id);
+  const unique = [...new Set(userIds)];
+  const drafts: NotificationDraft[] = unique.map((userId) => ({
+    userId,
+    type: "purchase",
+    title: "Cement purchased",
+    body: `${input.bags} bags of ${input.productName} purchased${input.truckNumber ? ` (Truck ${input.truckNumber})` : ""}`,
+    link: "/stock",
+  }));
+  await insertNotifications(tx, drafts);
+}
+
+export async function notifyTransfer(
+  tx: DbOrTx,
+  input: {
+    bags: number;
+    productName: string;
+    fromName: string;
+    toName: string;
+    actorId?: string;
+  },
+): Promise<void> {
+  const people = await activePeople(tx);
+  const userIds = people
+    .filter(
+      (p) =>
+        isAdmin(p.role) ||
+        hasRole(p.role, "logistics") ||
+        (input.actorId && p.id === input.actorId),
+    )
+    .map((p) => p.id);
+  const unique = [...new Set(userIds)];
+  const drafts: NotificationDraft[] = unique.map((userId) => ({
+    userId,
+    type: "transfer",
+    title: "Stock transferred",
+    body: `${input.bags} bags of ${input.productName} moved from ${input.fromName} to ${input.toName}`,
+    link: "/stock",
+  }));
+  await insertNotifications(tx, drafts);
+}
+
 export async function countUnread(userId: string): Promise<number> {
   const [r] = await db
     .select({ n: sql<number>`count(*)::int` })

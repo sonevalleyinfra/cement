@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
+import { RefreshButton } from "@/components/app/refresh-button";
 import { StatusChip } from "@/components/app/status-chip";
 import { isOrderStatus } from "@/lib/order-rules";
 import {
@@ -282,9 +283,12 @@ export async function SimpleLogisticsHome() {
             <h2 className="text-base font-extrabold text-foreground">Stock on Wheels</h2>
             <p className="text-xs text-muted-foreground">{s.trucks.length} trucks loaded</p>
           </div>
-          <Link href="/trucks?tab=loaded" className="text-xs font-bold text-primary hover:underline">
-            View all
-          </Link>
+          <div className="flex items-center gap-1.5">
+            <RefreshButton className="size-7" />
+            <Link href="/trucks?tab=loaded" className="text-xs font-bold text-primary hover:underline">
+              View all
+            </Link>
+          </div>
         </div>
 
         {s.trucks.length > 0 ? (

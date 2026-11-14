@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FormHint } from "@/components/app/form-hint";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { PostActionDialog } from "@/components/app/post-action-dialog";
 import { SelectField } from "@/components/app/select-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,6 +99,7 @@ export function TransferForm({
   );
   const [note, setNote] = useState("");
   const [done, setDone] = useState("");
+  const [showHomePrompt, setShowHomePrompt] = useState(false);
   const { error, setError, clearError } = useFormError([productId, from, to, truck, digits, note]);
   const newTruck = to === NEW_TRUCK_PLACE;
 
@@ -203,6 +205,7 @@ export function TransferForm({
           setNote("");
           if (newTruck) setTruck(NO_TRUCK);
           router.refresh();
+          setShowHomePrompt(true);
         } else setError(res.error);
       },
     );
@@ -333,6 +336,15 @@ export function TransferForm({
               : "Transfer Stock"}
         </Button>
       </PinnedAction>
+      <PostActionDialog
+        open={showHomePrompt}
+        title="Stock Transferred!"
+        message="Bags successfully transfer/unload ho gaye hain."
+        primaryLabel="Go to Home"
+        secondaryLabel="Stay Here"
+        primaryHref="/dashboard"
+        onSecondary={() => setShowHomePrompt(false)}
+      />
     </div>
   );
 }

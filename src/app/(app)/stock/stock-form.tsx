@@ -5,6 +5,7 @@ import { type ComponentProps, useId, useState } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { PinnedAction } from "@/components/app/pinned-action";
+import { PostActionDialog } from "@/components/app/post-action-dialog";
 import { RateField } from "@/components/app/rate-field";
 import { ReasonPicker } from "@/components/app/reason-picker";
 import { SelectField } from "@/components/app/select-field";
@@ -140,6 +141,7 @@ export function StockForm({
   const newTruck = purchase;
   // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
   const [done, setDone] = useState("");
+  const [showHomePrompt, setShowHomePrompt] = useState(false);
   const { error, setError, clearError } = useFormError([
     pick,
     place,
@@ -228,6 +230,7 @@ export function StockForm({
           setInvoiceDate(today);
           setTruck(NO_TRUCK);
           router.refresh();
+          setShowHomePrompt(true);
         } else setError(res.error);
       },
     );
@@ -406,6 +409,15 @@ export function StockForm({
           {copy[mode].button}
         </Button>
       </PinnedAction>
+      <PostActionDialog
+        open={showHomePrompt}
+        title={mode === "purchase" ? "Purchase Added!" : mode === "opening" ? "Opening Stock Set!" : "Adjustment Saved!"}
+        message="Stock successfully update ho gaya hai."
+        primaryLabel="Go to Home"
+        secondaryLabel={mode === "purchase" ? "Add Another Purchase" : "Stay Here"}
+        primaryHref="/dashboard"
+        onSecondary={() => setShowHomePrompt(false)}
+      />
     </div>
   );
 }

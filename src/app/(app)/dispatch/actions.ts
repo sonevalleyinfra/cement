@@ -9,7 +9,7 @@ import { checkDispatchFields, planDispatch } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
-import { notify } from "@/lib/notify";
+import { notify, notifyDispatchAlert } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
 import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
@@ -151,6 +151,12 @@ export async function dispatchOrder(input: {
     });
     await tx.update(orders).set({ status: plan.newStatus, updatedAt: new Date() }).where(eq(orders.id, order.id));
     await notify(tx, order.id, "dispatched", me.id, input.bags);
+    await notifyDispatchAlert(tx, {
+      orderId: order.id,
+      bags: input.bags,
+      vehicleNumber: input.vehicleNumber,
+      actorId: me.id,
+    });
     return { ok: true, resultId: sentRow.id };
   });
   if (!result.ok) return result;

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 import { AppShell, AppTitle } from "@/components/app/app-shell";
 import { NotificationBell } from "@/components/app/notification-bell";
+import { RefreshButton } from "@/components/app/refresh-button";
 import { navFor } from "@/lib/nav-rules";
 import { requireUser } from "@/lib/session";
 
@@ -13,7 +14,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <AppShell
       headerLeft={<AppTitle user={user} />}
       headerRight={
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
+          <RefreshButton />
           <NotificationBell />
           {nav.length === 0 && (
             <Link

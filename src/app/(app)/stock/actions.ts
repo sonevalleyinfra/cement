@@ -32,6 +32,7 @@ import { atPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
 import { checkClaimChange, checkPurchaseDetails, claimValuePaise } from "@/lib/purchase-rules";
 import { checkDriver, checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
 import { generateTrackingId } from "@/lib/tracking-id";
+import { notifyPurchase, notifyTransfer } from "@/lib/notify";
 
 export type StockResult = { ok: true; trackingId?: string } | { ok: false; error: string };
 
@@ -336,6 +337,12 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
         details: { ...movementFacts(l.movement), reasonCode: l.movement.reasonCode, reason: l.movement.reason ?? "", purchaseId: header.id },
       });
     }
+    await notifyPurchase(tx, {
+      bags: d.billedBags,
+      productName: product.name,
+      truckNumber: truck.number,
+      actorId,
+    });
     return { ok: true, resultId: moved.id, trackingId };
   });
   if (!res.ok) return res;
@@ -533,6 +540,13 @@ export async function transferStock(input: TransferInput): Promise<StockResult> 
         ...(truck ? { truck: truck.number } : {}),
         ...(note ? { reason: note } : {}),
       },
+    });
+    await notifyTransfer(tx, {
+      bags: input.bags,
+      productName: product.name,
+      fromName: fromKey.placeKey,
+      toName: placeKey(to),
+      actorId: session.user.id,
     });
     return { ok: true, resultId: out.id };
   });
