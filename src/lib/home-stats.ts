@@ -124,6 +124,35 @@ export async function getSalesHome(userId: string, now = new Date()) {
       .limit(3),
   ]);
   const duesMap = new Map(dues.map((d) => [d.retailerId, Math.max(0, d.amountPaise)]));
+  let finalCollect = collect;
+  const owingShopIds = dues.filter((d) => d.amountPaise > 0).map((d) => d.retailerId);
+  if ((!finalCollect || finalCollect.length === 0) && owingShopIds.length > 0) {
+    const shopDetails = await db
+      .select({ id: retailers.id, name: retailers.name, place: retailers.place, phone: retailers.phone })
+      .from(retailers)
+      .where(inArray(retailers.id, owingShopIds));
+    const shopMap = new Map(shopDetails.map((s) => [s.id, s]));
+    finalCollect = dues
+      .filter((d) => d.amountPaise > 0)
+      .sort((a, b) => b.amountPaise - a.amountPaise)
+      .map((d) => {
+        const s = shopMap.get(d.retailerId);
+        return {
+          retailerId: d.retailerId,
+          name: s?.name ?? "Retailer",
+          place: s?.place ?? "",
+          phone: s?.phone ?? "",
+          active: true,
+          salesRepId: userId,
+          salesRepName: null,
+          duePaise: d.amountPaise,
+          overduePaise: 0,
+          daysPastTerms: 0,
+          lastPayment: null,
+        };
+      });
+  }
+
   const recentOrdersWithDues = recentOrders.map((o) => ({
     ...o,
     duePaise: duesMap.get(o.retailerId) ?? 0,
@@ -137,7 +166,7 @@ export async function getSalesHome(userId: string, now = new Date()) {
     collectedMonthPaise,
     bagsMonth: dispatchedMonth.bags,
     salesMonthPaise: dispatchedMonth.salesPaise,
-    collect,
+    collect: finalCollect,
     recentOrders: recentOrdersWithDues,
   };
 }

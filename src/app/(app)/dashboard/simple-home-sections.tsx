@@ -164,65 +164,61 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
         </Link>
       </div>
 
-      {/* My Recent Orders (Max 3 + View all) */}
+      {/* Pending Dues (Max 3 + View all) */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-extrabold text-foreground">Recent Orders</h2>
-            <p className="text-xs text-muted-foreground">{s.today} orders today</p>
+            <h2 className="text-base font-extrabold text-foreground">Pending Dues</h2>
+            <p className="text-xs text-muted-foreground">
+              {s.retailersWithDues} shops with dues &middot; {money(s.duesPaise)}
+            </p>
           </div>
-          <Link href="/orders" className="text-xs font-bold text-primary hover:underline">
+          <Link href="/ledger" className="text-xs font-bold text-primary hover:underline">
             View all
           </Link>
         </div>
 
-        {s.recentOrders.length > 0 ? (
+        {s.collect && s.collect.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {s.recentOrders.slice(0, 3).map((o) => {
-              const location =
-                o.deliverTo === "site"
-                  ? o.siteAddress
-                    ? `Site: ${o.siteAddress}`
-                    : "Site delivery"
-                  : o.retailerPlace;
-              const needsRate = o.ratePaise == null && o.status === "placed";
-              return (
-                <Link
-                  key={o.id}
-                  href={`/orders/${o.id}`}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-base font-extrabold text-foreground">{o.retailerName}</p>
-                      {isOrderStatus(o.status) && <StatusChip status={o.status} />}
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{location}</p>
-                    <p className="mt-1 text-xs font-semibold text-foreground">
-                      {o.productName} &middot; {num(o.bags)} bags
-                      {needsRate && (
-                        <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">
-                          Fill rate
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                </Link>
-              );
-            })}
-            {s.recentOrders.length > 3 && (
+            {s.collect.slice(0, 3).map((r) => (
               <Link
-                href="/orders"
+                key={r.retailerId}
+                href={`/receipts/new?retailer=${r.retailerId}`}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-base font-extrabold text-foreground">{r.name}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{r.place || "Shop"}</p>
+                  {r.overduePaise > 0 ? (
+                    <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                      Overdue: {money(r.overduePaise)}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs font-medium text-muted-foreground">Current dues</p>
+                  )}
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-base font-black text-rose-600 dark:text-rose-400">
+                    {money(r.duePaise)}
+                  </p>
+                  <span className="mt-1 inline-block rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                    Collect &rarr;
+                  </span>
+                </div>
+              </Link>
+            ))}
+            {s.retailersWithDues > 3 && (
+              <Link
+                href="/ledger"
                 className="flex items-center justify-center rounded-xl border border-dashed border-border py-2 text-xs font-bold text-primary hover:bg-muted/40"
               >
-                View all orders &rarr;
+                View all ({s.retailersWithDues}) shops with dues &rarr;
               </Link>
             )}
           </div>
         ) : (
           <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No orders yet
+            No pending dues &middot; All clear
           </div>
         )}
       </div>
