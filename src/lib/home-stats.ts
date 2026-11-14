@@ -105,6 +105,7 @@ export async function getSalesHome(userId: string, now = new Date()) {
     db
       .select({
         id: orders.id,
+        retailerId: orders.retailerId,
         retailerName: retailers.name,
         retailerPlace: retailers.place,
         productName: products.name,
@@ -122,6 +123,11 @@ export async function getSalesHome(userId: string, now = new Date()) {
       .orderBy(desc(orders.createdAt))
       .limit(3),
   ]);
+  const duesMap = new Map(dues.map((d) => [d.retailerId, Math.max(0, d.amountPaise)]));
+  const recentOrdersWithDues = recentOrders.map((o) => ({
+    ...o,
+    duePaise: duesMap.get(o.retailerId) ?? 0,
+  }));
   return {
     pendingRate,
     today,
@@ -132,7 +138,7 @@ export async function getSalesHome(userId: string, now = new Date()) {
     bagsMonth: dispatchedMonth.bags,
     salesMonthPaise: dispatchedMonth.salesPaise,
     collect,
-    recentOrders,
+    recentOrders: recentOrdersWithDues,
   };
 }
 

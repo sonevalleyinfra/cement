@@ -8,6 +8,8 @@ import { db } from "@/db";
 import { dispatches, orderEvents, orders, products, retailers, user as users, vehicles } from "@/db/schema";
 import { formatDate, formatDateTime } from "@/lib/datetime";
 import { formatINR } from "@/lib/money";
+import { getBalance } from "@/lib/ledger";
+import { duesFrom } from "@/lib/ledger-rules";
 import { isUuid } from "@/lib/ids";
 import { getRateHints, getStockAvailable } from "@/lib/order-hints";
 import {
@@ -161,6 +163,9 @@ export default async function OrderDetailPage({
   const canReverse = can(user.role, "reverseStock") && isReversibleOrderStatus(o.status) && loads.some((l) => leftOf(l) > 0);
   const backPlaces = canReverse ? await reversePlaces(loads) : [];
   const rateMode = canFillRate(user.role, user.id, o) ? "fill" : canChangeRate(user.role, o) ? "change" : null;
+  const canCollect = can(user.role, "recordReceipt");
+  const isDispatched = o.status === "dispatched" || o.status === "partly_dispatched";
+  const duesPaise = canCollect && isDispatched ? duesFrom(await getBalance(o.retailerId)) : 0;
   // Staff only (never a retailer): last rate, this week's range and stock under the rate form.
   const [rateHint, stockBags] =
     rateMode && showPrice
@@ -181,6 +186,20 @@ export default async function OrderDetailPage({
         </p>
         {cancelled && <p>{cancelled}</p>}
       </PageHeader>
+      {canCollect && duesPaise > 0 && isDispatched && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-xs">
+          <div>
+            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Shop Dues Pending</span>
+            <p className="text-xl font-black text-foreground">{formatINR(duesPaise)}</p>
+          </div>
+          <Link
+            href={`/receipts/new?retailer=${o.retailerId}`}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition-all"
+          >
+            💰 Collect Payment &rarr;
+          </Link>
+        </div>
+      )}
       {(canEditBags || canDispatchOrder) && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           {canEditBags && (
@@ -233,8 +252,20 @@ export default async function OrderDetailPage({
       </div>
       {amount && (
         <div className="rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-          <div className="text-xs text-muted-foreground">{amount.caption}</div>
-          <div className="tabular text-2xl font-bold">{formatINR(amount.totalPaise)}</div>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-xs text-muted-foreground">{amount.caption}</div>
+              <div className="tabular text-2xl font-bold">{formatINR(amount.totalPaise)}</div>
+            </div>
+            {canCollect && duesPaise > 0 && isDispatched && (
+              <Link
+                href={`/receipts/new?retailer=${o.retailerId}`}
+                className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition-all"
+              >
+                💰 Collect
+              </Link>
+            )}
+          </div>
           {amount.lines.map((line) => (
             <div key={line} className="tabular text-xs text-muted-foreground">
               {line}

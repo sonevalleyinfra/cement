@@ -186,6 +186,8 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
                     : "Site delivery"
                   : o.retailerPlace;
               const needsRate = o.ratePaise == null && o.status === "placed";
+              const isDispatched = o.status === "dispatched" || o.status === "partly_dispatched";
+              const hasDue = (o.duePaise ?? 0) > 0;
               return (
                 <Link
                   key={o.id}
@@ -203,6 +205,11 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
                       {needsRate && (
                         <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">
                           Fill rate
+                        </span>
+                      )}
+                      {isDispatched && hasDue && (
+                        <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                          Due: {money(o.duePaise)} &middot; Collect &rarr;
                         </span>
                       )}
                     </p>
