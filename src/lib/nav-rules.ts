@@ -17,9 +17,6 @@ export function thirdTab(role: string | null | undefined): NavItem {
 }
 
 export function navFor(role: string | null | undefined): NavItem[] {
-  if (hasAnyRole(role, ["logistics", "accounts", "sales"]) && !isAdmin(role)) {
-    return [];
-  }
   const third = thirdTab(role);
   const items: NavItem[] = [
     { href: "/dashboard", label: "Home", icon: "home" },

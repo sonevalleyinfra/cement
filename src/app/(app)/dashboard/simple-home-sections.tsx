@@ -455,41 +455,6 @@ export async function SimpleAccountsHome() {
           </div>
         )}
       </div>
-
-      {/* Staff Cash Handovers & Online UPI Quick Summary */}
-      {(s.handoversToConfirm > 0 || s.unverifiedOnline > 0) && (
-        <div className="grid grid-cols-2 gap-3">
-          {s.handoversToConfirm > 0 && (
-            <Link
-              href="/wallet"
-              className="flex flex-col justify-between rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3.5 transition-all hover:bg-amber-500/10 active:scale-95"
-            >
-              <div>
-                <span className="text-xs font-bold text-amber-700 dark:text-amber-400">Cash Handover</span>
-                <p className="mt-1 text-base font-black text-foreground">{money(s.cashToConfirmPaise)}</p>
-              </div>
-              <span className="mt-2 text-[11px] font-semibold text-muted-foreground">
-                {s.handoversToConfirm} requests pending &rarr;
-              </span>
-            </Link>
-          )}
-
-          {s.unverifiedOnline > 0 && (
-            <Link
-              href="/receipts/review"
-              className="flex flex-col justify-between rounded-2xl border border-blue-500/30 bg-blue-500/5 p-3.5 transition-all hover:bg-blue-500/10 active:scale-95"
-            >
-              <div>
-                <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Online Payments</span>
-                <p className="mt-1 text-base font-black text-foreground">{s.unverifiedOnline} waiting</p>
-              </div>
-              <span className="mt-2 text-[11px] font-semibold text-muted-foreground">
-                Verify UPI &rarr;
-              </span>
-            </Link>
-          )}
-        </div>
-      )}
     </div>
   );
 }
