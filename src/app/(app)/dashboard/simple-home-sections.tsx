@@ -267,9 +267,8 @@ export async function SimpleLogisticsHome() {
         />
 
         <QuickActionTile
-          href="/godowns"
-          line1="Godown"
-          line2="Stock"
+          href="/stock"
+          line1="Stock"
           sub={`${num(s.godown.bags)} bags`}
           icon={Store}
           gradient="bg-gradient-to-br from-violet-400 to-purple-500"
@@ -290,7 +289,7 @@ export async function SimpleLogisticsHome() {
 
         {s.trucks.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {s.trucks.slice(0, 3).map((t) => (
+            {s.trucks.slice(0, 2).map((t) => (
               <div
                 key={t.truck}
                 className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
@@ -334,7 +333,7 @@ export async function SimpleLogisticsHome() {
                 </div>
               </div>
             ))}
-            {s.trucks.length > 3 && (
+            {s.trucks.length > 2 && (
               <Link
                 href="/trucks?tab=loaded"
                 className="flex items-center justify-center rounded-xl border border-dashed border-border py-2.5 text-xs font-bold text-primary hover:bg-muted/40"

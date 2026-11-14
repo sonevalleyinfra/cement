@@ -5,7 +5,6 @@ import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { CallButton } from "@/components/app/call-button";
-import { ChipCount, chipClass } from "@/components/app/chip";
 import { EmptyState } from "@/components/app/empty-state";
 import { PageHeader } from "@/components/app/page-header";
 import { Sheet } from "@/components/app/sheet";
@@ -14,32 +13,20 @@ import { StatusChip } from "@/components/app/status-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { activeLoadedTrucks } from "@/lib/truck-rules";
 import type { TruckRow } from "@/lib/trucks";
 import { useFormError } from "@/lib/use-form-error";
 import { cn } from "@/lib/utils";
 import { bagsText, formatCount } from "@/lib/words";
 import { editTruck, setTruckActive } from "./actions";
 
-type Filter = "all" | "loaded" | "empty";
-
-const FILTER_LABELS: Record<Filter, string> = { all: "All", loaded: "Loaded", empty: "Standing" };
-
 const counterClass = "rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6";
 
-function matchesFilter(r: TruckRow, filter: Filter): boolean {
-  if (filter === "loaded") return r.bags > 0;
-  if (filter === "empty") return r.bags === 0;
-  return true;
-}
-
-export function TrucksView({ rows, initialTab }: { rows: TruckRow[]; initialTab?: string }) {
+export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState<{ truck: TruckRow } | null>(null);
   const [showHidden, setShowHidden] = useState(false);
-  const [filter, setFilter] = useState<Filter>(
-    initialTab === "loaded" || initialTab === "empty" ? initialTab : "all",
-  );
 
   const trimmed = query.trim();
   const normalized = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -51,17 +38,12 @@ export function TrucksView({ rows, initialTab }: { rows: TruckRow[]; initialTab?
     return matchNum || matchDriver || matchPhone;
   }
 
-  // All active trucks in system are visible (loaded or standing)
-  const visibleRows = rows.filter((r) => r.active);
-  const hiddenRows = rows.filter((r) => !r.active);
-  const shown = visibleRows.filter((r) => matchesFilter(r, filter) && matchesQuery(r));
+  // Only loaded trucks holding bags (`bags > 0`) stay in operational UI.
+  // Once bags reach 0, trucks stay in Admin Reports & CSV only.
+  const visibleRows = activeLoadedTrucks(rows);
+  const hiddenRows = rows.filter((r) => !r.active && r.bags > 0);
+  const shown = visibleRows.filter(matchesQuery);
   const shownHidden = hiddenRows.filter(matchesQuery);
-
-  const tabCount: Record<Filter, number> = {
-    all: visibleRows.length,
-    loaded: visibleRows.filter((r) => r.bags > 0).length,
-    empty: visibleRows.filter((r) => r.bags === 0).length,
-  };
   const totalBagsOnTrucks = visibleRows.reduce((sum, r) => sum + r.bags, 0);
 
   return (
@@ -69,40 +51,29 @@ export function TrucksView({ rows, initialTab }: { rows: TruckRow[]; initialTab?
       <PageHeader title="Trucks" back="/more" />
 
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Total trucks" value={formatCount(visibleRows.length)} className={counterClass} />
+        <Stat label="Loaded trucks" value={formatCount(visibleRows.length)} className={counterClass} />
         <Stat label="Bags on trucks" value={formatCount(totalBagsOnTrucks)} className={counterClass} />
       </div>
 
-      {rows.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search truck no., driver, phone"
-            aria-label="Search trucks"
-            autoComplete="off"
-          />
-          <div className="scroll-x-fade -mx-4 flex gap-2 px-4 pb-1">
-            {(["all", "loaded", "empty"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={chipClass(filter === f)}
-                onClick={() => setFilter(f)}
-              >
-                {FILTER_LABELS[f]}
-                <ChipCount n={tabCount[f]} on={filter === f} />
-              </button>
-            ))}
-          </div>
-        </div>
+      {visibleRows.length > 0 && (
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search truck no., driver, phone"
+          aria-label="Search trucks"
+          autoComplete="off"
+        />
       )}
 
       {visibleRows.length === 0 ? (
         <EmptyState
-          title={hiddenRows.length > 0 ? "All trucks are hidden" : "No trucks right now"}
-          action={<p className="max-w-xs text-xs text-muted-foreground">Add truck details when recording a Purchase.</p>}
+          title="No loaded trucks right now"
+          action={
+            <p className="max-w-xs text-xs text-muted-foreground">
+              Add truck details when recording a Purchase. Once bags reach 0, trucks stay in Admin Reports &amp; CSV only.
+            </p>
+          }
         />
       ) : shown.length === 0 ? (
         <EmptyState title="No matching trucks" />
@@ -178,15 +149,9 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
       <div className="flex items-center justify-between gap-2">
         <span className="text-base font-bold tracking-wide">{r.number}</span>
         {r.active ? (
-          r.bags > 0 ? (
-            <span className="tabular text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
-              {bagsText(r.bags)}
-            </span>
-          ) : (
-            <span className="tabular text-xs font-medium text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-              Standing
-            </span>
-          )
+          <span className="tabular text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+            {bagsText(r.bags)}
+          </span>
         ) : (
           <StatusChip status="cancelled" label="Hidden" />
         )}
