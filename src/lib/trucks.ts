@@ -83,7 +83,7 @@ export async function getTrucks(): Promise<TruckRow[]> {
 }
 
 /** Active loaded trucks list (`bags > 0`) for operational dropdowns and auto-fill. */
-export async function getActiveTrucks(): Promise<{ number: string; driverName: string; driverPhone: string }[]> {
+export async function getActiveTrucks(): Promise<{ number: string; driverName: string; driverPhone: string; bags: number }[]> {
   const effectiveDriverName = sql<string>`coalesce(
     nullif(${vehicles.driverName}, ''),
     (select p.driver_name from purchases p where p.truck_number = ${vehicles.number} and p.driver_name <> '' order by p.created_at desc limit 1),
@@ -102,6 +102,7 @@ export async function getActiveTrucks(): Promise<{ number: string; driverName: s
       number: vehicles.number,
       driverName: effectiveDriverName,
       driverPhone: effectiveDriverPhone,
+      bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
     })
     .from(vehicles)
     .leftJoin(stockMovements, eq(stockMovements.vehicleId, vehicles.id))

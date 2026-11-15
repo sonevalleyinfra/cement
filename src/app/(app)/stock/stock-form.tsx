@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { type ComponentProps, useId, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { PinnedAction } from "@/components/app/pinned-action";
@@ -117,49 +118,63 @@ export function StockForm({
   balances: Balance[];
   /** Brands, types and grades the products are made from. */
   lists: Lists;
-  trucks?: { number: string; driverName: string; driverPhone: string }[];
+  trucks?: { number: string; driverName: string; driverPhone: string; bags?: number }[];
 }) {
   const router = useRouter();
   const { pending, run } = useSubmit();
   const purchase = mode === "purchase";
   const availablePlaces = places;
+
+  // Product 1
   const [pick, setPick] = useState({ brandId: products[0]?.brandId ?? "", channel: "", typeId: "", gradeId: "", productId: "" });
   const [place, setPlace] = useState(purchase ? NEW_TRUCK_PLACE : (places[0]?.key ?? ""));
   const [digits, setDigits] = useState("");
   const [minus, setMinus] = useState(false);
   const [note, setNote] = useState("");
   const [reason, setReason] = useState<string | null>(null);
-  // Purchase only: what one bag cost (typed in rupees), the supplier invoice, and extras paid.
+
+  // Purchase only: cost (typed in rupees), supplier invoice, and truck
   const [costText, setCostText] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [today] = useState(() => toISTDateKey(new Date()));
   const [invoiceDate, setInvoiceDate] = useState(today);
-  // The truck and driver of a purchase: typed directly; nothing needs pre-adding on Trucks.
   const [truck, setTruck] = useState(NO_TRUCK);
   const [purchaseSource, setPurchaseSource] = useState<string>(DEFAULT_PURCHASE_SOURCES[0]);
   const [otherSource, setOtherSource] = useState("");
   const newTruck = purchase;
-  // "Purchase added." stays until the next save; an error goes away as soon as any field changes.
+
+  // Product 2 (Optional for purchase, up to 2 products per truckload)
+  const [hasSecondProduct, setHasSecondProduct] = useState(false);
+  const [pick2, setPick2] = useState({ channel: "", typeId: "", gradeId: "", productId: "" });
+  const [digits2, setDigits2] = useState("");
+  const [costText2, setCostText2] = useState("");
+
   const [done, setDone] = useState("");
   const [showHomePrompt, setShowHomePrompt] = useState(false);
   const { error, setError, clearError } = useFormError([
     pick,
+    pick2,
+    hasSecondProduct,
     place,
     digits,
+    digits2,
     minus,
     note,
     reason,
     costText,
+    costText2,
     invoiceNo,
     invoiceDate,
     truck,
   ]);
 
-  // Brand first. With one brand there is no Brand drop-down: that brand is used.
+  // Brand first
   const brandId = startBrand(lists.brands, pick.brandId);
   const brandName = lists.brands.find((b) => b.id === brandId)?.name ?? "";
   const brandProducts = products.filter((p) => p.brandId === brandId);
   const channels = PRODUCT_CHANNELS.filter((c) => brandProducts.some((p) => p.channel === c));
+
+  // Product 1 derivation
   const currentChannel = (channels as readonly string[]).includes(pick.channel)
     ? (pick.channel as ProductChannel)
     : (channels[0] ?? "trade");
@@ -170,29 +185,95 @@ export function StockForm({
     null;
   const gradeId = product?.gradeId ?? "";
   const typeId = lists.grades.find((g) => g.id === gradeId)?.typeId ?? lists.types[0]?.id ?? "";
-
   const current = product ? (balances.find((b) => b.productId === product.id && b.placeKey === place)?.bags ?? 0) : 0;
   const bags = Number(digits || 0);
   const costPaise = parseRupeesToPaise(costText);
   const costOk = costPaise !== null && costPaise >= 1;
+
+  // Product 2 derivation
+  const currentChannel2 = (channels as readonly string[]).includes(pick2.channel)
+    ? (pick2.channel as ProductChannel)
+    : currentChannel;
+  const channelProducts2 = brandProducts.filter((p) => p.channel === currentChannel2);
+  const product2 =
+    channelProducts2.find((p) => p.id === pick2.productId || p.gradeId === pick2.gradeId) ??
+    channelProducts2[0] ??
+    null;
+  const gradeId2 = product2?.gradeId ?? "";
+  const typeId2 = lists.grades.find((g) => g.id === gradeId2)?.typeId ?? lists.types[0]?.id ?? "";
+  const bags2 = Number(digits2 || 0);
+  const costPaise2 = parseRupeesToPaise(costText2);
+  const costOk2 = costPaise2 !== null && costPaise2 >= 1;
+
+  // Truck empty check
+  const cleanTruckNo = truck.number.toUpperCase().replace(/\s+/g, "");
+  const loadedTruck = trucks.find(
+    (t) => t.number.toUpperCase().replace(/\s+/g, "") === cleanTruckNo
+  );
+  const isTruckLoaded = Boolean(cleanTruckNo && loadedTruck && (loadedTruck.bags ?? 0) > 0);
 
   const why = mode === "adjust" ? reasonHint("stock", reason, note) : null;
   const hint = firstMissing([
     [!product, "Pick a product"],
     [!place, "Pick a place"],
     [purchase && !truck.number.trim(), "Enter the truck number"],
+    [purchase && isTruckLoaded, `Gadi ${cleanTruckNo} me abhi ${loadedTruck?.bags} bags baki hain. Khali hone ke baad hi purchase ho sakti hai.`],
     [purchase && !truck.driverName.trim(), "Enter the driver name"],
     [purchase && !isValidIndianMobile(normalizePhone(truck.driverPhone)), "Enter the driver mobile (10 digits)"],
     [purchase && !invoiceNo.trim(), "Enter the invoice no."],
     [purchase && !invoiceDate, "Pick the invoice date"],
-    [bags === 0, "Enter the bags"],
+    [bags === 0, purchase && hasSecondProduct ? "Enter bags for Product 1" : "Enter the bags"],
     [why !== null, why ?? ""],
-    [purchase && !costOk, "Enter the cost per bag"],
+    [purchase && !costOk, purchase && hasSecondProduct ? "Enter cost per bag for Product 1" : "Enter the cost per bag"],
+    [purchase && hasSecondProduct && !product2, "Pick the second product"],
+    [purchase && hasSecondProduct && product && product2 && product.id === product2.id, "Second product must be different from first product"],
+    [purchase && hasSecondProduct && bags2 === 0, "Enter bags for Product 2"],
+    [purchase && hasSecondProduct && !costOk2, "Enter cost per bag for Product 2"],
   ]);
 
   function submit() {
     setDone("");
     clearError();
+
+    const items = hasSecondProduct
+      ? [
+          {
+            brandId,
+            channel: currentChannel,
+            typeId,
+            gradeId,
+            productId: product?.id,
+            bags,
+            costPerBagPaise: costPaise!,
+            shortBags: 0,
+            burstBags: 0,
+          },
+          {
+            brandId,
+            channel: currentChannel2,
+            typeId: typeId2,
+            gradeId: gradeId2,
+            productId: product2?.id,
+            bags: bags2,
+            costPerBagPaise: costPaise2!,
+            shortBags: 0,
+            burstBags: 0,
+          },
+        ]
+      : [
+          {
+            brandId,
+            channel: currentChannel,
+            typeId,
+            gradeId,
+            productId: product?.id,
+            bags,
+            costPerBagPaise: costPaise!,
+            shortBags: 0,
+            burstBags: 0,
+          },
+        ];
+
     const input = {
       brandId,
       channel: currentChannel,
@@ -205,6 +286,7 @@ export function StockForm({
       ...(mode === "adjust" ? { reason: reason ?? "" } : {}),
       ...(purchase
         ? {
+            items,
             costPerBagPaise: costPaise ?? undefined,
             invoiceNo,
             invoiceDate,
@@ -213,6 +295,7 @@ export function StockForm({
           }
         : {}),
     };
+
     const action = mode === "purchase" ? recordPurchase : mode === "opening" ? recordOpening : recordAdjustment;
     run(
       (requestId) => action({ ...input, requestId }),
@@ -220,12 +303,14 @@ export function StockForm({
         if (res.ok) {
           const code = "trackingId" in res && res.trackingId ? ` · Tracking ID: ${res.trackingId}` : "";
           setDone(`${copy[mode].done}${code}`);
-          // A fresh form: amount empty and (adjust) back to "Add bags", so it never shows "-0 bags".
           setDigits("");
           setMinus(false);
           setNote("");
           setReason(null);
           setCostText("");
+          setDigits2("");
+          setCostText2("");
+          setHasSecondProduct(false);
           setInvoiceNo("");
           setInvoiceDate(today);
           setTruck(NO_TRUCK);
@@ -253,53 +338,61 @@ export function StockForm({
         <SelectField
           label="Brand"
           value={brandId}
-          // A new brand starts at its own first product (nothing from the old brand is kept).
-          onChange={(id) => setPick({ brandId: id, channel: "", typeId: "", gradeId: "", productId: "" })}
+          onChange={(id) => {
+            setPick({ brandId: id, channel: "", typeId: "", gradeId: "", productId: "" });
+            setPick2({ channel: "", typeId: "", gradeId: "", productId: "" });
+          }}
           options={lists.brands.map((b) => ({ value: b.id, label: b.name }))}
         />
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <SelectField
-          label="Trade-type"
-          value={currentChannel}
-          onChange={(channel) => setPick({ brandId, channel, typeId: "", gradeId: "", productId: "" })}
-          options={channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
-        />
-        <SelectField
-          label="Cement Name / Variant"
-          value={product?.id ?? ""}
-          onChange={(prodId) => {
-            const p = channelProducts.find((x) => x.id === prodId);
-            const tId = lists.grades.find((g) => g.id === p?.gradeId)?.typeId ?? "";
-            setPick({
-              brandId,
-              channel: currentChannel,
-              typeId: tId,
-              gradeId: p?.gradeId ?? "",
-              productId: p?.id ?? "",
-            });
-          }}
-          options={channelProducts.map((p) => ({
-            value: p.id,
-            label: variantLabel(p, lists.grades),
-          }))}
-        />
-      </div>
-      {product && (
-        <div className="flex items-center justify-between rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-          <span>Product:</span>
-          <span className="font-semibold text-foreground">{product.name}</span>
-        </div>
-      )}
+
+      {/* Non-purchase mode (Opening / Adjust) product fields */}
       {!purchase && (
-        <SelectField
-          label="Place"
-          value={place}
-          onChange={setPlace}
-          groups={placeGroups(availablePlaces)}
-        />
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <SelectField
+              label="Trade-type"
+              value={currentChannel}
+              onChange={(channel) => setPick({ brandId, channel, typeId: "", gradeId: "", productId: "" })}
+              options={channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
+            />
+            <SelectField
+              label="Cement Name / Variant"
+              value={product?.id ?? ""}
+              onChange={(prodId) => {
+                const p = channelProducts.find((x) => x.id === prodId);
+                const tId = lists.grades.find((g) => g.id === p?.gradeId)?.typeId ?? "";
+                setPick({
+                  brandId,
+                  channel: currentChannel,
+                  typeId: tId,
+                  gradeId: p?.gradeId ?? "",
+                  productId: p?.id ?? "",
+                });
+              }}
+              options={channelProducts.map((p) => ({
+                value: p.id,
+                label: variantLabel(p, lists.grades),
+              }))}
+            />
+          </div>
+          {product && (
+            <div className="flex items-center justify-between rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+              <span>Product:</span>
+              <span className="font-semibold text-foreground">{product.name}</span>
+            </div>
+          )}
+          <SelectField
+            label="Place"
+            value={place}
+            onChange={setPlace}
+            groups={placeGroups(availablePlaces)}
+          />
+          {!newTruck && <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>}
+        </>
       )}
-      {!newTruck && <p className="text-sm text-muted-foreground">In stock here now: {bagsText(current)}</p>}
+
+      {/* Purchase Mode Fields */}
       {purchase && (
         <>
           <div className="flex flex-col gap-2">
@@ -328,21 +421,237 @@ export function StockForm({
               />
             )}
           </div>
-          <TruckFields value={truck} onChange={setTruck} directEntry knownTrucks={trucks} />
+
+          <div className="flex flex-col gap-2">
+            <TruckFields value={truck} onChange={setTruck} directEntry knownTrucks={trucks} />
+            {isTruckLoaded && (
+              <div className="rounded-2xl border border-rose-300 bg-rose-50 dark:bg-rose-950/40 dark:border-rose-800 p-3 text-xs text-rose-800 dark:text-rose-200">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <span>⚠️</span> Yeh gadi pehle se loaded hai ({loadedTruck?.bags} bags baki hain)
+                </p>
+                <p className="mt-1 text-rose-600 dark:text-rose-300">
+                  Jab tak is gadi ke saare bags dispatch ya godown me unload karke khali nahi ho jate, isme naya purchase nahi ho sakta.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <SmallField label="Invoice no." value={invoiceNo} onChange={setInvoiceNo} maxLength={60} />
             <SmallField label="Invoice date" type="date" value={invoiceDate} onChange={setInvoiceDate} max={today} />
           </div>
-          <RateField
-            label="Cost per bag (₹)"
-            value={costText}
-            onChange={setCostText}
-            bags={bags}
-            allowPaise
-            totalLabel={`Owed to ${brandName}`}
-          />
+
+          {/* Product 1 Block */}
+          <div className="rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6 flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-1 border-b border-border/50">
+              <span className="font-semibold text-sm text-foreground">
+                {hasSecondProduct ? "Product 1" : "Product Details"}
+              </span>
+              {product && (
+                <span className="text-xs text-muted-foreground font-medium">
+                  {product.name}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <SelectField
+                label="Trade-type"
+                value={currentChannel}
+                onChange={(channel) => setPick({ brandId, channel, typeId: "", gradeId: "", productId: "" })}
+                options={channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
+              />
+              <SelectField
+                label="Cement Name / Variant"
+                value={product?.id ?? ""}
+                onChange={(prodId) => {
+                  const p = channelProducts.find((x) => x.id === prodId);
+                  const tId = lists.grades.find((g) => g.id === p?.gradeId)?.typeId ?? "";
+                  setPick({
+                    brandId,
+                    channel: currentChannel,
+                    typeId: tId,
+                    gradeId: p?.gradeId ?? "",
+                    productId: p?.id ?? "",
+                  });
+                }}
+                options={channelProducts.map((p) => ({
+                  value: p.id,
+                  label: variantLabel(p, lists.grades),
+                }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="stock-bags-1" className="text-sm font-semibold">
+                  Bags
+                </Label>
+                <Input
+                  id="stock-bags-1"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="e.g. 200"
+                  value={digits}
+                  onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  autoComplete="off"
+                  className="h-11 font-semibold"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cost-1" className="text-sm font-semibold">
+                  Cost per bag (₹)
+                </Label>
+                <Input
+                  id="cost-1"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 522"
+                  value={costText}
+                  onChange={(e) => setCostText(e.target.value)}
+                  autoComplete="off"
+                  className="h-11 font-semibold"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Product 2 Block */}
+          {hasSecondProduct ? (
+            <div className="rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6 flex flex-col gap-3">
+              <div className="flex items-center justify-between pb-1 border-b border-border/50">
+                <span className="font-semibold text-sm text-foreground">Product 2</span>
+                <button
+                  type="button"
+                  className="text-xs text-rose-600 dark:text-rose-400 font-medium hover:underline flex items-center gap-1"
+                  onClick={() => {
+                    setHasSecondProduct(false);
+                    setDigits2("");
+                    setCostText2("");
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <SelectField
+                  label="Trade-type"
+                  value={currentChannel2}
+                  onChange={(channel) => setPick2({ channel, typeId: "", gradeId: "", productId: "" })}
+                  options={channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))}
+                />
+                <SelectField
+                  label="Cement Name / Variant"
+                  value={product2?.id ?? ""}
+                  onChange={(prodId) => {
+                    const p = channelProducts2.find((x) => x.id === prodId);
+                    const tId = lists.grades.find((g) => g.id === p?.gradeId)?.typeId ?? "";
+                    setPick2({
+                      channel: currentChannel2,
+                      typeId: tId,
+                      gradeId: p?.gradeId ?? "",
+                      productId: p?.id ?? "",
+                    });
+                  }}
+                  options={channelProducts2.map((p) => ({
+                    value: p.id,
+                    label: variantLabel(p, lists.grades),
+                  }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="stock-bags-2" className="text-sm font-semibold">
+                    Bags
+                  </Label>
+                  <Input
+                    id="stock-bags-2"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="e.g. 200"
+                    value={digits2}
+                    onChange={(e) => setDigits2(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    autoComplete="off"
+                    className="h-11 font-semibold"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cost-2" className="text-sm font-semibold">
+                    Cost per bag (₹)
+                  </Label>
+                  <Input
+                    id="cost-2"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="e.g. 522"
+                    value={costText2}
+                    onChange={(e) => setCostText2(e.target.value)}
+                    autoComplete="off"
+                    className="h-11 font-semibold"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-dashed py-3 flex items-center justify-center gap-2 text-primary font-medium hover:bg-primary/5 active:scale-[0.99] transition-all"
+              onClick={() => {
+                const otherProd = channelProducts.find((p) => p.id !== product?.id) ?? channelProducts[0];
+                const otherGrade = otherProd?.gradeId ?? "";
+                const otherType = lists.grades.find((g) => g.id === otherGrade)?.typeId ?? lists.types[0]?.id ?? "";
+                setPick2({
+                  channel: currentChannel,
+                  typeId: otherType,
+                  gradeId: otherGrade,
+                  productId: otherProd?.id ?? "",
+                });
+                setHasSecondProduct(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              + Add Second Product (Optional)
+            </Button>
+          )}
+
+          {/* Total & Summary */}
+          {hasSecondProduct ? (
+            <div className="rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6 flex flex-col gap-2 text-xs">
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>{product?.name ?? "Product 1"}</span>
+                <span>{bags} bags × ₹{costText || "0"} = ₹{(((bags * (costPaise ?? 0))) / 100).toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>{product2?.name ?? "Product 2"}</span>
+                <span>{bags2} bags × ₹{costText2 || "0"} = ₹{(((bags2 * (costPaise2 ?? 0))) / 100).toLocaleString("en-IN")}</span>
+              </div>
+              <div className="border-t border-border/60 pt-1.5 flex justify-between items-center font-semibold text-sm text-foreground">
+                <span>Total Truck Load: {bags + bags2} bags</span>
+                <span>Owed to {brandName}: ₹{((((bags * (costPaise ?? 0)) + (bags2 * (costPaise2 ?? 0)))) / 100).toLocaleString("en-IN")}</span>
+              </div>
+            </div>
+          ) : (
+            costPaise && costPaise > 0 && bags > 0 ? (
+              <div className="rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6 flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">Total ({bags} bags):</span>
+                <span className="font-bold text-foreground">₹{(((bags * costPaise)) / 100).toLocaleString("en-IN")}</span>
+              </div>
+            ) : null
+          )}
+
+          <NoteField label={copy.purchase.note} value={note} onChange={setNote} maxLength={PURCHASE_NOTE_MAX} />
         </>
       )}
+
+      {/* Adjust Mode extra fields */}
       {mode === "adjust" && (
         <div className="grid grid-cols-2 gap-2">
           <Button type="button" variant={minus ? "outline" : "default"} onClick={() => setMinus(false)}>
@@ -353,46 +662,45 @@ export function StockForm({
           </Button>
         </div>
       )}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="stock-bags" className="text-sm font-semibold">
-          {mode === "adjust" ? "Bags to adjust" : "Number of bags"}
-        </Label>
-        <Input
-          id="stock-bags"
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          placeholder="Enter bags (e.g. 200)"
-          value={digits}
-          onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          className="h-12 text-lg font-semibold"
-        />
-      </div>
-      {purchase && (
-        <>
-          <NoteField label={copy.purchase.note} value={note} onChange={setNote} maxLength={PURCHASE_NOTE_MAX} />
-        </>
+
+      {/* Opening / Adjust bags input */}
+      {!purchase && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="stock-bags" className="text-sm font-semibold">
+            {mode === "adjust" ? "Bags to adjust" : "Number of bags"}
+          </Label>
+          <Input
+            id="stock-bags"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="Enter bags (e.g. 200)"
+            value={digits}
+            onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className="h-12 text-lg font-semibold"
+          />
+        </div>
       )}
+
       {mode === "adjust" && (
-        <>
-          <div className="flex flex-col gap-1.5">
-            <Label>Reason</Label>
-            <ReasonPicker
-              action="stock"
-              label="Reason"
-              code={reason}
-              onCodeChange={setReason}
-              note={note}
-              onNoteChange={setNote}
-              disabled={pending}
-              showHint={false}
-            />
-          </div>
-        </>
+        <div className="flex flex-col gap-1.5">
+          <Label>Reason</Label>
+          <ReasonPicker
+            action="stock"
+            label="Reason"
+            code={reason}
+            onCodeChange={setReason}
+            note={note}
+            onNoteChange={setNote}
+            disabled={pending}
+            showHint={false}
+          />
+        </div>
       )}
+
       {error && (
         <p role="status" className="text-sm text-destructive">
           {error}
@@ -403,12 +711,14 @@ export function StockForm({
           {done}
         </p>
       )}
+
       <PinnedAction>
         <FormHint>{hint}</FormHint>
         <Button onClick={submit} disabled={pending || hint !== null}>
           {copy[mode].button}
         </Button>
       </PinnedAction>
+
       <PostActionDialog
         open={showHomePrompt}
         title={mode === "purchase" ? "Purchase Added!" : mode === "opening" ? "Opening Stock Set!" : "Adjustment Saved!"}

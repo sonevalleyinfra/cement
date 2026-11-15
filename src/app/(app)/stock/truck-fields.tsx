@@ -28,7 +28,7 @@ export function TruckFields({
   onChange: (next: TruckInput) => void;
   phoneOptional?: boolean;
   fixedNumber?: string;
-  knownTrucks?: { number: string; driverName: string; driverPhone: string }[];
+  knownTrucks?: { number: string; driverName: string; driverPhone: string; bags?: number }[];
   directEntry?: boolean;
 }) {
   const id = useId();

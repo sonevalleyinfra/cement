@@ -28,13 +28,25 @@ import {
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
-import { atPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
-import { checkClaimChange, checkPurchaseDetails, claimValuePaise } from "@/lib/purchase-rules";
+import { atPlace, bagsAtPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
+import { checkClaimChange, checkPurchaseDetails, claimValuePaise, type PurchaseDetails } from "@/lib/purchase-rules";
 import { checkDriver, checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
 import { generateTrackingId } from "@/lib/tracking-id";
 import { notifyPurchase, notifyTransfer } from "@/lib/notify";
 
 export type StockResult = { ok: true; trackingId?: string } | { ok: false; error: string };
+
+export type PurchaseItemInput = {
+  brandId: string;
+  channel: string;
+  typeId: string;
+  gradeId: string;
+  productId?: string;
+  bags: number;
+  costPerBagPaise: number;
+  shortBags?: number;
+  burstBags?: number;
+};
 
 export type StockInput = {
   /** The product, picked as its parts: brand, trade-type (channel), cement type and grade. */
@@ -42,6 +54,8 @@ export type StockInput = {
   channel: string;
   typeId: string;
   gradeId: string;
+  /** Multi-product purchase (up to 2 products in one truckload). When present, items take precedence for purchase. */
+  items?: PurchaseItemInput[];
   /**
    * The godown or truck, as a place key from the drop-down ("godown:<id>" / "vehicle:<id>"),
    * or `NEW_TRUCK_PLACE` for a purchase into a truck typed in `truck`.
@@ -95,7 +109,10 @@ async function prepare(
  * The product the drop-downs (brand, trade-type, type, grade) point to. It must already exist
  * (products are added in Catalogue), so a switched brand never makes a new product by mistake.
  */
-async function pickProduct(tx: Tx, input: StockInput): Promise<{ ok: true; productId: string } | { ok: false; error: string }> {
+async function pickProduct(
+  tx: Tx,
+  input: { brandId: string; channel: string; typeId: string; gradeId: string },
+): Promise<{ ok: true; productId: string } | { ok: false; error: string }> {
   const [g, p] = await Promise.all([
     tx.select({ id: grades.id, typeId: grades.typeId }).from(grades),
     tx
@@ -176,12 +193,63 @@ function done(): StockResult {
 export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const p = await prepare(input, "recordPurchase", true);
   if (p.error !== null) return { ok: false, error: p.error };
-  const cost = checkCostPerBag(input.costPerBagPaise);
-  if (!cost.ok) return cost;
+
   const chosen = p.place;
   if (chosen !== NEW_TRUCK_PLACE && chosen.kind !== "vehicle") {
     return { ok: false, error: "Purchases must be received directly into a truck." };
   }
+
+  // Multi-product purchase (up to 2 products in one truckload)
+  const items: PurchaseItemInput[] =
+    input.items && input.items.length > 0
+      ? input.items
+      : [
+          {
+            brandId: input.brandId,
+            channel: input.channel,
+            typeId: input.typeId,
+            gradeId: input.gradeId,
+            bags: input.bags,
+            costPerBagPaise: input.costPerBagPaise ?? 0,
+            shortBags: input.shortBags,
+            burstBags: input.burstBags,
+          },
+        ];
+
+  if (items.length > 2) {
+    return { ok: false, error: "Ek truck me maximum 2 products hi purchase ho sakte hain." };
+  }
+
+  // Validate each item's cost and purchase details
+  const todayKey = toISTDateKey(new Date());
+  type ValidatedItem = {
+    item: PurchaseItemInput;
+    details: PurchaseDetails;
+    costPaise: number;
+  };
+  const validatedItems: ValidatedItem[] = [];
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const it = items[idx];
+    const cost = checkCostPerBag(it.costPerBagPaise);
+    if (!cost.ok) return cost;
+    const details = checkPurchaseDetails(
+      {
+        invoiceNo: input.invoiceNo,
+        invoiceDate: input.invoiceDate,
+        billedBags: it.bags,
+        shortBags: it.shortBags,
+        burstBags: it.burstBags,
+        freightPaise: idx === 0 ? input.freightPaise : 0,
+        unloadingPaise: idx === 0 ? input.unloadingPaise : 0,
+        costPerBagPaise: cost.costPaise,
+      },
+      todayKey,
+    );
+    if (!details.ok) return details;
+    validatedItems.push({ item: it, details: details.value, costPaise: cost.costPaise });
+  }
+
   // The truck: an existing truck place keeps its own number (read below), else the typed one is needed.
   const typed = input.truck ?? {};
   let truck: Truck;
@@ -194,33 +262,36 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     if (!check.ok) return check;
     truck = check.value;
   }
-  const details = checkPurchaseDetails(
-    {
-      invoiceNo: input.invoiceNo,
-      invoiceDate: input.invoiceDate,
-      billedBags: input.bags,
-      shortBags: input.shortBags,
-      burstBags: input.burstBags,
-      freightPaise: input.freightPaise,
-      unloadingPaise: input.unloadingPaise,
-      costPerBagPaise: cost.costPaise,
-    },
-    toISTDateKey(new Date()),
-  );
-  if (!details.ok) return details;
-  const d = details.value;
+
   const note = String(input.note ?? "").trim().slice(0, 200);
   const actorId = p.session.user.id;
+
   const res = await saveOnce({ id: p.requestId, kind: "purchase", actorId }, async (tx) => {
-    const picked = await pickProduct(tx, input);
-    if (!picked.ok) return picked;
+    // 1. Truck empty check: A truck cannot receive new purchase if it already has stock
+    const cleanNumber = truck.number.toUpperCase().replace(/\s+/g, "");
+    if (cleanNumber) {
+      const [existingV] = await tx
+        .select({ id: vehicles.id })
+        .from(vehicles)
+        .where(eq(vehicles.number, cleanNumber))
+        .limit(1);
+      if (existingV) {
+        const remaining = await bagsAtPlace(tx, { kind: "vehicle", id: existingV.id });
+        if (remaining > 0) {
+          return {
+            ok: false,
+            error: `Gadi ${cleanNumber} me pehle se ${remaining} bags stock baki hai. Gadi khali hone ke baad hi naya purchase ho sakta hai.`,
+          };
+        }
+      }
+    }
+
     // A typed-in truck is found (or made) by its number, so the same truck always has the same stock.
     const place: PlaceRef =
       chosen === NEW_TRUCK_PLACE
         ? { kind: "vehicle", id: await truckByNumber(tx, truck.number, actorId, { name: truck.driverName, phone: truck.driverPhone }) }
         : chosen;
-    const loc = await locate(tx, picked.productId, place);
-    if (!loc.ok) return loc;
+
     if (chosen !== NEW_TRUCK_PLACE && chosen.kind === "vehicle") {
       const [v] = await tx.select({ number: vehicles.number }).from(vehicles).where(eq(vehicles.id, chosen.id));
       if (!v) return { ok: false, error: "Pick an active place." };
@@ -238,113 +309,140 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     } else if (truck.number) {
       await truckByNumber(tx, truck.number, actorId, { name: truck.driverName, phone: truck.driverPhone });
     }
-    const m = inMovement("purchase", loc.key, d.billedBags, note);
-    if (!m.ok) return m;
-    const [product] = await tx
-      .select({ name: products.name, brandId: products.brandId })
-      .from(products)
-      .where(eq(products.id, picked.productId));
-    if (!product) return { ok: false, error: "Pick an active product." };
-    // The amount is owed to the supplier of this product's brand, on the invoice date.
-    const owed = purchaseEntry(product, d.billedBags, cost.costPaise, d.invoiceDate, {
-      reference: d.invoiceNo,
-      description: `${d.billedBags} bags ${product.name} at ${formatINR(cost.costPaise)}`.replace(/\s+/g, " "),
-    });
-    if (!owed.ok) return owed;
-    const [moved] = await tx
-      .insert(stockMovements)
-      .values({ ...toRow(m.movement, actorId), unitCostPaise: cost.costPaise })
-      .returning({ id: stockMovements.id });
-    // Short and burst bags leave again right after (a moment later, so the running stock never dips below 0).
-    const linked: { movement: Movement; id: string }[] = [];
-    const losses = [
-      { bags: d.shortBags, code: "transit_short", reason: `Short on invoice ${d.invoiceNo}` },
-      { bags: d.burstBags, code: "transit_burst", reason: `Burst on invoice ${d.invoiceNo}` },
-    ] as const;
-    for (const [i, loss] of losses.entries()) {
-      if (loss.bags === 0) continue;
-      const movement: Movement = { ...loc.key, type: "adjustment", bags: -loss.bags, reason: loss.reason, reasonCode: loss.code };
-      const [row] = await tx
+
+    const trackingIds: string[] = [];
+    const savedProductNames: string[] = [];
+
+    for (const vItem of validatedItems) {
+      const { item, details: d, costPaise } = vItem;
+      const picked = await pickProduct(tx, item);
+      if (!picked.ok) return picked;
+
+      const loc = await locate(tx, picked.productId, place);
+      if (!loc.ok) return loc;
+
+      const m = inMovement("purchase", loc.key, d.billedBags, note);
+      if (!m.ok) return m;
+
+      const [product] = await tx
+        .select({ name: products.name, brandId: products.brandId })
+        .from(products)
+        .where(eq(products.id, picked.productId));
+      if (!product) return { ok: false, error: "Pick an active product." };
+      savedProductNames.push(product.name);
+
+      // The amount is owed to the supplier of this product's brand, on the invoice date.
+      const owed = purchaseEntry(product, d.billedBags, costPaise, d.invoiceDate, {
+        reference: d.invoiceNo,
+        description: `${d.billedBags} bags ${product.name} at ${formatINR(costPaise)}`.replace(/\s+/g, " "),
+      });
+      if (!owed.ok) return owed;
+
+      const [moved] = await tx
         .insert(stockMovements)
-        .values({ ...toRow(movement, actorId), createdAt: sql`now() + make_interval(secs => ${(i + 1) / 1000})` })
+        .values({ ...toRow(m.movement, actorId), unitCostPaise: costPaise })
         .returning({ id: stockMovements.id });
-      linked.push({ movement, id: row.id });
-    }
-    const shortId = linked.find((l) => l.movement.reasonCode === "transit_short")?.id ?? null;
-    const burstId = linked.find((l) => l.movement.reasonCode === "transit_burst")?.id ?? null;
-    await postSupplierEntry(tx, owed.entry, actorId, moved.id, { audit: false });
-    let trackingId = generateTrackingId("TRK");
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const [taken] = await tx.select({ id: purchases.id }).from(purchases).where(eq(purchases.trackingId, trackingId)).limit(1);
-      if (!taken) break;
-      trackingId = generateTrackingId("TRK");
-    }
-    const [header] = await tx
-      .insert(purchases)
-      .values({
-        stockMovementId: moved.id,
-        trackingId,
-        invoiceNo: d.invoiceNo,
-        invoiceDate: d.invoiceDate,
-        truckNumber: truck.number,
-        driverName: truck.driverName,
-        driverPhone: truck.driverPhone,
-        billedBags: d.billedBags,
-        shortBags: d.shortBags,
-        burstBags: d.burstBags,
-        receivedBags: d.receivedBags,
-        freightPaise: d.freightPaise,
-        unloadingPaise: d.unloadingPaise,
-        landedUnitCostPaise: d.landedUnitCostPaise,
-        shortMovementId: shortId,
-        burstMovementId: burstId,
-        claimStatus: d.claimStatus,
-        actorId,
-      })
-      .returning({ id: purchases.id });
-    await writeAudit(tx, {
-      actorId,
-      entity: "stock",
-      entityId: moved.id,
-      action: "purchase",
-      details: {
-        ...movementFacts(m.movement),
-        unitCostPaise: cost.costPaise,
-        amountPaise: owed.entry.amountPaise,
-        brandId: owed.entry.brandId,
-        invoiceNo: d.invoiceNo,
-        trackingId,
-        invoiceDate: d.invoiceDate,
-        truck: truck.number,
-        driverName: truck.driverName,
-        billedBags: d.billedBags,
-        shortBags: d.shortBags,
-        burstBags: d.burstBags,
-        receivedBags: d.receivedBags,
-        freightPaise: d.freightPaise,
-        unloadingPaise: d.unloadingPaise,
-        landedUnitCostPaise: d.landedUnitCostPaise,
-        purchaseId: header.id,
-      },
-    });
-    // Every adjustment movement has its own log row (Books check I12).
-    for (const l of linked) {
+
+      // Short and burst bags leave again right after
+      const linked: { movement: Movement; id: string }[] = [];
+      const losses = [
+        { bags: d.shortBags, code: "transit_short", reason: `Short on invoice ${d.invoiceNo}` },
+        { bags: d.burstBags, code: "transit_burst", reason: `Burst on invoice ${d.invoiceNo}` },
+      ] as const;
+      for (const [i, loss] of losses.entries()) {
+        if (loss.bags === 0) continue;
+        const movement: Movement = { ...loc.key, type: "adjustment", bags: -loss.bags, reason: loss.reason, reasonCode: loss.code };
+        const [row] = await tx
+          .insert(stockMovements)
+          .values({ ...toRow(movement, actorId), createdAt: sql`now() + make_interval(secs => ${(i + 1) / 1000})` })
+          .returning({ id: stockMovements.id });
+        linked.push({ movement, id: row.id });
+      }
+      const shortId = linked.find((l) => l.movement.reasonCode === "transit_short")?.id ?? null;
+      const burstId = linked.find((l) => l.movement.reasonCode === "transit_burst")?.id ?? null;
+
+      await postSupplierEntry(tx, owed.entry, actorId, moved.id, { audit: false });
+
+      let trackingId = generateTrackingId("TRK");
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const [taken] = await tx.select({ id: purchases.id }).from(purchases).where(eq(purchases.trackingId, trackingId)).limit(1);
+        if (!taken) break;
+        trackingId = generateTrackingId("TRK");
+      }
+      trackingIds.push(trackingId);
+
+      const [header] = await tx
+        .insert(purchases)
+        .values({
+          stockMovementId: moved.id,
+          trackingId,
+          invoiceNo: d.invoiceNo,
+          invoiceDate: d.invoiceDate,
+          truckNumber: truck.number,
+          driverName: truck.driverName,
+          driverPhone: truck.driverPhone,
+          billedBags: d.billedBags,
+          shortBags: d.shortBags,
+          burstBags: d.burstBags,
+          receivedBags: d.receivedBags,
+          freightPaise: d.freightPaise,
+          unloadingPaise: d.unloadingPaise,
+          landedUnitCostPaise: d.landedUnitCostPaise,
+          shortMovementId: shortId,
+          burstMovementId: burstId,
+          claimStatus: d.claimStatus,
+          actorId,
+        })
+        .returning({ id: purchases.id });
+
       await writeAudit(tx, {
         actorId,
         entity: "stock",
-        entityId: l.id,
-        action: "adjustment",
-        details: { ...movementFacts(l.movement), reasonCode: l.movement.reasonCode, reason: l.movement.reason ?? "", purchaseId: header.id },
+        entityId: moved.id,
+        action: "purchase",
+        details: {
+          ...movementFacts(m.movement),
+          unitCostPaise: costPaise,
+          amountPaise: owed.entry.amountPaise,
+          brandId: owed.entry.brandId,
+          invoiceNo: d.invoiceNo,
+          trackingId,
+          invoiceDate: d.invoiceDate,
+          truck: truck.number,
+          driverName: truck.driverName,
+          billedBags: d.billedBags,
+          shortBags: d.shortBags,
+          burstBags: d.burstBags,
+          receivedBags: d.receivedBags,
+          freightPaise: d.freightPaise,
+          unloadingPaise: d.unloadingPaise,
+          landedUnitCostPaise: d.landedUnitCostPaise,
+          purchaseId: header.id,
+        },
       });
+
+      for (const l of linked) {
+        await writeAudit(tx, {
+          actorId,
+          entity: "stock",
+          entityId: l.id,
+          action: "adjustment",
+          details: { ...movementFacts(l.movement), reasonCode: l.movement.reasonCode, reason: l.movement.reason ?? "", purchaseId: header.id },
+        });
+      }
     }
+
+    const totalBilledBags = validatedItems.reduce((acc, it) => acc + it.details.billedBags, 0);
     await notifyPurchase(tx, {
-      bags: d.billedBags,
-      productName: product.name,
+      bags: totalBilledBags,
+      productName: savedProductNames.join(" + "),
       truckNumber: truck.number,
       actorId,
     });
-    return { ok: true, resultId: moved.id, trackingId };
+
+    return { ok: true, resultId: trackingIds[0], trackingId: trackingIds[0] };
   });
+
   if (!res.ok) return res;
   revalidatePath("/suppliers", "layout");
   revalidatePath("/stock/purchases");
