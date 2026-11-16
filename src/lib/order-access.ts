@@ -49,12 +49,7 @@ export function validatePlaceOrder(
   return { ok: true };
 }
 
-/** Largest bags value accepted for one order (guards typos like 9999999). */
-export const MAX_ORDER_BAGS = 100000;
-
-export function isBagsInRange(bags: number): boolean {
-  return isValidBags(bags) && bags <= MAX_ORDER_BAGS;
-}
+export { MAX_ORDER_BAGS, isBagsInRange } from "./order-rules";
 
 /** The retailer an order is placed for: staff choose; anyone else is fixed to their own shop. */
 export function resolveOrderRetailer(

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BAGS_ON_THE_WAY, needsReapprovalOnBagEdit } from "@/lib/order-rules";
 import { bagsText } from "@/lib/words";
 import { useFormError } from "@/lib/use-form-error";
 import { updateOrderBags } from "../actions";
@@ -13,12 +14,14 @@ export function EditBagsForm({
   orderId,
   currentBags,
   sentBags,
-  needsReapproval = false,
+  role,
+  status,
 }: {
   orderId: string;
   currentBags: number;
   sentBags: number;
-  needsReapproval?: boolean;
+  role: string | null | undefined;
+  status: string;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -28,10 +31,15 @@ export function EditBagsForm({
   const [pending, start] = useTransition();
 
   const minBags = Math.max(1, sentBags);
+  const typedBags = Number.parseInt(bagsTextValue, 10) || currentBags;
+  const needsReapproval = needsReapprovalOnBagEdit(role, status, currentBags, typedBags);
+  /** Once bags are on the way the order can only go down: extra bags are a new order. */
+  const noMore = status === "partly_dispatched";
+  const maxBags = noMore ? currentBags : undefined;
 
   function addQuick(amount: number) {
     const current = Number.parseInt(bagsTextValue, 10) || currentBags;
-    const next = Math.max(minBags, current + amount);
+    const next = Math.min(maxBags ?? Infinity, Math.max(minBags, current + amount));
     setBagsTextValue(String(next));
   }
 
@@ -86,9 +94,10 @@ export function EditBagsForm({
       </div>
       {needsReapproval && (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-          Updating an approved order will send it back to Accountant &amp; Admin for approval.
+          This change sends the order back for approval.
         </p>
       )}
+      {noMore && <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{BAGS_ON_THE_WAY}</p>}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-edit-bags" className="text-xs">
@@ -98,6 +107,7 @@ export function EditBagsForm({
           id="order-edit-bags"
           type="number"
           min={minBags}
+          max={maxBags}
           value={bagsTextValue}
           onChange={(e) => setBagsTextValue(e.target.value)}
           className="text-lg font-bold tabular"
@@ -136,24 +146,24 @@ export function EditBagsForm({
           <button
             type="button"
             onClick={() => addQuick(50)}
-            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all"
-            disabled={pending}
+            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+            disabled={pending || noMore}
           >
             +50
           </button>
           <button
             type="button"
             onClick={() => addQuick(100)}
-            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all"
-            disabled={pending}
+            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+            disabled={pending || noMore}
           >
             +100
           </button>
           <button
             type="button"
             onClick={() => addQuick(200)}
-            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all"
-            disabled={pending}
+            className="rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 text-xs font-bold hover:bg-emerald-500/20 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
+            disabled={pending || noMore}
           >
             +200
           </button>

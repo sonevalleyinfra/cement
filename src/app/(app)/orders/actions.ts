@@ -398,9 +398,10 @@ export async function updateOrderBags(
   newBags: number,
   note?: string,
 ): Promise<PlaceOrderResult> {
-  const session = await requireRole("admin", "sales", "logistics", "accounts");
+  const session = await requireRole(...rolesFor("editOrderBags"));
   const me = session.user;
   if (!isUuid(orderId)) return { ok: false, error: "Order not found." };
+  if (note !== undefined && typeof note !== "string") return { ok: false, error: "Refresh the page and try again." };
 
   const result = await db.transaction(async (tx): Promise<PlaceOrderResult> => {
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("no key update");
@@ -413,11 +414,11 @@ export async function updateOrderBags(
       .from(dispatches)
       .where(eq(dispatches.orderId, orderId));
     const dispatchedBags = sent?.bags ?? 0;
-    const check = checkEditOrderBags(o.bags, dispatchedBags, newBags);
+    const check = checkEditOrderBags(o.status, o.bags, dispatchedBags, newBags);
     if (!check.ok) return check;
 
     const newStatus = isOrderStatus(o.status)
-      ? statusAfterBagEdit(me.role, o.status, check.newBags, dispatchedBags)
+      ? statusAfterBagEdit(me.role, o.status, o.bags, check.newBags, dispatchedBags)
       : o.status;
 
     await tx
@@ -451,9 +452,12 @@ export async function updateOrderBags(
       details: {
         ...orderFacts(o),
         bags: { before: o.bags, after: check.newBags },
+        ...(newStatus !== o.status ? { status: { before: o.status, after: newStatus } } : {}),
         ...(cleanNote ? { note: cleanNote } : {}),
       },
     });
+    // Back to "placed": the people who approve are told, as for a new order.
+    if (o.status === "approved" && newStatus === "placed") await notify(tx, orderId, "placed", me.id);
 
     return { ok: true };
   });

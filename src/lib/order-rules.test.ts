@@ -4,7 +4,10 @@ import {
   ALLOWED_TRANSITIONS,
   ORDER_STATUSES,
   canCancelOrder,
+  BAGS_ON_THE_WAY,
+  MAX_ORDER_BAGS,
   canEditOrderBags,
+  checkEditOrderBags,
   needsReapprovalOnBagEdit,
   statusAfterBagEdit,
   canTransition,
@@ -257,18 +260,47 @@ describe("editing order bags and re-approval", () => {
     expect(canEditOrderBags("sales", "partly_dispatched")).toBe(false);
     expect(canEditOrderBags("logistics", "partly_dispatched")).toBe(false);
     expect(canEditOrderBags("admin", "dispatched")).toBe(false);
+    expect(canEditOrderBags("retailer", "placed")).toBe(false);
   });
 
-  it("resets approved orders to placed when edited by sales/logistics, but keeps approved for admin/accounts", () => {
-    expect(needsReapprovalOnBagEdit("sales", "approved")).toBe(true);
-    expect(needsReapprovalOnBagEdit("logistics", "approved")).toBe(true);
-    expect(needsReapprovalOnBagEdit("admin", "approved")).toBe(false);
-    expect(needsReapprovalOnBagEdit("accounts", "approved")).toBe(false);
+  it("more bags on an approved order always go back for approval, whoever asks", () => {
+    for (const r of ["admin", "accounts", "sales", "logistics"]) {
+      expect(needsReapprovalOnBagEdit(r, "approved", 100, 150)).toBe(true);
+      expect(statusAfterBagEdit(r, "approved", 100, 150, 0)).toBe("placed");
+    }
+  });
 
-    expect(statusAfterBagEdit("sales", "approved", 150, 0)).toBe("placed");
-    expect(statusAfterBagEdit("logistics", "approved", 150, 0)).toBe("placed");
-    expect(statusAfterBagEdit("admin", "approved", 150, 0)).toBe("approved");
-    expect(statusAfterBagEdit("accounts", "approved", 150, 0)).toBe("approved");
-    expect(statusAfterBagEdit("admin", "partly_dispatched", 150, 50)).toBe("partly_dispatched");
+  it("fewer bags on an approved order go back for approval only for sales and logistics", () => {
+    expect(needsReapprovalOnBagEdit("sales", "approved", 100, 60)).toBe(true);
+    expect(needsReapprovalOnBagEdit("logistics", "approved", 100, 60)).toBe(true);
+    expect(needsReapprovalOnBagEdit("admin", "approved", 100, 60)).toBe(false);
+    expect(needsReapprovalOnBagEdit("accounts", "approved", 100, 60)).toBe(false);
+    expect(statusAfterBagEdit("sales", "approved", 100, 60, 0)).toBe("placed");
+    expect(statusAfterBagEdit("accounts", "approved", 100, 60, 0)).toBe("approved");
+  });
+
+  it("a placed order stays placed", () => {
+    expect(needsReapprovalOnBagEdit("sales", "placed", 100, 150)).toBe(false);
+    expect(statusAfterBagEdit("sales", "placed", 100, 150, 0)).toBe("placed");
+  });
+
+  it("a partly dispatched order cut to the bags already sent becomes dispatched", () => {
+    expect(statusAfterBagEdit("admin", "partly_dispatched", 100, 50, 50)).toBe("dispatched");
+    expect(statusAfterBagEdit("admin", "partly_dispatched", 100, 80, 50)).toBe("partly_dispatched");
+  });
+
+  it("checks the new quantity", () => {
+    expect(checkEditOrderBags("placed", 100, 0, 150)).toEqual({ ok: true, newBags: 150 });
+    expect(checkEditOrderBags("placed", 100, 0, 0).ok).toBe(false);
+    expect(checkEditOrderBags("placed", 100, 0, 1.5).ok).toBe(false);
+    expect(checkEditOrderBags("placed", 100, 0, 100)).toEqual({ ok: false, error: "Quantity is already 100 bags." });
+    expect(checkEditOrderBags("placed", 100, 0, MAX_ORDER_BAGS + 1)).toEqual({ ok: false, error: "That is too many bags." });
+    expect(checkEditOrderBags("placed", 100, 0, MAX_ORDER_BAGS).ok).toBe(true);
+  });
+
+  it("never goes below the bags already sent, and never adds bags once loads have gone", () => {
+    expect(checkEditOrderBags("partly_dispatched", 100, 50, 40).ok).toBe(false);
+    expect(checkEditOrderBags("partly_dispatched", 100, 50, 50)).toEqual({ ok: true, newBags: 50 });
+    expect(checkEditOrderBags("partly_dispatched", 100, 50, 120)).toEqual({ ok: false, error: BAGS_ON_THE_WAY });
   });
 });

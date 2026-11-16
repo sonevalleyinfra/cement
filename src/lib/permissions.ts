@@ -31,6 +31,8 @@ export const ACTION_ROLES = {
   changeRate: ["logistics"],
   /** Cancel the bags not dispatched yet, with a reason. */
   cancelOrder: ["admin", "sales", "logistics"],
+  /** Change the bags on an order (order-rules.ts says in which statuses, and when it needs approval again). */
+  editOrderBags: ["sales", "logistics", "accounts"],
   // Money (docs/idea.md sections 5 and 6)
   /** Record a cash or online payment from a retailer. */
   recordReceipt: STAFF,

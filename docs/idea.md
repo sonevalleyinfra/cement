@@ -70,7 +70,7 @@ Placed → Approved / Rejected → Partly dispatched → Dispatched        (Canc
 6. **Reverse** a dispatch or take back returned bags: admin only, any time, reason code required. The bags go back to
    stock, the shop's dues are reversed by a new entry, and the order status is worked out again.
 
-Order quantity (bags) can be edited after placing, never below bags already sent. An edit by sales or logistics on an approved order sends it back to **Placed** for approval.
+Order quantity (bags) can be edited after placing by any staff member, on any shop's order, never below bags already sent. On an approved order, adding bags always sends it back to **Placed** for approval (whoever does it), so the credit check runs again; reducing bags does so only when sales or logistics do it. Once loads have gone (partly dispatched) only admin and accounts can edit, only downwards (extra bags are a new order), and cutting it to the bags already sent makes it **Dispatched**.
 
 Filling a rate and approving show the shop's last rate and warn when the new rate is more than ₹10 away from it.
 

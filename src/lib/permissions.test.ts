@@ -18,6 +18,7 @@ const MATRIX: Record<Action, readonly boolean[]> = {
   dispatch:          [Y, N, N, Y, N, N],
   changeRate:        [Y, N, N, Y, N, N],
   cancelOrder:       [Y, Y, N, Y, N, N],
+  editOrderBags:     [Y, Y, Y, Y, N, N],
   recordReceipt:     [Y, Y, Y, Y, N, N],
   viewReceipts:      [Y, Y, Y, Y, N, N],
   verifyPayments:    [Y, N, Y, N, N, N],
