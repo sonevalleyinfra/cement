@@ -4,6 +4,7 @@ import { godowns, stockMovements, vehicles } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { atPlace } from "@/lib/stock-place-lock";
 import { placeKey, type PlaceKind, type PlaceRef } from "@/lib/stock-rules";
+import { driverChange } from "@/lib/truck-rules";
 
 // Moved to stock-place-lock.ts (no `@/db`, so code that runs in a given transaction can use them).
 export { atPlace, lockPlace } from "@/lib/stock-place-lock";
@@ -49,8 +50,30 @@ export async function bagsAtPlace(tx: Tx, place: PlaceRef): Promise<number> {
 }
 
 /**
+ * Saves the driver typed on a purchase, dispatch or move onto the truck, and logs the change
+ * (old and new driver) in the same transaction. Nothing happens when the driver is the same.
+ */
+export async function keepDriver(
+  tx: Tx,
+  truck: { id: string; number: string; driverName: string; driverPhone: string },
+  typed: { name?: string | null; phone?: string | null } | undefined,
+  actorId: string,
+): Promise<void> {
+  const change = driverChange(truck, typed);
+  if (!change) return;
+  await tx.update(vehicles).set({ ...change.to, updatedAt: new Date() }).where(eq(vehicles.id, truck.id));
+  await writeAudit(tx, {
+    actorId,
+    entity: "vehicle",
+    entityId: truck.id,
+    action: "update",
+    details: { number: truck.number, from: change.from, to: change.to },
+  });
+}
+
+/**
  * The truck with this (already cleaned) number: made the first time it is typed, switched back on
- * if it was off. Keeps the latest driver name and phone.
+ * if it was off. Keeps the latest driver name and phone; every change is logged.
  */
 export async function truckByNumber(
   tx: Tx,
@@ -58,30 +81,25 @@ export async function truckByNumber(
   actorId: string,
   driver?: { name?: string | null; phone?: string | null },
 ): Promise<string> {
-  const cleanName = (driver?.name ?? "").trim().slice(0, 80);
-  const cleanPhone = (driver?.phone ?? "").trim().replace(/\D/g, "").slice(0, 15);
+  const typed = driverChange({ driverName: "", driverPhone: "" }, driver)?.to ?? { driverName: "", driverPhone: "" };
   const [made] = await tx
     .insert(vehicles)
-    .values({
-      number,
-      driverName: cleanName,
-      driverPhone: cleanPhone,
-    })
+    .values({ number, ...typed })
     .onConflictDoNothing({ target: vehicles.number })
     .returning({ id: vehicles.id });
   if (made) {
-    await writeAudit(tx, { actorId, entity: "vehicle", entityId: made.id, action: "create", details: { number, driverName: cleanName } });
+    await writeAudit(tx, { actorId, entity: "vehicle", entityId: made.id, action: "create", details: { number, ...typed } });
     return made.id;
   }
   const [row] = await tx
-    .update(vehicles)
-    .set({
-      active: true,
-      ...(cleanName ? { driverName: cleanName } : {}),
-      ...(cleanPhone ? { driverPhone: cleanPhone } : {}),
-      updatedAt: new Date(),
-    })
+    .select({ id: vehicles.id, number: vehicles.number, driverName: vehicles.driverName, driverPhone: vehicles.driverPhone, active: vehicles.active })
+    .from(vehicles)
     .where(eq(vehicles.number, number))
-    .returning({ id: vehicles.id });
+    .for("update");
+  if (!row.active) {
+    await tx.update(vehicles).set({ active: true, updatedAt: new Date() }).where(eq(vehicles.id, row.id));
+    await writeAudit(tx, { actorId, entity: "vehicle", entityId: row.id, action: "activate", details: { number } });
+  }
+  await keepDriver(tx, row, driver, actorId);
   return row.id;
 }

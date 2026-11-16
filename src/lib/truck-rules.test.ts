@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeLoadedTrucks, canSwitchOffTruck, isLoaded, isStanding, truckCounts, truckSaveDecision } from "./truck-rules";
+import { driverChange, activeLoadedTrucks, canSwitchOffTruck, isLoaded, isStanding, truckCounts, truckSaveDecision } from "./truck-rules";
 
 describe("truckCounts", () => {
   it("counts only switched-on trucks", () => {
@@ -60,5 +60,34 @@ describe("truckSaveDecision", () => {
   it("refuses a truck already in the list", () => {
     expect(truckSaveDecision({ driverName: "Ravi", active: true })).toBe("duplicate");
     expect(truckSaveDecision({ driverName: "Ravi", active: false })).toBe("duplicate");
+  });
+});
+
+describe("driverChange", () => {
+  const saved = { driverName: "Ravi", driverPhone: "9876543210" };
+
+  it("is nothing when the same driver is typed again", () => {
+    expect(driverChange(saved, { name: " Ravi ", phone: "98765 43210" })).toBeNull();
+  });
+
+  it("keeps the saved name or phone when one is left empty", () => {
+    expect(driverChange(saved, { name: "", phone: "" })).toBeNull();
+    expect(driverChange(saved, undefined)).toBeNull();
+    expect(driverChange(saved, { name: "Mohan", phone: null })).toEqual({
+      from: saved,
+      to: { driverName: "Mohan", driverPhone: "9876543210" },
+    });
+  });
+
+  it("gives the old and the new driver when the name or the phone changes", () => {
+    expect(driverChange(saved, { name: "Mohan", phone: "9123456780" })).toEqual({
+      from: saved,
+      to: { driverName: "Mohan", driverPhone: "9123456780" },
+    });
+    expect(driverChange(saved, { name: "Ravi", phone: "9123456780" })?.to).toEqual({ driverName: "Ravi", driverPhone: "9123456780" });
+  });
+
+  it("fills a truck that has no driver yet", () => {
+    expect(driverChange({ driverName: "", driverPhone: "" }, { name: "Ravi", phone: "9876543210" })?.to).toEqual(saved);
   });
 });
