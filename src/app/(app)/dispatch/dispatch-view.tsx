@@ -78,14 +78,37 @@ export function DispatchView({
 }) {
   const router = useRouter();
 
+  function getProductPlaces(productId: string) {
+    return places
+      .map((p) => ({
+        ...p,
+        bagsHere: balances
+          .filter((b) => b.productId === productId && b.placeKey === p.key)
+          .reduce((s, b) => s + b.bags, 0),
+      }))
+      // Keep all godowns (!p.truck) so Godown is ALWAYS an available option, plus trucks with stock
+      .filter((p) => !p.truck || p.bagsHere > 0)
+      .sort((a, b) => {
+        if (filterTruck) {
+          const aMatch = a.truck && cleanTruckLabel(a.truck) === cleanTruckLabel(filterTruck) ? 1 : 0;
+          const bMatch = b.truck && cleanTruckLabel(b.truck) === cleanTruckLabel(filterTruck) ? 1 : 0;
+          if (aMatch !== bMatch) return bMatch - aMatch;
+        }
+        if ((a.bagsHere > 0) !== (b.bagsHere > 0)) {
+          return a.bagsHere > 0 ? -1 : 1;
+        }
+        return b.bagsHere - a.bagsHere;
+      });
+  }
+
   function initialFields(o: OrderRow) {
-    const stockPlaces = placesWithStock(places, balances, o.productId);
+    const stockPlaces = getProductPlaces(o.productId);
     const matchingTruckPlace = filterTruck
       ? stockPlaces.find((p) => p.truck && cleanTruckLabel(p.truck) === cleanTruckLabel(filterTruck))
       : null;
-    const fullest = matchingTruckPlace ?? stockPlaces[0];
+    const fullest = matchingTruckPlace ?? stockPlaces.find((p) => p.bagsHere > 0) ?? stockPlaces[0];
     const left = remainingBags(o.bags, o.sent);
-    const suggestedBags = fullest ? Math.min(left, fullest.bagsHere) : left;
+    const suggestedBags = fullest && fullest.bagsHere > 0 ? Math.min(left, fullest.bagsHere) : left;
     const truckNo = fullest?.truck ?? filterTruck ?? null;
     const chip = truckNo ? truckChips.find((c) => cleanTruckLabel(c.truck) === cleanTruckLabel(truckNo)) : null;
     return {
@@ -184,17 +207,8 @@ export function DispatchView({
     }
   }
 
-  // All places holding stock of this product, sorted with fullest first (or filterTruck first when active). Never hides partial trucks.
-  const options = open
-    ? placesWithStock(places, balances, open.productId).sort((a, b) => {
-        if (filterTruck) {
-          const aMatch = a.truck && cleanTruckLabel(a.truck) === cleanTruckLabel(filterTruck) ? 1 : 0;
-          const bMatch = b.truck && cleanTruckLabel(b.truck) === cleanTruckLabel(filterTruck) ? 1 : 0;
-          if (aMatch !== bMatch) return bMatch - aMatch;
-        }
-        return b.bagsHere - a.bagsHere;
-      })
-    : [];
+  // All places: all active godowns (always visible), plus loaded trucks with stock
+  const options = open ? getProductPlaces(open.productId) : [];
   const chosenPlace = options.some((p) => p.key === fromPlace) ? fromPlace : (options[0]?.key ?? "");
   const chosenPlaceObj = options.find((p) => p.key === chosenPlace);
   const takingFromGodown = Boolean(chosenPlaceObj && !chosenPlaceObj.truck);
@@ -372,9 +386,12 @@ export function DispatchView({
               onChange={(key) => pickPlace(key)}
               options={options.map((p) => {
                 const src = p.truck ? (placeSources[`${p.key}:${open.productId}`] ?? placeSources[p.key]) : null;
+                const prefix = p.truck ? "🚚 Truck" : "🏢 Godown";
                 return {
                   value: p.key,
-                  label: src ? `${p.name} · ${src} (${p.bagsHere} bags in stock)` : `${p.name} (${p.bagsHere} bags in stock)`,
+                  label: src
+                    ? `${prefix}: ${p.name} · ${src} (${p.bagsHere} bags in stock)`
+                    : `${prefix}: ${p.name} (${p.bagsHere} bags in stock)`,
                 };
               })}
             />

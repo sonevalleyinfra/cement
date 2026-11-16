@@ -13,6 +13,7 @@ import { getVehicleInflowOrigins } from "@/lib/truck-origins";
 import { can, rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
 import { requireRole } from "@/lib/session";
+import { getPlaces } from "@/lib/stock-places";
 import { getActiveTrucks } from "@/lib/trucks";
 import { cleanTruckLabel } from "@/lib/vehicle-rules";
 import { DispatchView } from "./dispatch-view";
@@ -29,7 +30,7 @@ export default async function DispatchPage({
 
   // Every approved or partly dispatched order: any logistics person may send it.
   // Only currently loaded trucks (`bags > 0`) remain in active UI; 0-bag trucks stay in DB & reports only.
-  const [rows, balances, activeTrucks] = await Promise.all([
+  const [rows, balances, activeTrucks, allPlaces] = await Promise.all([
     db
       .select({
         id: orders.id,
@@ -60,6 +61,7 @@ export default async function DispatchPage({
       .limit(100),
     getBalances(),
     getActiveTrucks(),
+    getPlaces(),
   ]);
   // The earliest "needed by" first (none last), then the oldest order first.
   const today = toISTDateKey(new Date());
@@ -78,7 +80,7 @@ export default async function DispatchPage({
     pending = pending.filter((r) => truckProductIds.has(r.productId));
   }
 
-  // Places with stock history. When filterTruck is set, remove godowns completely (direct truck-to-site dispatch).
+  // Places with stock history. All active godowns remain available even with filterTruck.
   const loadedTrucks = new Set(balances.filter((b) => b.kind === "vehicle" && b.bags > 0).map((b) => b.placeKey));
   const loadedTruckNumbers = [...loadedTrucks]
     .map((k) => balances.find((b) => b.placeKey === k)?.placeName ?? "")
@@ -88,27 +90,34 @@ export default async function DispatchPage({
     activeTrucks.map((t) => ({ truck: t.number, driverName: t.driverName, driverPhone: t.driverPhone })),
     Math.max(50, loadedTruckNumbers.length + activeTrucks.length),
   );
-  const places = [
-    ...new Map(
-      balances
-        .filter((b) => {
-          if (!b.placeActive) return false;
-          if (filterTruck) {
-            return b.kind === "vehicle" && loadedTrucks.has(b.placeKey);
-          }
-          return b.kind !== "vehicle" || loadedTrucks.has(b.placeKey);
-        })
-        .sort((a, b) => a.kind.localeCompare(b.kind) || a.placeName.localeCompare(b.placeName))
-        .map((b) => [
-          b.placeKey,
-          {
-            key: b.placeKey,
-            name: b.kind === "vehicle" ? `Truck ${b.placeName}` : b.placeName,
-            truck: b.kind === "vehicle" ? b.placeName : null,
-          },
-        ]),
-    ).values(),
-  ];
+
+  const placesMap = new Map<string, { key: string; name: string; truck: string | null }>();
+
+  // 1. All active godowns (always included so Godown is always an option)
+  for (const p of allPlaces) {
+    if (p.kind === "godown" && p.active) {
+      placesMap.set(p.key, {
+        key: p.key,
+        name: p.name,
+        truck: null,
+      });
+    }
+  }
+
+  // 2. All loaded trucks from balances
+  for (const b of balances) {
+    if (b.placeActive && b.kind === "vehicle" && loadedTrucks.has(b.placeKey)) {
+      placesMap.set(b.placeKey, {
+        key: b.placeKey,
+        name: `Truck ${b.placeName}`,
+        truck: b.placeName,
+      });
+    }
+  }
+
+  const places = [...placesMap.values()].sort((a, b) =>
+    (a.truck ? 1 : 0) - (b.truck ? 1 : 0) || a.name.localeCompare(b.name)
+  );
 
   const loadedTruckVehicleIds = [...loadedTrucks]
     .map((k) => parsePlaceKey(k))
