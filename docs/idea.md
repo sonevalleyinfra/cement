@@ -18,7 +18,7 @@ corrections that stop money loss, and the metrics the owner runs the business on
 | Sales | Places orders for any shop (to cover for colleagues) and sees every shop's dues. Fills the rate on own shops' retailer orders. Records cash and online payments. |
 | Accounts | Approves / rejects orders (with a reason code), seeing the retailer's dues, credit limit, exposure and oldest overdue. Verifies online payments against the bank statement. Confirms cash handed over by staff. |
 | Logistics | Dispatches approved orders from a godown or a truck. Can change the rate (reason required). Records payments. |
-| Admin | Everything: users, retailers (only admin adds, edits and turns them off; each shop's sales person is required), shop credit terms, areas, bank accounts, products, godowns, purchases, supplier accounts, stock corrections, reversals, change rate, reports, activity log. Purchase cost and profit / margin reports are owner-only. |
+| Admin | Everything: users, retailers (only admin adds, edits and turns them off; each shop's sales person is required), shop credit terms, areas, bank accounts, products, godowns, purchases, supplier accounts, stock corrections, reversals, change rate, reports, activity log. |
 
 Any staff member (not retailer) can record a payment. A user may hold more than one role.
 
@@ -131,7 +131,7 @@ Order placed → its sales person (if rate missing) and accounts (admins too whe
 Approved → logistics. Dispatched → retailer, sales person. Rate changed → accounts, sales person, admin.
 Cash payment recorded → admin. Online payment recorded → accounts. Cash handover request → accounts. Purchase, transfer and dispatch alerts go to admin, logistics and accounts (plus the person who did it). Handover confirmed / payment verified → the staff member.
 
-## 9. Reports (admin; accountant sees all except profit / margin and purchase cost, which stay owner-only (to build, see PLAN-v3 Stage 1; today accounts sees all)), date range filter
+## 9. Reports (admin and accountant see every report, including profit and purchase cost), date range filter
 
 - Sales: bags and ₹ by product, retailer, sales person (the one at the time of each dispatch), day.
 - Retailer dues with aging (0–30, 31–60, 61–90, 90+ days) and a retailer statement.
