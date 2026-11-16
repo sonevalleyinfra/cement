@@ -50,7 +50,7 @@ One line per merged PR: date · PR · what changed · kanban task.
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 1, item 6 (sales sees only own shops' dues).
+**Next up:** Stage 1, item 7 (logging gaps: driver details on trucks).
 
 - [x] Stage 0: plan and spec documented
 - [ ] Stage 1: safety and accountability
@@ -59,7 +59,7 @@ A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continu
   - [x] 3 No acting as other users
   - [x] 4 Blocked shop warning at dispatch
   - [x] 5 Accountant and reports: owner decided the accountant sees every report, no change needed
-  - [ ] 6 Sales sees only own shops' dues
+  - [x] 6 Shop dues for sales and logistics: owner decided to keep as today, no change needed
   - [ ] 7 Logging gaps (driver details left; name and passwords done with item 3)
   - [ ] 8 Database protection for purchases, shops, trucks, users
   - [ ] 9 Database tests run in CI

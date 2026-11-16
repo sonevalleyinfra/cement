@@ -15,7 +15,7 @@ corrections that stop money loss, and the metrics the owner runs the business on
 | Role | Does |
 |---|---|
 | Retailer | Places orders (bags only). Sees own orders, own dues total and own payments; never sees rates or per-dispatch amounts. |
-| Sales | Places orders for any shop (to cover for colleagues) and sees every shop's dues. Fills the rate on own shops' retailer orders. Records cash and online payments. |
+| Sales | Places orders for any shop (to cover for colleagues) and sees every shop's dues total (the full ledger only for their own shops). Fills the rate on own shops' retailer orders. Records cash and online payments. |
 | Accounts | Approves / rejects orders (with a reason code), seeing the retailer's dues, credit limit, exposure and oldest overdue. Verifies online payments against the bank statement. Confirms cash handed over by staff. |
 | Logistics | Dispatches approved orders from a godown or a truck. Can change the rate (reason required). Records payments. |
 | Admin | Everything: users, retailers (only admin adds, edits and turns them off; each shop's sales person is required), shop credit terms, areas, bank accounts, products, godowns, purchases, supplier accounts, stock corrections, reversals, change rate, reports, activity log. |

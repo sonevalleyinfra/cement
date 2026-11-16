@@ -27,6 +27,7 @@ No real data is in the app yet, so restructuring is safe.
 | Blocked shop at dispatch | Warn but allow, no extra step; Blocked only (not On hold); chip on the list and red box in the sheet; alert owner, accounts and the shop's sales person; show in Exceptions report |
 | Cheques | Keep; update the spec |
 | Accountant and reports | All reports, including profit, purchases, supplier statement and damage value (changed 16 Nov 2026: they need them for book-keeping, so nothing is hidden) |
+| Sales, logistics and shop dues | Kept as today (16 Nov 2026): all staff see every shop's balance on the Retailers screen and in the payment form; a sales person opens the full ledger only for their own shops |
 | Back arrow | Bring it back on every inner screen |
 | Owner home | Simple Home (today + needs attention) plus a separate Dashboard with charts |
 | Long forms | Short form first, rest behind "More details"; credit terms stay admin-only |
@@ -115,7 +116,8 @@ No real data is in the app yet, so restructuring is safe.
    `dispatch/dispatch-view.tsx` via the shared caution panel; audit row + owner notification.
 5. **Accountant report access**: dropped. The owner decided the accountant sees every report (already
    how `viewReports` works), so there is nothing to build.
-6. **Sales sees only own shops' dues**: `loadDues` in `receipts/actions.ts:40`, reuse `ledger/access.ts`.
+6. **Sales sees only own shops' dues**: dropped. The owner keeps dues totals visible to all staff; the
+   full ledger is already limited to a sales person's own shops (`ledger/access.ts`).
 7. **Logging gaps**: write audit rows in the same transaction for name change and temporary password
    (`users/actions.ts:215`, `dashboard/actions.ts:24`); log driver detail changes on trucks.
 8. **DB protection**: new migration extending the append-only/no-delete triggers to `purchases`; no-delete on
