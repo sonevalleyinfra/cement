@@ -358,6 +358,13 @@
       "when": 1794831804001,
       "tag": "0050_credit_overrides_many_per_order",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794836002520,
+      "tag": "0051_master_no_delete",
+      "breakpoints": true
     }
   ]
 }

@@ -143,11 +143,8 @@ export async function createUser(form: {
       }
     });
 
-    if (password === null) {
-      await auth.api.requestPasswordReset({ body: { email, redirectTo: "/reset-password" } });
-    }
-    sendEmailInBackground(accountCreatedMessage(email, name, `${env.APP_URL}/sign-in`, password !== null));
   } catch (e) {
+    // Nothing was saved (the transaction rolled back), so the bare login made above is removed.
     await db.delete(user).where(eq(user.id, createdUserId)).catch(() => {});
     if (isUniqueViolation(e, "retailers_phone_unique")) {
       return { ok: false, error: "Phone already used by another shop." };
@@ -157,6 +154,17 @@ export async function createUser(form: {
       error: e instanceof Error && e.message === "Pick an active sales person." ? e.message : "Could not create the shop for this retailer.",
     };
   }
+  // The user is saved. A mail problem from here on must not undo it (they can use Forgot password).
+  let mailFailed = false;
+  try {
+    if (password === null) {
+      await auth.api.requestPasswordReset({ body: { email, redirectTo: "/reset-password" } });
+    }
+    sendEmailInBackground(accountCreatedMessage(email, name, `${env.APP_URL}/sign-in`, password !== null));
+  } catch (e) {
+    console.error("[users] could not send the set-password email", e instanceof Error ? e.message : e);
+    mailFailed = true;
+  }
   revalidatePath("/users");
   if (isRetailer) {
     revalidatePath("/retailers");
@@ -164,6 +172,7 @@ export async function createUser(form: {
     revalidatePath("/ledger");
     revalidatePath("/orders");
   }
+  if (mailFailed) return { ok: false, error: "User saved, but the email could not be sent. Ask them to use Forgot password." };
   return { ok: true };
 }
 
