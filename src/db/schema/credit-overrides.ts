@@ -9,7 +9,8 @@ import { retailers } from "./retailers";
 
 /**
  * An order approved over the credit check (v2 B1, soft block): over the limit, overdue, or the shop on
- * hold / blocked. One row per order (orders are approved once), with the numbers the server saw at that
+ * hold / blocked. One row per override: an order whose bags change goes back for approval and may be
+ * overridden again (v3 Stage 1.2), so an order can have more than one row. Each has the numbers the server saw at that
  * moment (credit-check-rules assessCredit). `overLimitPaise` = the part of THIS order over the limit, so
  * consecutive overrides of one shop never count twice (0 for an overdue / hold override).
  * Append-only: a database trigger refuses UPDATE, DELETE and TRUNCATE (drizzle/0042).
@@ -20,7 +21,6 @@ export const creditOverrides = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")
       .notNull()
-      .unique()
       .references(() => orders.id),
     retailerId: uuid("retailer_id")
       .notNull()
@@ -45,6 +45,7 @@ export const creditOverrides = pgTable(
   },
   (t) => [
     index("credit_overrides_created_idx").on(t.createdAt),
+    index("credit_overrides_order_idx").on(t.orderId),
     check("credit_overrides_reason_code_valid", oneOf(t.reasonCode, OVERRIDE_REASONS.map((o) => o.code))),
     check("credit_overrides_over_limit_valid", sql`${t.overLimitPaise} >= 0`),
     check("credit_overrides_credit_status_valid", oneOf(t.creditStatus, CREDIT_STATUSES)),

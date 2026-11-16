@@ -2,11 +2,11 @@
  * Order rules as plain functions (no database, no request) so they are easy to test.
  * Source: docs/idea.md section 3 (Order flow) and section 1 (Roles).
  *
- *   Placed -> Approved / Rejected -> Partly dispatched -> Dispatched      (Cancelled by admin)
+ *   Placed -> Approved / Rejected -> Partly dispatched -> Dispatched      (Cancelled)
  *
  * - Approve / reject: accounts, only once the order has a rate (rate rules in rate-rules.ts).
  * - Dispatch: any logistics person. The status after a dispatch comes from the bags sent so far.
- * - Cancel: admin only, with a reason code (reason-codes.ts) and an optional note, while placed, approved or partly dispatched. Only the bags
+ * - Cancel: admin, sales or logistics, with a reason code (reason-codes.ts) and an optional note, while placed, approved or partly dispatched. Only the bags
  *   not sent yet are cancelled; bags already sent stay at the shop and stay billed.
  * - Each dispatch bills its own bags x the rate at that moment (see ledger-rules.ts), so nothing
  *   is billed before a dispatch and a cancel or rate change never needs a correction.
@@ -50,7 +50,7 @@ export function isFinalStatus(status: OrderStatus): boolean {
   return ALLOWED_TRANSITIONS[status].length === 0;
 }
 
-/** Roles allowed to make a given step (admin is always allowed, and is the only one who may cancel). */
+/** Roles allowed to make a given step (admin is always allowed). */
 export function rolesForTransition(from: OrderStatus, to: OrderStatus): readonly Role[] {
   if (!canTransition(from, to)) return [];
   switch (to) {
@@ -92,7 +92,7 @@ export function isValidRatePaise(ratePaise: number): boolean {
 
 /* ---------- Cancel ---------- */
 
-/** Only admin cancels, while the order is placed, approved or partly dispatched. */
+/** Admin, sales or logistics cancel, while the order is placed, approved or partly dispatched. */
 export function canCancelOrder(role: string | null | undefined, status: string): boolean {
   return isOrderStatus(status) && canUserTransition(role, status, "cancelled");
 }
@@ -130,10 +130,17 @@ export function isValidBags(bags: number): boolean {
   return Number.isInteger(bags) && bags > 0;
 }
 
+/** Largest bags value accepted for one order (guards typos like 9999999). */
+export const MAX_ORDER_BAGS = 100000;
+
+export function isBagsInRange(bags: number): boolean {
+  return isValidBags(bags) && bags <= MAX_ORDER_BAGS;
+}
+
 /**
- * Can order bags/quantity be edited?
- * Allowed on 'placed' and 'approved' for staff (sales/logistics edits on approved orders reset to 'placed' for re-approval).
- * On 'partly_dispatched', only admin and accounts can edit quantity.
+ * Who may change the quantity (who may try at all is `editOrderBags` in permissions.ts):
+ * - placed or approved: admin, accounts, sales, logistics, on any shop's order.
+ * - partly dispatched: admin and accounts only, and only downwards (extra bags are a new order).
  */
 export function canEditOrderBags(role: string | null | undefined, status: string): boolean {
   if (!isOrderStatus(status)) return false;
@@ -144,41 +151,58 @@ export function canEditOrderBags(role: string | null | undefined, status: string
   return false;
 }
 
-/** Whether editing an order in `status` by `role` requires re-approval by accountant/admin. */
-export function needsReapprovalOnBagEdit(role: string | null | undefined, status: string): boolean {
-  return status === "approved" && !hasAnyRole(role, ["admin", "accounts"]);
+/**
+ * Does this change send an approved order back for approval?
+ * - More bags: always, whoever asks, so the credit check runs again on the bigger order.
+ * - Fewer bags: only when sales or logistics change it (admin and accounts are the approvers).
+ */
+export function needsReapprovalOnBagEdit(
+  role: string | null | undefined,
+  status: string,
+  currentBags: number,
+  newBags: number,
+): boolean {
+  if (status !== "approved") return false;
+  if (newBags > currentBags) return true;
+  return !hasAnyRole(role, ["admin", "accounts"]);
 }
 
-/** Next order status after editing bags. Non-admin/non-accounts edits on approved orders return to 'placed'. */
+/** The order's status after its quantity changes. */
 export function statusAfterBagEdit(
   role: string | null | undefined,
   currentStatus: OrderStatus,
+  currentBags: number,
   newBags: number,
   dispatchedBags: number,
 ): OrderStatus {
-  if (dispatchedBags > 0 && newBags > dispatchedBags) {
-    return "partly_dispatched";
-  }
-  if (needsReapprovalOnBagEdit(role, currentStatus)) {
-    return "placed";
-  }
+  // Cut down to exactly what was sent: nothing is left to send, so the order is done.
+  if (currentStatus === "partly_dispatched") return newBags <= dispatchedBags ? "dispatched" : "partly_dispatched";
+  if (needsReapprovalOnBagEdit(role, currentStatus, currentBags, newBags)) return "placed";
   return currentStatus;
 }
 
 export function checkEditOrderBags(
+  status: string,
   currentBags: number,
   dispatchedBags: number,
   newBags: number,
 ): { ok: true; newBags: number } | { ok: false; error: string } {
   if (!isValidBags(newBags)) return { ok: false, error: "Bags must be a whole number above zero." };
+  if (!isBagsInRange(newBags)) return { ok: false, error: "That is too many bags." };
   if (newBags < dispatchedBags) {
     return { ok: false, error: `Already dispatched ${bagsText(dispatchedBags)}. Quantity cannot be less than sent bags.` };
   }
   if (newBags === currentBags) {
     return { ok: false, error: `Quantity is already ${bagsText(currentBags)}.` };
   }
+  if (status === "partly_dispatched" && newBags > currentBags) {
+    return { ok: false, error: BAGS_ON_THE_WAY };
+  }
   return { ok: true, newBags };
 }
+
+/** Shown when someone tries to add bags to an order that has already started going out. */
+export const BAGS_ON_THE_WAY = "Bags are already on the way. Place a new order for extra bags.";
 
 export function remainingBags(orderedBags: number, dispatchedBags: number): number {
   return Math.max(0, orderedBags - dispatchedBags);

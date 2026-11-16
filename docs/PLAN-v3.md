@@ -32,6 +32,8 @@ No real data is in the app yet, so restructuring is safe.
 | Long forms | Short form first, rest behind "More details"; credit terms stay admin-only |
 | Accountability extras | No acting as other users; Exceptions report |
 | Order of work | Safety → staff screens → dashboard and reports → extras |
+| Sales and other shops' orders | Any sales person may edit quantity or cancel on any shop's order (logged) |
+| Adding bags to an approved order | Always back for approval, whoever does it; partly dispatched orders only go down |
 | Extras in this round | Day book, share statement to WhatsApp, sales targets, proof of delivery |
 
 ## How the work is done

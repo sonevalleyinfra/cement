@@ -42,17 +42,18 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-11 · direct commits (not logged one by one) · simplified role homes, Stock on Wheels, purchase with up to two products per truck, order quantity edit with re-approval, cheques and payment proof, TRK/DSP tracking IDs, purchase/transfer/dispatch alerts with live bell, post-action dialog, back arrow hidden, accountant opens reports, Android wrapper. Reviewed on 2026-11-16; follow-ups are in PLAN-v3.
 - 2026-11-16 · docs · PLAN-v3 agreed with the owner (decisions, stages 0–4, how we work); idea.md brought in line with the code
 - 2026-11-16 · v3 Stage 1.1 · Purchase: truck is locked then checked empty for every purchase (typed or picked), 2-product and loaded-truck rules in purchase-rules with tests, loaded-truck warning under Truck number in plain English, success pop-up in plain English with 48px buttons and no "!"
+- 2026-11-16 · v3 Stage 1.2 · Order quantity edit: permission in the matrix (editOrderBags), more bags on an approved order always go back for approval and the approvers are told, partly dispatched orders only go down and become Dispatched when cut to the bags sent, upper bag limit, note checked, status change in the activity row; an order can hold more than one credit override (migration 0050); stale cancel comments fixed
 
 ## v3 checklist (see `docs/PLAN-v3.md`)
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 1, item 2 (quantity edit rules).
+**Next up:** Stage 1, item 3 (no acting as other users).
 
 - [x] Stage 0: plan and spec documented
 - [ ] Stage 1: safety and accountability
   - [x] 1 Empty-truck check on purchase
-  - [ ] 2 Quantity edit rules
+  - [x] 2 Quantity edit rules
   - [ ] 3 No acting as other users
   - [ ] 4 Blocked shop warning at dispatch
   - [ ] 5 Accountant sees all reports except profit and purchase cost
