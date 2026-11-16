@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { SelectField } from "@/components/app/select-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,7 @@ export function TruckFields({
   fixedNumber,
   knownTrucks = [],
   directEntry = false,
+  numberHint,
 }: {
   value: TruckInput;
   onChange: (next: TruckInput) => void;
@@ -30,6 +31,8 @@ export function TruckFields({
   fixedNumber?: string;
   knownTrucks?: { number: string; driverName: string; driverPhone: string; bags?: number }[];
   directEntry?: boolean;
+  /** Shown right under the truck number box (for example "this truck still has bags"). */
+  numberHint?: ReactNode;
 }) {
   const id = useId();
 
@@ -98,6 +101,7 @@ export function TruckFields({
                 autoComplete="off"
                 maxLength={14}
               />
+              {numberHint}
             </div>
           )}
         </div>

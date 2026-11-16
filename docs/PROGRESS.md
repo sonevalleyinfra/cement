@@ -41,16 +41,17 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-11-11 · ops · lint: silence react-hooks/set-state-in-effect on the one-shot ?order= deep link in dispatch-view (CI lint error since eslint-config-next bump); lint/typecheck/test/build green on Node 24
 - 2026-11 · direct commits (not logged one by one) · simplified role homes, Stock on Wheels, purchase with up to two products per truck, order quantity edit with re-approval, cheques and payment proof, TRK/DSP tracking IDs, purchase/transfer/dispatch alerts with live bell, post-action dialog, back arrow hidden, accountant opens reports, Android wrapper. Reviewed on 2026-11-16; follow-ups are in PLAN-v3.
 - 2026-11-16 · docs · PLAN-v3 agreed with the owner (decisions, stages 0–4, how we work); idea.md brought in line with the code
+- 2026-11-16 · v3 Stage 1.1 · Purchase: truck is locked then checked empty for every purchase (typed or picked), 2-product and loaded-truck rules in purchase-rules with tests, loaded-truck warning under Truck number in plain English, success pop-up in plain English with 48px buttons and no "!"
 
 ## v3 checklist (see `docs/PLAN-v3.md`)
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 1, item 1 (empty-truck check on purchase).
+**Next up:** Stage 1, item 2 (quantity edit rules).
 
 - [x] Stage 0: plan and spec documented
 - [ ] Stage 1: safety and accountability
-  - [ ] 1 Empty-truck check on purchase
+  - [x] 1 Empty-truck check on purchase
   - [ ] 2 Quantity edit rules
   - [ ] 3 No acting as other users
   - [ ] 4 Blocked shop warning at dispatch

@@ -165,3 +165,27 @@ export function parsePurchaseSource(reason: string | null | undefined): string |
   }
   return s;
 }
+
+/* ---------- One truckload ---------- */
+
+/** A truck carries at most this many different products in one purchase. */
+export const MAX_PURCHASE_PRODUCTS = 2;
+
+/** One purchase has 1 or 2 products. */
+export function checkPurchaseProductCount(count: number): { ok: true } | { ok: false; error: string } {
+  if (!Number.isInteger(count) || count < 1) return { ok: false, error: "Pick a product." };
+  if (count > MAX_PURCHASE_PRODUCTS) {
+    return { ok: false, error: `One truck can carry at most ${MAX_PURCHASE_PRODUCTS} products.` };
+  }
+  return { ok: true };
+}
+
+/**
+ * A truck takes a new purchase only when it is empty: the bags still on it must be dispatched or
+ * moved to a godown first. Returns the message to show, or null when the truck is free.
+ */
+export function loadedTruckError(truckNumber: string, bagsOnTruck: number): string | null {
+  if (bagsOnTruck <= 0) return null;
+  const bags = bagsOnTruck === 1 ? "1 bag" : `${bagsOnTruck} bags`;
+  return `Truck ${truckNumber} still has ${bags}. Empty it before a new purchase.`;
+}

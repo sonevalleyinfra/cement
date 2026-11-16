@@ -528,10 +528,10 @@ export function DispatchView({
       </Sheet>
       <PostActionDialog
         open={showHomePrompt}
-        title="Order Dispatched!"
-        message="Maal successfully dispatch ho gaya hai."
-        primaryLabel="Go to Home"
-        secondaryLabel="Stay on Dispatch"
+        title="Order dispatched"
+        message="Bags are on the way."
+        primaryLabel="Home"
+        secondaryLabel="Stay here"
         primaryHref="/dashboard"
         onSecondary={() => setShowHomePrompt(false)}
       />
