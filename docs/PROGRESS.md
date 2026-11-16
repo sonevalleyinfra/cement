@@ -39,3 +39,27 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-10-28 · PR #70 · Trucks list (add truck + driver, switch on/off with audit, a loaded truck can't be switched off, loaded/standing counts on switched-on trucks), purchase source chips saved in the note (Direct Site mode dropped), truck pick list on purchase, Stock counters (godown bags, standing, loaded, sent today from 00:00 IST), Retailer/Contractor filter tabs on shops (all 5 categories kept); by dhiru2, fixes t_06531fc5
 - 2026-11-03 · PR #71 · deps: weekly same-major bumps (better-auth/auth/@better-auth/drizzle-adapter 1.7.15, lucide-react 1.66, resend 6.37.0, shadcn 4.23); lint/typecheck/test/build green on Node 24 (no CI checks on bot branch) · t_2fd03592
 - 2026-11-11 · ops · lint: silence react-hooks/set-state-in-effect on the one-shot ?order= deep link in dispatch-view (CI lint error since eslint-config-next bump); lint/typecheck/test/build green on Node 24
+- 2026-11 · direct commits (not logged one by one) · simplified role homes, Stock on Wheels, purchase with up to two products per truck, order quantity edit with re-approval, cheques and payment proof, TRK/DSP tracking IDs, purchase/transfer/dispatch alerts with live bell, post-action dialog, back arrow hidden, accountant opens reports, Android wrapper. Reviewed on 2026-11-16; follow-ups are in PLAN-v3.
+- 2026-11-16 · docs · PLAN-v3 agreed with the owner (decisions, stages 0–4, how we work); idea.md brought in line with the code
+
+## v3 checklist (see `docs/PLAN-v3.md`)
+
+A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
+
+**Next up:** Stage 1, item 1 (empty-truck check on purchase).
+
+- [x] Stage 0: plan and spec documented
+- [ ] Stage 1: safety and accountability
+  - [ ] 1 Empty-truck check on purchase
+  - [ ] 2 Quantity edit rules
+  - [ ] 3 No acting as other users
+  - [ ] 4 Blocked shop warning at dispatch
+  - [ ] 5 Accountant sees all reports except profit and purchase cost
+  - [ ] 6 Sales sees only own shops' dues
+  - [ ] 7 Logging gaps (name, temporary password, driver details)
+  - [ ] 8 Database protection for purchases, shops, trucks, users
+  - [ ] 9 Database tests run in CI
+  - [ ] 10 Notification count and poll interval
+- [ ] Stage 2: simple staff screens (back arrow, homes, short forms, plain words, one success pattern)
+- [ ] Stage 3: owner Dashboard, charts, new reports, Exceptions report, Excel and PDF
+- [ ] Stage 4: day book, WhatsApp statement, sales targets, proof of delivery
