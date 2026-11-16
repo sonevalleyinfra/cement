@@ -175,6 +175,21 @@ function placeId(value: unknown): string | null {
 }
 
 
+/** "from Ravi (9876543210) to Mohan (9123456780)" when a truck's driver name or phone changed, else "". */
+function driverChangeText(from: unknown, to: unknown): string {
+  const one = (v: unknown) => {
+    if (!v || typeof v !== "object") return null;
+    const o = v as Record<string, unknown>;
+    const name = typeof o.driverName === "string" ? o.driverName : "";
+    const phone = typeof o.driverPhone === "string" ? o.driverPhone : "";
+    return { name, phone, text: [name || "no driver", phone ? `(${phone})` : ""].filter(Boolean).join(" ") };
+  };
+  const a = one(from);
+  const b = one(to);
+  if (!a || !b || (a.name === b.name && a.phone === b.phone)) return "";
+  return `from ${a.text} to ${b.text}`;
+}
+
 /** Money in a sentence: whole rupees when there are no paise, else rupees and paise. */
 function rs(paise: number): string {
   return formatINR(paise, { hidePaise: true });
@@ -421,7 +436,11 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
     case "vehicle": {
       const word = row.entity === "vehicle" ? "truck" : row.entity;
       if (row.action === "create") return say(`added ${thing(word)}`);
-      if (row.action === "update") return say(`edited ${thing(word)}`);
+      if (row.action === "update") {
+        const change = row.entity === "vehicle" ? driverChangeText(d.from, d.to) : "";
+        if (change) return say(`changed the driver of ${self || s(d.number) ? `truck ${self || s(d.number)}` : "a truck"} ${change}`);
+        return say(`edited ${thing(word)}`);
+      }
       if (row.action === "activate" || row.action === "deactivate") return switched(word);
       break;
     }

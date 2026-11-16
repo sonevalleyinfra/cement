@@ -148,6 +148,20 @@ describe("activitySentence", () => {
     );
   });
 
+  it("trucks: a driver change names the old and the new driver", () => {
+    const from = { driverName: "Ravi", driverPhone: "9876543210" };
+    expect(say(row("vehicle", "update", { number: "BR01AB1234", from, to: { driverName: "Mohan", driverPhone: "9123456780" } }, "v1"))).toBe(
+      "Ramesh changed the driver of truck BR01AB1234 from Ravi (9876543210) to Mohan (9123456780)",
+    );
+    expect(say(row("vehicle", "update", { from: { driverName: "", driverPhone: "" }, to: from }, "v1"))).toBe(
+      "Ramesh changed the driver of truck BR01AB1234 from no driver to Ravi (9876543210)",
+    );
+    // Only the number changed on the Trucks screen.
+    expect(say(row("vehicle", "update", { from: { number: "A", ...from }, to: { number: "B", ...from } }, "v1"))).toBe(
+      "Ramesh edited truck BR01AB1234",
+    );
+  });
+
   it("stock", () => {
     expect(
       say(row("stock", "purchase", { bags: 200, productId: "p1", place: "godown:g1", unitCostPaise: 28_000, amountPaise: 5_600_000, brandId: "b1" })),

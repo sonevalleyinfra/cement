@@ -36,6 +36,7 @@ or email.
   pick one on each purchase / dispatch / move; a truck is listed while it holds bags.
   Bags on a truck are stock. Stock forms pick only existing products (new products are added in the catalogue).
   The driver's phone is required wherever a truck is typed, and is tap-to-call.
+  A new driver name or phone typed there is saved on the truck, and the activity log shows the old and the new driver.
 
 ## 2a. Shops (retailers)
 

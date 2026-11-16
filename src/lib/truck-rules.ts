@@ -42,3 +42,21 @@ export function truckSaveDecision(
   if (!existing) return "create";
   return existing.driverName.trim() ? "duplicate" : "fill";
 }
+
+export type Driver = { driverName: string; driverPhone: string };
+
+/**
+ * The driver typed on a purchase, dispatch or move, against the driver saved on the truck.
+ * An empty name or phone keeps the saved one. Returns null when nothing changes, else the old and
+ * new driver (written to the truck and to the activity log together).
+ */
+export function driverChange(
+  saved: Driver,
+  typed: { name?: string | null; phone?: string | null } | undefined,
+): { from: Driver; to: Driver } | null {
+  const name = (typed?.name ?? "").trim().slice(0, 80);
+  const phone = (typed?.phone ?? "").trim().replace(/\D/g, "").slice(0, 15);
+  const to: Driver = { driverName: name || saved.driverName, driverPhone: phone || saved.driverPhone };
+  if (to.driverName === saved.driverName && to.driverPhone === saved.driverPhone) return null;
+  return { from: { driverName: saved.driverName, driverPhone: saved.driverPhone }, to };
+}

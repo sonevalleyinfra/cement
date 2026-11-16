@@ -28,7 +28,7 @@ import {
 import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
-import { atPlace, bagsAtPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
+import { atPlace, bagsAtPlace, keepDriver, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
 import {
   checkClaimChange,
   checkPurchaseDetails,
@@ -288,19 +288,13 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
     if (busy) return { ok: false, error: busy };
 
     if (chosen !== NEW_TRUCK_PLACE && chosen.kind === "vehicle") {
-      const [v] = await tx.select({ number: vehicles.number }).from(vehicles).where(eq(vehicles.id, chosen.id));
+      const [v] = await tx
+        .select({ id: vehicles.id, number: vehicles.number, driverName: vehicles.driverName, driverPhone: vehicles.driverPhone })
+        .from(vehicles)
+        .where(eq(vehicles.id, chosen.id));
       if (!v) return { ok: false, error: "Pick an active place." };
       truck = { ...truck, number: v.number };
-      if (truck.driverName || truck.driverPhone) {
-        await tx
-          .update(vehicles)
-          .set({
-            ...(truck.driverName ? { driverName: truck.driverName } : {}),
-            ...(truck.driverPhone ? { driverPhone: truck.driverPhone } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(vehicles.id, chosen.id));
-      }
+      await keepDriver(tx, v, { name: truck.driverName, phone: truck.driverPhone }, actorId);
     } else if (truck.number) {
       await truckByNumber(tx, truck.number, actorId, { name: truck.driverName, phone: truck.driverPhone });
     }
