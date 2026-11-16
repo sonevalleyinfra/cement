@@ -43,7 +43,7 @@ export const AUDIT_ACTIONS = {
   // Supplier accounts, one per brand (spec section 7)
   supplier_entry: SUPPLIER_KINDS,
   // Masters
-  user: ["create", "update", "rename", "activate", "deactivate", "delete"],
+  user: ["create", "update", "rename", "password", "activate", "deactivate", "delete"],
   retailer: ["create", "update", "activate", "deactivate", "link", "assign_sales_rep", "credit_change"],
   godown: ["create", "update", "activate", "deactivate"],
   area: ["create", "update", "activate", "deactivate"],
@@ -373,6 +373,10 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
           const after = d.after && typeof d.after === "object" ? s((d.after as Record<string, unknown>).name) : "";
           return say(`changed their name${after ? ` to ${after}` : ""}`);
         }
+        case "password":
+          if (d.how === "admin") return say(`set a temporary password for ${self || "a user"}`);
+          if (d.how === "email_link") return say("chose a new password with Forgot password");
+          return say("changed their password");
         case "delete":
           return say(`removed ${thing("user")}`);
         case "activate":

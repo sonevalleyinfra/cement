@@ -4,6 +4,8 @@ import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins";
 import { db, schema } from "@/db";
 import { env } from "@/env";
+import { writeAudit } from "@/lib/audit";
+import { CLOSED_AUTH_PATHS } from "@/lib/auth-closed-paths";
 import { sendEmailInBackground } from "@/lib/email";
 import {
   existingAccountMessage,
@@ -17,6 +19,9 @@ export const auth = betterAuth({
   baseURL: env.APP_URL,
   secret: env.BETTER_AUTH_SECRET,
   trustedOrigins: env.TRUSTED_ORIGINS,
+  // No acting as other users, and no changes that skip the activity log (see auth-closed-paths.ts).
+  // This only closes the web addresses; our server actions still call auth.api.* directly.
+  disabledPaths: CLOSED_AUTH_PATHS,
 
   database: drizzleAdapter(db, { provider: "pg", schema }),
 
@@ -38,6 +43,16 @@ export const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
       sendEmailInBackground(resetPasswordMessage(user.email, url));
+    },
+    // "Forgot password" finished: keep a row in the activity log.
+    onPasswordReset: async ({ user }) => {
+      await writeAudit(db, {
+        actorId: user.id,
+        entity: "user",
+        entityId: user.id,
+        action: "password",
+        details: { how: "email_link" },
+      });
     },
     onExistingUserSignUp: async ({ user }) => {
       sendEmailInBackground(existingAccountMessage(user.email, `${env.APP_URL}/sign-in`));

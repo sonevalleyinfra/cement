@@ -5,7 +5,7 @@ import { FormMessage } from "@/components/form-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { authClient } from "@/lib/auth-client";
+import { changeOwnPassword } from "./actions";
 import { checkNewPassword, MIN_PASSWORD_LENGTH } from "@/lib/password-rules";
 
 export function ChangePasswordForm() {
@@ -30,15 +30,13 @@ export function ChangePasswordForm() {
     setError(null);
 
     // Signs out every other device, so an old password cannot keep a session alive.
-    const { error } = await authClient.changePassword({ currentPassword, newPassword, revokeOtherSessions: true });
+    const res = await changeOwnPassword({ currentPassword, newPassword, confirm: String(form.get("confirm")) }).catch(
+      () => ({ ok: false as const, error: "Could not change the password. Try again." }),
+    );
 
     setPending(false);
-    if (error) {
-      setError(
-        error.code === "INVALID_PASSWORD"
-          ? "Your current password is wrong."
-          : (error.message ?? "Could not change the password. Please try again."),
-      );
+    if (!res.ok) {
+      setError(res.error);
       return;
     }
     formElement.reset();

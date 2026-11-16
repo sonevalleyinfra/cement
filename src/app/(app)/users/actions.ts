@@ -9,12 +9,13 @@ import { retailers, user } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { env } from "@/env";
 import { auth } from "@/lib/auth";
+import { checkLoginChangeOnAdmin } from "@/lib/auth-closed-paths";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { sendEmailInBackground } from "@/lib/email";
 import { accountCreatedMessage } from "@/lib/email/templates";
 import { checkTempPassword } from "@/lib/password-rules";
 import { rolesFor } from "@/lib/permissions";
-import { joinRoles, parseRoles, type Role } from "@/lib/roles";
+import { isAdmin, joinRoles, parseRoles, type Role } from "@/lib/roles";
 import { checkSalesRepPick } from "@/lib/sales-rep-rules";
 import { requireRole } from "@/lib/session";
 import { deactivateStaff, deleteStaff, heldCashOf, lockStaff, reactivateStaff } from "@/lib/staff-cash";
@@ -188,11 +189,18 @@ export async function updateUserAccess(
   const password = passwordCheck.value;
 
   const [target] = await db
-    .select({ id: user.id, phone: user.phone })
+    .select({ id: user.id, phone: user.phone, email: user.email, role: user.role })
     .from(user)
     .where(and(eq(user.id, userId), isNull(user.deletedAt)))
     .limit(1);
   if (!target) return { ok: false, error: "User not found." };
+  const adminBlock = checkLoginChangeOnAdmin({
+    isSelf: me.id === userId,
+    targetIsAdmin: isAdmin(target.role),
+    emailChanges: email !== target.email,
+    passwordSet: password !== null,
+  });
+  if (adminBlock) return { ok: false, error: adminBlock };
   const phoneCheck = checkEditedPhone(typeof form.phone === "string" ? form.phone : "", target.phone);
   if (!phoneCheck.ok) return phoneCheck;
   const phone = phoneCheck.phone;
@@ -221,6 +229,8 @@ export async function updateUserAccess(
     } catch {
       return { ok: false, error: "Could not change the password. Try again." };
     }
+    // Logged at once, on its own row: the password is already changed even if the save below fails.
+    await writeAudit(db, { actorId: me.id, entity: "user", entityId: userId, action: "password", details: { how: "admin" } });
   }
 
   const roles = form.roles as Role[];
@@ -254,7 +264,6 @@ export async function updateUserAccess(
           roles: parseRoles(before?.role),
         },
         after: { email, phone, roles },
-        passwordReset: password !== null,
       },
     });
     return { ok: true };

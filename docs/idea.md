@@ -22,6 +22,11 @@ corrections that stop money loss, and the metrics the owner runs the business on
 
 Any staff member (not retailer) can record a payment. A user may hold more than one role.
 
+Nobody can act as another user: there is no "sign in as" feature, and roles, passwords and logins change only on the
+Users screen, which logs every change. Every password change is logged (own change, Forgot password, or a temporary
+password set by admin), never the password itself. There is one admin; an admin cannot set another admin's password
+or email.
+
 ## 2. Products and places
 
 - Products are picked from drop-downs: **Brand** (Prism today; admin can add more brands later) → Trade / Non-trade →
