@@ -45,8 +45,6 @@ or email.
   Admin edits everything on the shop sheet; staff see it read-only.
 - **Credit terms** per shop: credit limit (₹, empty = no limit set), credit days (empty = 30-day default) and status
   (OK / On hold / Blocked). Every change of the terms is kept in a history (who, when, old → new).
-- Shops, trucks and users are switched off, never deleted. The database itself refuses the delete (a user with
-  no history at all, such as a half-made login, is the only exception).
 - Deactivating a shop that has dues needs a reason, and the shop stays on the overdue list. A sales-person change
   records the dues handed over.
 
