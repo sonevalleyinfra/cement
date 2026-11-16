@@ -5,6 +5,7 @@ import { StatusChip } from "@/components/app/status-chip";
 import { runBooksCheck } from "@/lib/books-check";
 import { summarize, type BooksLine, type ShownRow } from "@/lib/books-check-rules";
 import { stagger } from "@/lib/motion";
+import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 
 /** Lines with problems (or that could not run) first; ADR order within each group. */
@@ -22,7 +23,7 @@ function RowBody({ row }: { row: ShownRow }) {
 }
 
 export default async function BooksCheckPage() {
-  await requireRole("admin");
+  await requireRole(...rolesFor("viewReports"));
   const lines = problemsFirst(summarize(await runBooksCheck()));
   return (
     <div className="flex flex-col gap-4">

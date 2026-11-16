@@ -76,8 +76,8 @@ export const ACTION_ROLES = {
   manageUsers: ["admin"],
   /** Brands, types, grades and products (the drop-down lists). */
   manageCatalogue: ["admin"],
-  // Reports and the activity log (docs/idea.md section 9): admin only
-  viewReports: ["admin"],
+  // Reports and the activity log (docs/idea.md section 9): admin and accountant for reports, admin for activity
+  viewReports: ["admin", "accounts"],
   viewActivity: ["admin"],
 } as const satisfies Record<string, readonly Role[]>;
 

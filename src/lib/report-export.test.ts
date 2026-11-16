@@ -28,22 +28,25 @@ describe("serveCsv", () => {
     expect(writeAudit).not.toHaveBeenCalled();
   });
 
-  it.each(ROLES.filter((r) => r !== "admin"))("answers 403 for %s, builds nothing, writes no activity", async (role) => {
-    getSession.mockResolvedValue({ user: { id: "u1", role } });
-    const build = vi.fn(async () => [["x"]]);
-    const res = await call(build);
-    expect(res.status).toBe(403);
-    expect(build).not.toHaveBeenCalled();
-    expect(writeAudit).not.toHaveBeenCalled();
-  });
+  it.each(ROLES.filter((r) => r !== "admin" && r !== "accounts"))(
+    "answers 403 for %s, builds nothing, writes no activity",
+    async (role) => {
+      getSession.mockResolvedValue({ user: { id: "u1", role } });
+      const build = vi.fn(async () => [["x"]]);
+      const res = await call(build);
+      expect(res.status).toBe(403);
+      expect(build).not.toHaveBeenCalled();
+      expect(writeAudit).not.toHaveBeenCalled();
+    },
+  );
 
   it("answers 403 for a user with no role", async () => {
     getSession.mockResolvedValue({ user: { id: "u1", role: null } });
     expect((await call()).status).toBe(403);
   });
 
-  it("gives an admin the file and writes one activity row", async () => {
-    getSession.mockResolvedValue({ user: { id: "u1", role: "admin" } });
+  it.each(["admin", "accounts"] as const)("gives %s the file and writes one activity row", async (role) => {
+    getSession.mockResolvedValue({ user: { id: "u1", role } });
     const res = await call();
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");

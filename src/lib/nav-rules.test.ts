@@ -69,8 +69,10 @@ describe("moreGroups", () => {
     expect(titles("retailer")).toEqual(["Account"]);
     expect(hrefs("retailer")).not.toContain("/ledger");
 
-    expect(titles("accounts")).toEqual(["Money", "Goods", "Account"]);
+    expect(titles("accounts")).toEqual(["Money", "Goods", "Records", "Account"]);
     expect(hrefs("accounts")).not.toContain("/receipts");
+    expect(hrefs("accounts")).toContain("/reports");
+    expect(hrefs("accounts")).not.toContain("/activity");
 
     expect(titles("logistics")).toEqual(["Money", "Goods", "Account"]);
     expect(hrefs("logistics")).not.toContain("/stock");
