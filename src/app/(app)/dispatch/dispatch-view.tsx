@@ -12,7 +12,15 @@ import { TextLink } from "@/components/app/text-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PostActionDialog } from "@/components/app/post-action-dialog";
-import { placesWithStock, visibleDispatchChips, type TruckChip } from "@/lib/dispatch-rules";
+import {
+  BLOCKED_SHOP_TEXT,
+  BLOCKED_SHOP_TITLE,
+  isBlockedShop,
+  placesWithStock,
+  visibleDispatchChips,
+  type TruckChip,
+} from "@/lib/dispatch-rules";
+import { TriangleAlert } from "lucide-react";
 import { firstMissing } from "@/lib/form-rules";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
 import { cleanTruckLabel } from "@/lib/vehicle-rules";
@@ -33,6 +41,8 @@ type OrderRow = {
   retailerPlace: string;
   retailerPincode?: string | null;
   retailerPhone: string;
+  /** The shop's credit status ("ok" / "hold" / "blocked"); blocked shows a warning. */
+  shopCreditStatus?: string | null;
   product: string;
   ratePaise?: number | null;
   bags: number;
@@ -295,7 +305,16 @@ export function DispatchView({
                   )}
                   {...(places.length === 0 || left === 0 ? { href: `/orders/${o.id}` } : { onClick: () => openSheet(o) })}
                   title={o.retailer}
-                  top={isOrderStatus(o.status) && <StatusChip status={o.status} />}
+                  top={
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {isOrderStatus(o.status) && <StatusChip status={o.status} />}
+                      {isBlockedShop(o.shopCreditStatus) && (
+                        <span className="inline-flex h-6 shrink-0 items-center rounded-full bg-risk-soft px-2.5 text-xs font-semibold text-risk-foreground">
+                          Blocked
+                        </span>
+                      )}
+                    </span>
+                  }
                   bottom={
                     <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
                       <span>
@@ -362,6 +381,15 @@ export function DispatchView({
                 <TextLink href={`/orders/${open.id}`}>Order</TextLink>
               </div>
             </div>
+            {isBlockedShop(open.shopCreditStatus) && (
+              <div role="alert" className="flex gap-2 rounded-xl bg-risk-soft p-3 text-risk-foreground ring-1 ring-risk/30">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold">{BLOCKED_SHOP_TITLE}</span>
+                  <span className="text-xs">{BLOCKED_SHOP_TEXT}</span>
+                </div>
+              </div>
+            )}
             <div className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
               <div className="font-semibold text-foreground">
                 📍 Delivery: {open.deliverTo === "site" && open.siteAddress ? `Site · ${open.siteAddress}` : `Shop · ${formatShopAddress(open.retailerAddress, open.retailerPlace, open.retailerPincode) || open.retailerPlace || "Shop"}`}

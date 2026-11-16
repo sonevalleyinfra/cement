@@ -24,7 +24,7 @@ No real data is in the app yet, so restructuring is safe.
 | Owner must see | Money owed/collected, sales and profit, stock and trucks, staff accountability |
 | Report delivery | In the app + Excel/PDF download |
 | Cancel order | Keep as today: sales and logistics may cancel the unsent part, with logged reason |
-| Blocked shop at dispatch | Warn but allow; alert the owner; show in Exceptions report |
+| Blocked shop at dispatch | Warn but allow, no extra step; Blocked only (not On hold); chip on the list and red box in the sheet; alert owner, accounts and the shop's sales person; show in Exceptions report |
 | Cheques | Keep; update the spec |
 | Accountant and reports | All reports except profit/margin and purchase cost |
 | Back arrow | Bring it back on every inner screen |

@@ -2,14 +2,14 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { dispatches, orderEvents, orders, purchases, stockMovements } from "@/db/schema";
+import { dispatches, orderEvents, orders, purchases, retailers, stockMovements } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { saveOnce } from "@/lib/form-submissions";
-import { checkDispatchFields, planDispatch } from "@/lib/dispatch-rules";
+import { checkDispatchFields, isBlockedShop, planDispatch } from "@/lib/dispatch-rules";
 import { isUuid } from "@/lib/ids";
 import { postEntry } from "@/lib/ledger";
 import { dispatchEntry } from "@/lib/ledger-rules";
-import { notify, notifyDispatchAlert } from "@/lib/notify";
+import { notify, notifyBlockedDispatch, notifyDispatchAlert } from "@/lib/notify";
 import { rolesFor } from "@/lib/permissions";
 import { checkRequestId } from "@/lib/request-rules";
 import { requireRole } from "@/lib/session";
@@ -76,6 +76,12 @@ export async function dispatchOrder(input: {
     if (!plan.ok) return plan;
     const debit = dispatchEntry(order, input.bags, plan.ratePaise);
     if (!debit.ok) return debit;
+    // A blocked shop still gets its bags, but it is logged and people are told (see below).
+    const [shop] = await tx
+      .select({ name: retailers.name, creditStatus: retailers.creditStatus })
+      .from(retailers)
+      .where(eq(retailers.id, order.retailerId));
+    const shopBlocked = isBlockedShop(shop?.creditStatus);
 
     // The truck is found (or made) by its number; keeps the driver on both vehicle and dispatch.
     const vehicleId = await truckByNumber(tx, fields.vehicleNumber, me.id, {
@@ -140,6 +146,7 @@ export async function dispatchOrder(input: {
         amountPaise: debit.entry.amountPaise,
         from: placeKey(fields.from),
         truck: fields.vehicleNumber,
+        ...(shopBlocked ? { shopBlocked: true } : {}),
       },
     });
     await tx.insert(orderEvents).values({
@@ -157,6 +164,16 @@ export async function dispatchOrder(input: {
       vehicleNumber: input.vehicleNumber,
       actorId: me.id,
     });
+    if (shopBlocked) {
+      await notifyBlockedDispatch(tx, {
+        orderId: order.id,
+        retailerName: shop?.name ?? "",
+        bags: input.bags,
+        actorName: me.name,
+        salesRepId: order.salesRepId,
+        actorId: me.id,
+      });
+    }
     return { ok: true, resultId: sentRow.id };
   });
   if (!result.ok) return result;

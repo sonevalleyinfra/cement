@@ -66,7 +66,7 @@ Placed → Approved / Rejected → Partly dispatched → Dispatched        (Canc
    amber "No limit set". Reject needs a reason code (plus an optional note). If the rate changed after the screen was opened, the decision is refused ("check again").
 3. **Dispatch**: any logistics person (or admin), from a godown or truck that holds enough bags. Truck no., driver,
    phone, bags. Several dispatches per order allowed until all bags are out. Each dispatch posts bags × rate to the
-   retailer's dues. Each dispatch gets a tracking ID. A blocked shop shows a warning at dispatch, but dispatch is allowed and the owner is alerted (to build, see PLAN-v3 Stage 1).
+   retailer's dues. Each dispatch gets a tracking ID. A **Blocked** shop (not On hold) shows a red chip on the dispatch list and a warning in the dispatch sheet; dispatch is still allowed, it is marked in the activity log, and admin, accounts and the shop's sales person are told.
 4. **Rate change**: once a rate is set, only logistics or admin can change it, at any step before the order is fully
    dispatched (placed, approved or partly dispatched). Reason required; logged as a rate change (staff see ₹old → ₹new
    and the reason in the history and the notification); accounts, the shop's sales person and admin are told.

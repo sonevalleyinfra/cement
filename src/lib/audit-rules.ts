@@ -256,7 +256,7 @@ export function activitySentence(row: ActivityRow, names: ReadonlyMap<string, st
         );
       }
       return say(
-        `dispatched ${bags !== null ? `${bagsText(bags)} of ` : ""}${product} to ${shop}${amount !== null ? ` (${rs(amount)})` : ""}`,
+        `dispatched ${bags !== null ? `${bagsText(bags)} of ` : ""}${product} to ${shop}${amount !== null ? ` (${rs(amount)})` : ""}${d.shopBlocked === true ? " while the shop is blocked" : ""}`,
       );
     }
     case "stock": {

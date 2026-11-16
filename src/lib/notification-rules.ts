@@ -72,7 +72,7 @@ export const MONEY_EVENTS = [
 ] as const;
 export type MoneyEvent = (typeof MONEY_EVENTS)[number];
 
-export type NotificationType = NotificationEvent | MoneyEvent | "credit_override" | "purchase" | "transfer";
+export type NotificationType = NotificationEvent | MoneyEvent | "credit_override" | "blocked_dispatch" | "purchase" | "transfer";
 
 /** One notification ready to save. `link` empty = open the order (or the list). */
 export type NotificationDraft = {
@@ -312,6 +312,40 @@ export function buildCreditOverrideNotifications(input: CreditOverrideInput): No
     userId,
     type: "credit_override",
     title: OVERRIDE_TITLES[input.flags[0] ?? "over_limit"],
+    body,
+    link: null,
+  }));
+}
+
+/** A load that went to a blocked shop (dispatch-rules isBlockedShop). */
+export type BlockedDispatchInput = {
+  retailerName: string;
+  bags: number;
+  /** Who dispatched, as shown ("Demo Logistics"). */
+  actorName: string;
+  adminIds: readonly string[];
+  accountsIds: readonly string[];
+  /** The shop's sales person, or null when it has none (or they are switched off). */
+  salesRepId: string | null;
+  actorId: string | null;
+};
+
+/**
+ * One row each for admins, accounts and the shop's sales person, except the one who dispatched:
+ * "Dispatched to blocked shop" / "Raju Stores · 60 bags · by Demo Logistics". It opens the order.
+ */
+export function buildBlockedDispatchNotifications(input: BlockedDispatchInput): NotificationDraft[] {
+  const body = [
+    input.retailerName.trim(),
+    `${input.bags} ${input.bags === 1 ? "bag" : "bags"}`,
+    input.actorName.trim() ? `by ${input.actorName.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return uniqueRecipients([...input.adminIds, ...input.accountsIds, input.salesRepId], input.actorId).map((userId) => ({
+    userId,
+    type: "blocked_dispatch",
+    title: "Dispatched to blocked shop",
     body,
     link: null,
   }));
