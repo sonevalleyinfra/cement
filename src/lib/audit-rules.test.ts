@@ -267,6 +267,13 @@ describe("activitySentence", () => {
     expect(isAllowedAudit("report", "export")).toBe(true);
   });
 
+  it("password changes say how they happened, never the password", () => {
+    expect(isAllowedAudit("user", "password")).toBe(true);
+    expect(say(row("user", "password", { how: "own" }, "u1"))).toBe("Ramesh changed their password");
+    expect(say(row("user", "password", { how: "email_link" }, "u1"))).toBe("Ramesh chose a new password with Forgot password");
+    expect(say(row("user", "password", { how: "admin" }, "u2"))).toBe("Ramesh set a temporary password for Suresh");
+  });
+
   it("unknown names and old rows still read", () => {
     expect(activitySentence(row("dispatch", "create", {}), new Map())).toBe("Someone dispatched cement to a shop");
     expect(say({ ...row("order", "fill_rate", { ratePaise: { before: null, after: 1000 } }), details: null })).toBe(
