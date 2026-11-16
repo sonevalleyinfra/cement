@@ -49,6 +49,7 @@ export default async function DispatchPage({
         retailerPlace: retailers.place,
         retailerPincode: retailers.pincode,
         retailerPhone: retailers.phone,
+        shopCreditStatus: retailers.creditStatus,
         product: products.name,
         ratePaise: orders.ratePaise,
         sent: sql<number>`coalesce((select sum(${dispatches.bags}) from ${dispatches} where ${dispatches.orderId} = ${orders.id}), 0)`.mapWith(Number),

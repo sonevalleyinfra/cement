@@ -44,20 +44,21 @@ One line per merged PR: date · PR · what changed · kanban task.
 - 2026-11-16 · v3 Stage 1.1 · Purchase: truck is locked then checked empty for every purchase (typed or picked), 2-product and loaded-truck rules in purchase-rules with tests, loaded-truck warning under Truck number in plain English, success pop-up in plain English with 48px buttons and no "!"
 - 2026-11-16 · v3 Stage 1.2 · Order quantity edit: permission in the matrix (editOrderBags), more bags on an approved order always go back for approval and the approvers are told, partly dispatched orders only go down and become Dispatched when cut to the bags sent, upper bag limit, note checked, status change in the activity row; an order can hold more than one credit override (migration 0050); stale cancel comments fixed
 - 2026-11-16 · v3 Stage 1.3 · No acting as others: the sign-in library's 15 admin web addresses (act as a user, set role, set password, remove user...) and the direct name / password / email addresses are switched off (auth-closed-paths, with a test that fails if a library update adds a new admin address); own password change, Forgot password and admin temporary passwords each write an activity row; an admin cannot set another admin's password or email
+- 2026-11-16 · v3 Stage 1.4 · Blocked shop at dispatch: red "Blocked" chip on the dispatch list and a red "Shop is blocked" box in the dispatch sheet (dispatch still allowed, no extra step); the activity row says "while the shop is blocked"; admins, accounts and the shop's sales person get "Dispatched to blocked shop"; On hold does not warn
 
 ## v3 checklist (see `docs/PLAN-v3.md`)
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 1, item 4 (blocked shop warning at dispatch).
+**Next up:** Stage 1, item 6 (sales sees only own shops' dues).
 
 - [x] Stage 0: plan and spec documented
 - [ ] Stage 1: safety and accountability
   - [x] 1 Empty-truck check on purchase
   - [x] 2 Quantity edit rules
   - [x] 3 No acting as other users
-  - [ ] 4 Blocked shop warning at dispatch
-  - [ ] 5 Accountant sees all reports except profit and purchase cost
+  - [x] 4 Blocked shop warning at dispatch
+  - [x] 5 Accountant and reports: owner decided the accountant sees every report, no change needed
   - [ ] 6 Sales sees only own shops' dues
   - [ ] 7 Logging gaps (driver details left; name and passwords done with item 3)
   - [ ] 8 Database protection for purchases, shops, trucks, users

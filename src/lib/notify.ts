@@ -4,6 +4,7 @@ import { notifications, orders, retailers, user } from "@/db/schema";
 import type { DbOrTx } from "@/lib/ledger";
 import {
   shopHasActiveSalesRep,
+  buildBlockedDispatchNotifications,
   buildMoneyNotifications,
   buildNotifications,
   type MoneyNotificationInput,
@@ -202,4 +203,23 @@ export async function countUnread(userId: string): Promise<number> {
     .from(notifications)
     .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
   return r?.n ?? 0;
+}
+
+/** Tells admins, accounts and the shop's sales person that a load went to a blocked shop. */
+export async function notifyBlockedDispatch(
+  tx: DbOrTx,
+  input: { orderId: string; retailerName: string; bags: number; actorName: string; salesRepId: string | null; actorId: string },
+): Promise<void> {
+  const people = await activePeople(tx);
+  const drafts = buildBlockedDispatchNotifications({
+    retailerName: input.retailerName,
+    bags: input.bags,
+    actorName: input.actorName,
+    adminIds: people.filter((p) => isAdmin(p.role)).map((p) => p.id),
+    accountsIds: people.filter((p) => hasRole(p.role, "accounts")).map((p) => p.id),
+    // A switched-off sales person is not in `people`, so they are not told.
+    salesRepId: people.some((p) => p.id === input.salesRepId) ? input.salesRepId : null,
+    actorId: input.actorId,
+  });
+  await insertNotifications(tx, drafts, input.orderId);
 }

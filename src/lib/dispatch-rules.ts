@@ -228,3 +228,15 @@ export function visibleDispatchChips({
   }
   return out;
 }
+
+/**
+ * A blocked shop may still get its bags (owner's decision: warn, do not stop), but the person
+ * dispatching sees a warning and the owner, accounts and the shop's sales person are told.
+ * Only "blocked" counts: "hold" stops new approvals and is checked there.
+ */
+export function isBlockedShop(creditStatus: string | null | undefined): boolean {
+  return creditStatus === "blocked";
+}
+
+export const BLOCKED_SHOP_TITLE = "Shop is blocked";
+export const BLOCKED_SHOP_TEXT = "You can still dispatch. The owner will be told.";

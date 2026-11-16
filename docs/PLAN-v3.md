@@ -24,9 +24,9 @@ No real data is in the app yet, so restructuring is safe.
 | Owner must see | Money owed/collected, sales and profit, stock and trucks, staff accountability |
 | Report delivery | In the app + Excel/PDF download |
 | Cancel order | Keep as today: sales and logistics may cancel the unsent part, with logged reason |
-| Blocked shop at dispatch | Warn but allow; alert the owner; show in Exceptions report |
+| Blocked shop at dispatch | Warn but allow, no extra step; Blocked only (not On hold); chip on the list and red box in the sheet; alert owner, accounts and the shop's sales person; show in Exceptions report |
 | Cheques | Keep; update the spec |
-| Accountant and reports | All reports except profit/margin and purchase cost |
+| Accountant and reports | All reports, including profit, purchases, supplier statement and damage value (changed 16 Nov 2026: they need them for book-keeping, so nothing is hidden) |
 | Back arrow | Bring it back on every inner screen |
 | Owner home | Simple Home (today + needs attention) plus a separate Dashboard with charts |
 | Long forms | Short form first, rest behind "More details"; credit terms stay admin-only |
@@ -113,8 +113,8 @@ No real data is in the app yet, so restructuring is safe.
    through our logged actions in `src/app/(app)/users/actions.ts`.
 4. **Blocked shop at dispatch**: rule in `src/lib/dispatch-rules.ts` returning a warning; warning shown in
    `dispatch/dispatch-view.tsx` via the shared caution panel; audit row + owner notification.
-5. **Accountant report access**: split the report permission in `src/lib/permissions.ts` so profit and
-   purchase-cost reports (and their CSV routes) stay admin-only; update the permission tests.
+5. **Accountant report access**: dropped. The owner decided the accountant sees every report (already
+   how `viewReports` works), so there is nothing to build.
 6. **Sales sees only own shops' dues**: `loadDues` in `receipts/actions.ts:40`, reuse `ledger/access.ts`.
 7. **Logging gaps**: write audit rows in the same transaction for name change and temporary password
    (`users/actions.ts:215`, `dashboard/actions.ts:24`); log driver detail changes on trucks.
