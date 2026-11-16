@@ -50,7 +50,7 @@ One line per merged PR: date · PR · what changed · kanban task.
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 1, item 8 (database protection for purchases, shops, trucks, users).
+**Next up:** Stage 1, item 9 (database tests run in CI).
 
 - [x] Stage 0: plan and spec documented
 - [ ] Stage 1: safety and accountability
@@ -61,7 +61,7 @@ A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continu
   - [x] 5 Accountant and reports: owner decided the accountant sees every report, no change needed
   - [x] 6 Shop dues for sales and logistics: owner decided to keep as today, no change needed
   - [x] 7 Logging gaps (driver changes typed on a purchase, dispatch or move are logged with old and new driver)
-  - [ ] 8 Database protection for purchases, shops, trucks, users
+  - [x] 8 Database protection: shops and trucks cannot be deleted, a user with history cannot be deleted (migration 0051; purchases were already covered by 0040)
   - [ ] 9 Database tests run in CI
   - [ ] 10 Notification count and poll interval
 - [ ] Stage 2: simple staff screens (back arrow, homes, short forms, plain words, one success pattern)
