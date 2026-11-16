@@ -1,0 +1,46 @@
+# Runs the database tests (src/**/*.db.test.ts) against a throwaway Postgres, on every pull request
+# and on every push to the default branch. They check what only a real database can prove: the
+# books are never edited, shops, trucks and users are never deleted, and two people saving at the
+# same moment cannot break the money or the stock. A red cross = do not merge (`pnpm release` refuses).
+#
+# This is the app's own file (not part of the kit's ci.yml), so `pnpm kit-update` leaves it alone.
+name: Database tests
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  db-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      # Installs the pnpm version from package.json "packageManager".
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The tests bring the database up to date themselves (src/test/migrate-test-db.ts), which
+      # also proves every migration applies cleanly to an empty database.
+      - run: pnpm exec vitest run db.test
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/app_test
+          REQUIRE_DB_TESTS: "1"
