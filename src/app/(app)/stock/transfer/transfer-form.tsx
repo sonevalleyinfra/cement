@@ -338,10 +338,10 @@ export function TransferForm({
       </PinnedAction>
       <PostActionDialog
         open={showHomePrompt}
-        title="Stock Transferred!"
-        message="Bags successfully transfer/unload ho gaye hain."
-        primaryLabel="Go to Home"
-        secondaryLabel="Stay Here"
+        title="Stock transferred"
+        message="Bags are moved."
+        primaryLabel="Home"
+        secondaryLabel="Stay here"
         primaryHref="/dashboard"
         onSecondary={() => setShowHomePrompt(false)}
       />

@@ -3,8 +3,11 @@ import {
   CLAIM_LABELS,
   CLAIM_STATUSES,
   MAX_PURCHASE_EXTRA_PAISE,
+  MAX_PURCHASE_PRODUCTS,
   checkClaimChange,
   checkPurchaseDetails,
+  checkPurchaseProductCount,
+  loadedTruckError,
   claimValuePaise,
   DEFAULT_PURCHASE_SOURCES,
   PURCHASE_NOTE_MAX,
@@ -171,5 +174,28 @@ describe("parsePurchaseSource", () => {
     expect(parsePurchaseSource("Maihar Plant , MP")).toBe("Maihar Plant , MP");
     expect(parsePurchaseSource("")).toBeNull();
     expect(parsePurchaseSource(null)).toBeNull();
+  });
+});
+
+describe("one truckload", () => {
+  it("takes one or two products, never more", () => {
+    expect(checkPurchaseProductCount(1)).toEqual({ ok: true });
+    expect(checkPurchaseProductCount(MAX_PURCHASE_PRODUCTS)).toEqual({ ok: true });
+    expect(checkPurchaseProductCount(3)).toEqual({ ok: false, error: "One truck can carry at most 2 products." });
+  });
+
+  it("needs at least one product", () => {
+    expect(checkPurchaseProductCount(0).ok).toBe(false);
+    expect(checkPurchaseProductCount(1.5).ok).toBe(false);
+  });
+
+  it("an empty truck is free for a purchase", () => {
+    expect(loadedTruckError("UP65AB1234", 0)).toBeNull();
+    expect(loadedTruckError("UP65AB1234", -5)).toBeNull();
+  });
+
+  it("a loaded truck is refused, with the bags still on it", () => {
+    expect(loadedTruckError("UP65AB1234", 100)).toBe("Truck UP65AB1234 still has 100 bags. Empty it before a new purchase.");
+    expect(loadedTruckError("UP65AB1234", 1)).toBe("Truck UP65AB1234 still has 1 bag. Empty it before a new purchase.");
   });
 });

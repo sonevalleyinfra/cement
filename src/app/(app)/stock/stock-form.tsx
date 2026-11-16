@@ -19,7 +19,8 @@ import { toISTDateKey } from "@/lib/datetime";
 import { firstMissing } from "@/lib/form-rules";
 import { parseRupeesToPaise } from "@/lib/money";
 import { isValidIndianMobile, normalizePhone } from "@/lib/phone-rules";
-import { DEFAULT_PURCHASE_SOURCES, PURCHASE_NOTE_MAX, purchaseNote } from "@/lib/purchase-rules";
+import { HintLine } from "@/components/app/hint-line";
+import { DEFAULT_PURCHASE_SOURCES, PURCHASE_NOTE_MAX, loadedTruckError, purchaseNote } from "@/lib/purchase-rules";
 import { reasonHint } from "@/lib/reason-codes";
 import { NEW_TRUCK_PLACE, placeGroups } from "@/lib/stock-rules";
 import { useFormError } from "@/lib/use-form-error";
@@ -210,14 +211,15 @@ export function StockForm({
   const loadedTruck = trucks.find(
     (t) => t.number.toUpperCase().replace(/\s+/g, "") === cleanTruckNo
   );
-  const isTruckLoaded = Boolean(cleanTruckNo && loadedTruck && (loadedTruck.bags ?? 0) > 0);
+  const truckBusy = cleanTruckNo && loadedTruck ? loadedTruckError(cleanTruckNo, loadedTruck.bags ?? 0) : null;
+  const isTruckLoaded = truckBusy !== null;
 
   const why = mode === "adjust" ? reasonHint("stock", reason, note) : null;
   const hint = firstMissing([
     [!product, "Pick a product"],
     [!place, "Pick a place"],
     [purchase && !truck.number.trim(), "Enter the truck number"],
-    [purchase && isTruckLoaded, `Gadi ${cleanTruckNo} me abhi ${loadedTruck?.bags} bags baki hain. Khali hone ke baad hi purchase ho sakti hai.`],
+    [purchase && isTruckLoaded, "Empty this truck first"],
     [purchase && !truck.driverName.trim(), "Enter the driver name"],
     [purchase && !isValidIndianMobile(normalizePhone(truck.driverPhone)), "Enter the driver mobile (10 digits)"],
     [purchase && !invoiceNo.trim(), "Enter the invoice no."],
@@ -423,17 +425,13 @@ export function StockForm({
           </div>
 
           <div className="flex flex-col gap-2">
-            <TruckFields value={truck} onChange={setTruck} directEntry knownTrucks={trucks} />
-            {isTruckLoaded && (
-              <div className="rounded-2xl border border-rose-300 bg-rose-50 dark:bg-rose-950/40 dark:border-rose-800 p-3 text-xs text-rose-800 dark:text-rose-200">
-                <p className="font-semibold flex items-center gap-1.5">
-                  <span>⚠️</span> Yeh gadi pehle se loaded hai ({loadedTruck?.bags} bags baki hain)
-                </p>
-                <p className="mt-1 text-rose-600 dark:text-rose-300">
-                  Jab tak is gadi ke saare bags dispatch ya godown me unload karke khali nahi ho jate, isme naya purchase nahi ho sakta.
-                </p>
-              </div>
-            )}
+            <TruckFields
+              value={truck}
+              onChange={setTruck}
+              directEntry
+              knownTrucks={trucks}
+              numberHint={truckBusy ? <HintLine tone="risk">{truckBusy}</HintLine> : null}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -721,10 +719,10 @@ export function StockForm({
 
       <PostActionDialog
         open={showHomePrompt}
-        title={mode === "purchase" ? "Purchase Added!" : mode === "opening" ? "Opening Stock Set!" : "Adjustment Saved!"}
-        message="Stock successfully update ho gaya hai."
-        primaryLabel="Go to Home"
-        secondaryLabel={mode === "purchase" ? "Add Another Purchase" : "Stay Here"}
+        title={mode === "purchase" ? "Purchase added" : mode === "opening" ? "Opening stock set" : "Adjustment saved"}
+        message="Stock is updated."
+        primaryLabel="Home"
+        secondaryLabel={mode === "purchase" ? "Add another" : "Stay here"}
         primaryHref="/dashboard"
         onSecondary={() => setShowHomePrompt(false)}
       />

@@ -29,7 +29,14 @@ import { isUuid } from "@/lib/ids";
 import { rolesFor } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { atPlace, bagsAtPlace, lockPlace, truckByNumber, type Tx } from "@/lib/stock-places";
-import { checkClaimChange, checkPurchaseDetails, claimValuePaise, type PurchaseDetails } from "@/lib/purchase-rules";
+import {
+  checkClaimChange,
+  checkPurchaseDetails,
+  checkPurchaseProductCount,
+  claimValuePaise,
+  loadedTruckError,
+  type PurchaseDetails,
+} from "@/lib/purchase-rules";
 import { checkDriver, checkTruck, truckNote, type Truck } from "@/lib/vehicle-rules";
 import { generateTrackingId } from "@/lib/tracking-id";
 import { notifyPurchase, notifyTransfer } from "@/lib/notify";
@@ -216,9 +223,8 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
           },
         ];
 
-  if (items.length > 2) {
-    return { ok: false, error: "Ek truck me maximum 2 products hi purchase ho sakte hain." };
-  }
+  const count = checkPurchaseProductCount(items.length);
+  if (!count.ok) return count;
 
   // Validate each item's cost and purchase details
   const todayKey = toISTDateKey(new Date());
@@ -267,30 +273,19 @@ export async function recordPurchase(input: StockInput): Promise<StockResult> {
   const actorId = p.session.user.id;
 
   const res = await saveOnce({ id: p.requestId, kind: "purchase", actorId }, async (tx) => {
-    // 1. Truck empty check: A truck cannot receive new purchase if it already has stock
-    const cleanNumber = truck.number.toUpperCase().replace(/\s+/g, "");
-    if (cleanNumber) {
-      const [existingV] = await tx
-        .select({ id: vehicles.id })
-        .from(vehicles)
-        .where(eq(vehicles.number, cleanNumber))
-        .limit(1);
-      if (existingV) {
-        const remaining = await bagsAtPlace(tx, { kind: "vehicle", id: existingV.id });
-        if (remaining > 0) {
-          return {
-            ok: false,
-            error: `Gadi ${cleanNumber} me pehle se ${remaining} bags stock baki hai. Gadi khali hone ke baad hi naya purchase ho sakta hai.`,
-          };
-        }
-      }
-    }
-
     // A typed-in truck is found (or made) by its number, so the same truck always has the same stock.
     const place: PlaceRef =
       chosen === NEW_TRUCK_PLACE
         ? { kind: "vehicle", id: await truckByNumber(tx, truck.number, actorId, { name: truck.driverName, phone: truck.driverPhone }) }
         : chosen;
+
+    // The truck must be empty. It is locked first, so two purchases saved at the same moment
+    // cannot both find it empty: the second waits, then sees the first one's bags. A refusal
+    // undoes everything above (saveOnce rolls the transaction back).
+    const locked = await lockPlace(tx, place);
+    if (!locked.ok) return locked;
+    const busy = loadedTruckError(locked.name, await bagsAtPlace(tx, place));
+    if (busy) return { ok: false, error: busy };
 
     if (chosen !== NEW_TRUCK_PLACE && chosen.kind === "vehicle") {
       const [v] = await tx.select({ number: vehicles.number }).from(vehicles).where(eq(vehicles.id, chosen.id));
