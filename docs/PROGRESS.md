@@ -50,7 +50,7 @@ One line per merged PR: date · PR · what changed · kanban task.
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 1, item 9b (database tests for the main saves: purchase, dispatch, payment, order, quantity edit, cash handover), then item 10.
+**Next up:** Stage 1, item 10 (notification count and poll interval); it is the last item of Stage 1.
 
 - [x] Stage 0: plan and spec documented
 - [ ] Stage 1: safety and accountability
@@ -63,7 +63,7 @@ A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continu
   - [x] 7 Logging gaps (driver changes typed on a purchase, dispatch or move are logged with old and new driver)
   - [x] 8 Database protection: shops and trucks cannot be deleted, a user with history cannot be deleted (migration 0051; purchases were already covered by 0040)
   - [x] 9 Database tests run on GitHub (`.github/workflows/db-tests.yml`, own file so kit-update keeps it; tests migrate the database themselves)
-  - [ ] 9b Database tests for the main saves (purchase, dispatch, payment, order, quantity edit, cash handover)
+  - [x] 9b Database tests for the main saves: the real actions run against the test database (`src/test/save-actions.db.test.ts`; sign-in and database swapped by `src/test/save-kit.ts`)
   - [ ] 10 Notification count and poll interval
 - [ ] Stage 2: simple staff screens (back arrow, homes, short forms, plain words, one success pattern)
 - [ ] Stage 3: owner Dashboard, charts, new reports, Exceptions report, Excel and PDF
