@@ -10,6 +10,7 @@ import {
   Receipt,
   ShoppingCart,
   Store,
+  Tag,
   TrendingUp,
   TriangleAlert,
   Truck,
@@ -19,11 +20,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { ActionTile, StatTile } from "@/components/app/action-tile";
+import { ActionTile, TodoRow } from "@/components/app/action-tile";
+import { CallButton } from "@/components/app/call-button";
 import { EmptyState } from "@/components/app/empty-state";
-import { ListCard } from "@/components/app/list-card";
-import { SectionCaption } from "@/components/app/section-caption";
-import { TextLink } from "@/components/app/text-link";
 import { RefreshButton } from "@/components/app/refresh-button";
 import { StatusChip } from "@/components/app/status-chip";
 import { isOrderStatus } from "@/lib/order-rules";
@@ -106,60 +105,79 @@ function QuickActionTile({ href, line1, line2, sub, icon: Icon, gradient }: Quic
 export async function SimpleSalesHome({ userId }: { userId: string }) {
   const [s, cash] = await Promise.all([getSalesHome(userId), getMyCash(userId)]);
   const collect = (s.collect ?? []).slice(0, 3);
+  const moreShops = s.retailersWithDues - collect.length;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
+      {/* The two things a sales person does all day. */}
       <div className="grid grid-cols-2 gap-3">
-        <ActionTile href="/orders/new" title="New order" icon={ShoppingCart} featured />
-        <ActionTile href="/receipts/new" title="Collect payment" icon={IndianRupee} tone="green" />
-        <ActionTile
-          href="/orders"
-          title="Orders"
-          sub={s.pendingRate > 0 ? `${num(s.pendingRate)} ${s.pendingRate === 1 ? "needs" : "need"} rate` : `${num(s.today)} today`}
-          icon={Truck}
-          tone="blue"
+        <ActionTile href="/orders/new" title="New order" icon={ShoppingCart} color="blue" />
+        <ActionTile href="/receipts/new" title="Collect payment" icon={IndianRupee} color="green" />
+      </div>
+
+      {/* Only while there is something to do. */}
+      {s.pendingRate > 0 && (
+        <TodoRow
+          href="/orders?show=rate"
+          icon={Tag}
+          color="amber"
+          title={s.pendingRate === 1 ? "1 order needs a rate" : `${num(s.pendingRate)} orders need a rate`}
+          action="Fill rate"
         />
-        <ActionTile href="/ledger" title="Shop dues" sub={shopsText(s.retailersWithDues)} icon={Store} tone="rose" />
-      </div>
+      )}
+      {cash.heldPaise > 0 && (
+        <TodoRow href="/wallet" icon={Wallet} color="green" title="Cash with me" value={money(cash.heldPaise)} action="Hand over" />
+      )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <StatTile href="/wallet" label="Cash with me" value={money(cash.heldPaise)} />
-        <StatTile href="/receipts" label="Collected today" value={money(s.collectedTodayPaise)} />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex min-h-12 items-center justify-between gap-3">
-          <SectionCaption>
-            Collect · {shopsText(s.retailersWithDues)} · {money(s.duesPaise)}
-          </SectionCaption>
-          {s.retailersWithDues > collect.length && (
-            <TextLink href="/ledger" strong>
-              All {num(s.retailersWithDues)}
-            </TextLink>
+      {/* Who to collect from: most overdue first. Tap the shop to take a payment, the phone to call. */}
+      {collect.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="px-1 pt-1 text-lg font-bold">Collect from</h2>
+          {collect.map((r) => (
+            <CollectCard key={r.retailerId} row={r} />
+          ))}
+          {moreShops > 0 && (
+            <Link
+              href="/ledger"
+              className="flex min-h-12 items-center justify-center gap-1 rounded-2xl bg-card text-base font-semibold text-primary ring-1 ring-foreground/10 transition-transform duration-200 ease-out active:scale-[0.98]"
+            >
+              {num(moreShops)} more {moreShops === 1 ? "shop" : "shops"}
+              <ChevronRight aria-hidden className="size-5" />
+            </Link>
           )}
         </div>
-        {collect.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {collect.map((r) => (
-              <ListCard
-                key={r.retailerId}
-                href={`/receipts/new?retailer=${r.retailerId}`}
-                title={r.name}
-                bottom={
-                  <>
-                    <span className={cn("text-xs", r.overduePaise > 0 ? "font-semibold text-risk" : "text-muted-foreground")}>
-                      {[r.place, r.overduePaise > 0 ? `Overdue ${money(r.overduePaise)}` : ""].filter(Boolean).join(" · ") || "Dues"}
-                    </span>
-                    <span className="tabular text-2xl leading-tight font-bold tracking-tight">{money(r.duePaise)}</span>
-                  </>
-                }
-              />
-            ))}
-          </div>
+      )}
+    </div>
+  );
+}
+
+/** One shop that owes money: name, how much, how late. The card opens the payment form; the phone dials. */
+function CollectCard({ row }: { row: { retailerId: string; name: string; place: string; phone: string; duePaise: number; overduePaise: number; daysPastTerms?: number } }) {
+  const late = row.overduePaise > 0;
+  return (
+    <div className="relative flex items-center gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+      <span aria-hidden className={cn("w-1.5 self-stretch rounded-full", late ? "bg-rose-500" : "bg-emerald-500")} />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <Link
+          href={`/receipts/new?retailer=${row.retailerId}`}
+          className="truncate text-base font-bold outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
+        >
+          {row.name}
+        </Link>
+        <span className="tabular text-2xl leading-tight font-bold tracking-tight">{money(row.duePaise)}</span>
+        {late ? (
+          <span className="text-sm font-semibold text-rose-600">
+            {money(row.overduePaise)} late{row.daysPastTerms ? ` by ${daysText(row.daysPastTerms)}` : ""}
+          </span>
         ) : (
-          <EmptyState title="No dues to collect" />
+          row.place && <span className="text-sm text-muted-foreground">{row.place}</span>
         )}
       </div>
+      <CallButton
+        phone={row.phone}
+        shop={row.name}
+        className="relative z-10 size-12 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+      />
     </div>
   );
 }
