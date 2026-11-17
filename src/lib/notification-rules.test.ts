@@ -320,3 +320,27 @@ describe("buildCreditOverrideNotifications (v2 B1)", () => {
     expect(buildCreditOverrideNotifications({ ...base, flags: ["blocked"], overLimitByPaise: 0 })[0].title).toBe("Approved while blocked");
   });
 });
+
+describe("the bell", () => {
+  it("asks every 20 seconds", async () => {
+    const { NOTIFICATION_POLL_MS } = await import("./notification-rules");
+    expect(NOTIFICATION_POLL_MS).toBe(20_000);
+  });
+
+  it("shows nothing at 0, the count up to 9, then 9+", async () => {
+    const { bellBadge } = await import("./notification-rules");
+    expect(bellBadge(0)).toBeNull();
+    expect(bellBadge(-1)).toBeNull();
+    expect(bellBadge(Number.NaN)).toBeNull();
+    expect(bellBadge(1)).toBe("1");
+    expect(bellBadge(9)).toBe("9");
+    expect(bellBadge(10)).toBe("9+");
+    expect(bellBadge(250)).toBe("9+");
+  });
+
+  it("does not ask while the app is in the background", async () => {
+    const { shouldPoll } = await import("./notification-rules");
+    expect(shouldPoll("visible")).toBe(true);
+    expect(shouldPoll("hidden")).toBe(false);
+  });
+});

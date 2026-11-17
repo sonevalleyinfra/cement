@@ -28,6 +28,7 @@ No real data is in the app yet, so restructuring is safe.
 | Cheques | Keep; update the spec |
 | Accountant and reports | All reports, including profit, purchases, supplier statement and damage value (changed 16 Nov 2026: they need them for book-keeping, so nothing is hidden) |
 | Sales, logistics and shop dues | Kept as today (16 Nov 2026): all staff see every shop's balance on the Retailers screen and in the payment form; a sales person opens the full ledger only for their own shops |
+| Notification bell | Checks every 20 seconds (17 Nov 2026), at once when the app is opened or comes back to the front, never in the background. Later (after Stage 4): replace the checking with a push from the server (web socket or similar), so alerts are instant |
 | Back arrow | Bring it back on every inner screen |
 | Owner home | Simple Home (today + needs attention) plus a separate Dashboard with charts |
 | Long forms | Short form first, rest behind "More details"; credit terms stay admin-only |
@@ -172,6 +173,9 @@ No real data is in the app yet, so restructuring is safe.
    sales home and the Dashboard.
 4. **Proof of delivery**: delivered step after dispatch with receiver name and photo (reuse the payment-proof
    image checks in `receipt-rules.ts`); decide photo storage before building (not text in the database).
+5. **Instant alerts** (owner asked, 17 Nov 2026): push new notifications from the server (web socket or
+   server-sent events; check what Coolify's proxy allows first) instead of the 20-second check in
+   `src/components/app/notification-bell.tsx`.
 
 ## Verification (every PR)
 

@@ -50,10 +50,10 @@ One line per merged PR: date · PR · what changed · kanban task.
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 1, item 10 (notification count and poll interval); it is the last item of Stage 1.
+**Next up:** Stage 2 (simple staff screens). Start with the back arrow, then the home screens; show the owner before/after for every screen.
 
 - [x] Stage 0: plan and spec documented
-- [ ] Stage 1: safety and accountability
+- [x] Stage 1: safety and accountability
   - [x] 1 Empty-truck check on purchase
   - [x] 2 Quantity edit rules
   - [x] 3 No acting as other users
@@ -64,7 +64,7 @@ A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continu
   - [x] 8 Database protection: shops and trucks cannot be deleted, a user with history cannot be deleted (migration 0051; purchases were already covered by 0040)
   - [x] 9 Database tests run on GitHub (`.github/workflows/db-tests.yml`, own file so kit-update keeps it; tests migrate the database themselves)
   - [x] 9b Database tests for the main saves: the real actions run against the test database (`src/test/save-actions.db.test.ts`; sign-in and database swapped by `src/test/save-kit.ts`)
-  - [ ] 10 Notification count and poll interval
+  - [x] 10 Bell checks every 20 seconds (not in the background) and counts all unread; stale cheque test titles fixed
 - [ ] Stage 2: simple staff screens (back arrow, homes, short forms, plain words, one success pattern)
 - [ ] Stage 3: owner Dashboard, charts, new reports, Exceptions report, Excel and PDF
-- [ ] Stage 4: day book, WhatsApp statement, sales targets, proof of delivery
+- [ ] Stage 4: day book, WhatsApp statement, sales targets, proof of delivery, instant alerts (push instead of the 20-second check)
