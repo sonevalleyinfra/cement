@@ -350,3 +350,23 @@ export function buildBlockedDispatchNotifications(input: BlockedDispatchInput): 
     link: null,
   }));
 }
+
+/* ---------- The bell ---------- */
+
+/**
+ * How often an open app asks for new notifications. Owner decision (17 Nov 2026): 20 seconds.
+ * It also asks at once when the app is opened or comes back to the front, and not at all while
+ * it is in the background. Later: push the alert from the server instead (see PLAN-v3).
+ */
+export const NOTIFICATION_POLL_MS = 20_000;
+
+/** The number on the bell: nothing at 0, the count up to 9, then "9+". */
+export function bellBadge(unread: number): string | null {
+  if (!Number.isFinite(unread) || unread < 1) return null;
+  return unread > 9 ? "9+" : String(Math.floor(unread));
+}
+
+/** Whether the bell should ask the server now: never while the app is hidden (another tab, screen off). */
+export function shouldPoll(visibility: string): boolean {
+  return visibility !== "hidden";
+}

@@ -130,6 +130,8 @@ opening balance, **purchase** (+ bags × cost per bag, also adds stock), **payme
 
 ## 8. Notifications (in-app)
 
+The bell checks for new notifications every 20 seconds while the app is open, and at once when it is opened again.
+
 Order placed → its sales person (if rate missing) and accounts (admins too when the shop has no sales person, whoever placed it). Approved / rejected → placer, sales person.
 Approved → logistics. Dispatched → retailer, sales person. Rate changed → accounts, sales person, admin.
 Cash payment recorded → admin. Online payment recorded → accounts. Cash handover request → accounts. Purchase, transfer and dispatch alerts go to admin, logistics and accounts (plus the person who did it). Handover confirmed / payment verified → the staff member.

@@ -25,7 +25,7 @@ import {
 
 describe("modes and statuses", () => {
   it("has two modes only: cash and online", () => expect(PAYMENT_MODES).toEqual(["cash", "online"]));
-  it("has no cheque statuses", () => {
+  it("has no status of its own for cheques (a cheque is an online payment)", () => {
     expect(RECEIPT_STATUSES).toEqual(["received", "unverified", "verified", "rejected", "reversed"]);
   });
 });
@@ -38,7 +38,7 @@ describe("validateModeDetails", () => {
     expect(validateModeDetails("online", { utr: "X1" })).toBeNull();
     expect(validateModeDetails("online", { utr: "1".repeat(41) })).toMatch(/too long/);
   });
-  it("refuses cheque and unknown modes", () => {
+  it("refuses cheque as a mode (it is a method of an online payment) and unknown modes", () => {
     expect(validateModeDetails("cheque", {})).not.toBeNull();
     expect(validateModeDetails("upi", {})).not.toBeNull();
   });
@@ -153,7 +153,7 @@ describe("planReceipt", () => {
       error: "Keep the payer name under 80 characters.",
     });
   });
-  it("refuses a bad amount, cheques and unknown modes", () => {
+  it("refuses a bad amount, cheque as a mode and unknown modes", () => {
     for (const totalPaise of [0, -5, 1.5]) expect(planReceipt({ ...base, totalPaise }).ok).toBe(false);
     expect(planReceipt({ ...base, mode: "cheque" }).ok).toBe(false);
     expect(planReceipt({ ...base, mode: "upi" }).ok).toBe(false);

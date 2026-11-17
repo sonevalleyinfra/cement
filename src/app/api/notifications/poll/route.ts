@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
 import { getSession } from "@/lib/session";
@@ -12,22 +12,24 @@ export async function GET() {
     return NextResponse.json({ unread: 0, latest: null });
   }
 
-  const list = await db
-    .select({
-      id: notifications.id,
-      title: notifications.title,
-      body: notifications.body,
-      link: notifications.link,
-      orderId: notifications.orderId,
-      createdAt: notifications.createdAt,
-    })
-    .from(notifications)
-    .where(and(eq(notifications.userId, session.user.id), isNull(notifications.readAt)))
-    .orderBy(desc(notifications.createdAt))
-    .limit(10);
+  const mine = and(eq(notifications.userId, session.user.id), isNull(notifications.readAt));
+  // The true unread count (the bell and the screen reader text use it) and only the newest row.
+  const [[count], [latest]] = await Promise.all([
+    db.select({ unread: sql<number>`count(*)`.mapWith(Number) }).from(notifications).where(mine),
+    db
+      .select({
+        id: notifications.id,
+        title: notifications.title,
+        body: notifications.body,
+        link: notifications.link,
+        orderId: notifications.orderId,
+        createdAt: notifications.createdAt,
+      })
+      .from(notifications)
+      .where(mine)
+      .orderBy(desc(notifications.createdAt))
+      .limit(1),
+  ]);
 
-  return NextResponse.json({
-    unread: list.length,
-    latest: list[0] ?? null,
-  });
+  return NextResponse.json({ unread: count?.unread ?? 0, latest: latest ?? null });
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, X } from "lucide-react";
 import Link from "next/link";
+import { bellBadge, NOTIFICATION_POLL_MS, shouldPoll } from "@/lib/notification-rules";
 
 export function NotificationBell({ initialUnread = 0 }: { initialUnread?: number }) {
   const [unread, setUnread] = useState(initialUnread);
@@ -19,6 +20,8 @@ export function NotificationBell({ initialUnread = 0 }: { initialUnread?: number
     let active = true;
 
     async function check() {
+      // Nothing is asked while the app is in the background.
+      if (!shouldPoll(document.visibilityState)) return;
       try {
         const res = await fetch("/api/notifications/poll", { cache: "no-store" });
         if (!res.ok) return;
@@ -49,15 +52,20 @@ export function NotificationBell({ initialUnread = 0 }: { initialUnread?: number
     }
 
     check();
-    const interval = setInterval(check, 3000); // Polling every 3 seconds for near-instant updates
+    const interval = setInterval(check, NOTIFICATION_POLL_MS);
+    // Back to the app (tab shown again, phone unlocked): ask at once instead of waiting for the next turn.
     window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
 
     return () => {
       active = false;
       clearInterval(interval);
       window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
     };
   }, []);
+
+  const badge = bellBadge(unread);
 
   return (
     <>
@@ -67,9 +75,9 @@ export function NotificationBell({ initialUnread = 0 }: { initialUnread?: number
         className="relative flex size-10 items-center justify-center rounded-full text-foreground transition-colors duration-150 hover:bg-muted active:scale-95"
       >
         <Bell className="size-5" />
-        {unread > 0 && (
+        {badge && (
           <span className="animate-pop absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground ring-2 ring-background">
-            {unread > 9 ? "9+" : unread}
+            {badge}
           </span>
         )}
       </Link>
