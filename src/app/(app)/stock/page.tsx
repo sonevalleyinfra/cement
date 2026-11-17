@@ -7,6 +7,7 @@ import { getProducts } from "@/lib/catalogue";
 import { istDayStart } from "@/lib/home-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { isAdmin } from "@/lib/roles";
+import { backFromMore } from "@/lib/nav-rules";
 import { requireRole } from "@/lib/session";
 import { getBalances } from "@/lib/stock";
 import { truckCounts } from "@/lib/truck-rules";
@@ -51,7 +52,7 @@ export default async function StockPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Stock" />
+      <PageHeader title="Stock" back={backFromMore(session.user.role, "/stock")} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Link href="/godowns" className="transition-transform active:scale-[0.98]"><Stat label="Godown" value={`${formatCount(godownBags)} bags`} className="rounded-2xl bg-primary/10 p-3 text-primary ring-1 ring-primary/20" /></Link>

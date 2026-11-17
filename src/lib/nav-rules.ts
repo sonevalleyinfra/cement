@@ -30,6 +30,14 @@ export function navFor(role: string | null | undefined): NavItem[] {
   return items;
 }
 
+/**
+ * Where the back arrow of a screen listed in More goes: to More, unless the screen is one of this
+ * role's bottom tabs (a tab has no back arrow). Payments is a tab for accounts, Stock for logistics.
+ */
+export function backFromMore(role: string | null | undefined, href: string): string | undefined {
+  return navFor(role).some((tab) => tab.href === href) ? undefined : "/more";
+}
+
 /** More does not repeat the role's own third tab (a shop's Ledger, accounts' Payments, logistics' Stock). */
 export function moreHides(role: string | null | undefined, href: string): boolean {
   return href === thirdTab(role).href;

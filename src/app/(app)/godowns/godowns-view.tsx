@@ -67,7 +67,7 @@ export function GodownsView({ rows, canManage = true }: { rows: Row[]; canManage
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Godowns" />
+      <PageHeader title="Godowns" back="/more" />
       {rows.length === 0 ? (
         <EmptyState title="No godowns" />
       ) : (

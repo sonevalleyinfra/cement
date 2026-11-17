@@ -151,6 +151,7 @@ export default async function DispatchPage({
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Dispatch"
+        back="/more"
         action={
           can(user.role, "viewReports") ? (
             <Link href="/reports/sales" className="text-sm font-medium text-primary hover:underline">

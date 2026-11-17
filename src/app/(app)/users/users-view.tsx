@@ -138,7 +138,7 @@ export function UsersView({
   return (
     <>
       <div className="mb-4">
-        <PageHeader title="Users" />
+        <PageHeader title="Users" back="/more" />
       </div>
       <div className="scroll-x-fade -mx-4 mb-3 flex gap-2 px-4 pb-1">
         {tabs.map((t) => (

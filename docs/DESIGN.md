@@ -6,7 +6,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 ## Screen
 - Phone first. Design at 390px wide. One column, `max-w-md`, centred on bigger screens.
 - Bottom nav: 4 tabs at most. Frame is `AppShell`.
-- Every screen starts with `PageHeader`, except Home (the app header is its title). Sub-screens pass `back` (the parent screen's href); there is no other way-back link.
+- Every screen starts with `PageHeader`, except Home (the app header is its title). Sub-screens pass `back` (the parent screen's href); there is no other way-back link. A screen listed in More goes back to More (`backFromMore` in `nav-rules.ts`), Notifications to Home; a bottom-tab screen has no arrow.
 - One primary button per screen, in `PinnedAction`. Tap targets are 48px or more (`Button` default is 48px, `lg` 56px).
 - Inputs are 48px high with 16px text (stops iOS zoom).
 - **Every tap target is 48px or more**: buttons, drop-downs, chips, text links (`TextLink`), phone links, checkboxes.

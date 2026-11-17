@@ -48,7 +48,7 @@ export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) 
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Trucks" />
+      <PageHeader title="Trucks" back="/more" />
 
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Loaded trucks" value={formatCount(visibleRows.length)} className={counterClass} />

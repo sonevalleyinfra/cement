@@ -57,7 +57,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Reports" />
+      <PageHeader title="Reports" back="/more" />
       <RangeForm from={range.from} to={range.to} />
       <div className="flex flex-col gap-3">
         {cards.map((c, i) => (

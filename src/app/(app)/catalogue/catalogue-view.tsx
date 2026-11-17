@@ -216,7 +216,7 @@ export function CatalogueView({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Catalogue" />
+      <PageHeader title="Catalogue" back="/more" />
       <div className="scroll-x-fade -mx-4 flex gap-2 px-4">
         {TABS.map((t) => (
           <button key={t.id} type="button" className={chipClass(tab === t.id)} onClick={() => setTab(t.id)}>

@@ -66,7 +66,7 @@ export function BankAccountsView({ rows }: { rows: Row[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Bank accounts" />
+      <PageHeader title="Bank accounts" back="/more" />
       {rows.length === 0 ? (
         <EmptyState title="No bank accounts" />
       ) : (
