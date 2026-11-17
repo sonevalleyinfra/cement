@@ -67,10 +67,17 @@ describe.skipIf(!url)("shops, trucks and users are never deleted (real database)
     expect(await db.select({ id: vehicles.id }).from(vehicles).where(eq(vehicles.id, truck.id))).toHaveLength(1);
   });
 
-  it("refuses to empty the shops, trucks or users table", async () => {
-    expect(await refusal(db.execute(sql`truncate table retailers cascade`))).toMatch(/never deleted/);
-    expect(await refusal(db.execute(sql`truncate table vehicles cascade`))).toMatch(/never deleted/);
-    expect(await refusal(db.execute(sql`truncate table "user" cascade`))).toMatch(/never deleted/);
+  it("has the guard against emptying the shops, trucks and users tables switched on", async () => {
+    // Read from the database's own list of triggers. A real TRUNCATE is not run here: it locks
+    // every linked table, which deadlocks with the other database tests running at the same time.
+    const rows = (await db.execute(sql`
+      select c.relname as "table"
+      from pg_trigger t join pg_class c on c.oid = t.tgrelid
+      where t.tgname in ('retailers_no_truncate', 'vehicles_no_truncate', 'user_no_truncate')
+        and t.tgenabled = 'O' and (t.tgtype & 32) = 32
+      order by c.relname
+    `)) as unknown as { table: string }[];
+    expect(rows.map((r) => r.table)).toEqual(["retailers", "user", "vehicles"]);
   });
 
   it("lets a half-made user (no history) be removed", async () => {
