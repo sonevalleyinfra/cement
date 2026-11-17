@@ -4,6 +4,7 @@ import {
   ChevronRight,
   FileSpreadsheet,
   History,
+  IndianRupee,
   Package,
   PackagePlus,
   Receipt,
@@ -18,7 +19,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { ActionTile, StatTile } from "@/components/app/action-tile";
 import { EmptyState } from "@/components/app/empty-state";
+import { ListCard } from "@/components/app/list-card";
+import { SectionCaption } from "@/components/app/section-caption";
+import { TextLink } from "@/components/app/text-link";
 import { RefreshButton } from "@/components/app/refresh-button";
 import { StatusChip } from "@/components/app/status-chip";
 import { isOrderStatus } from "@/lib/order-rules";
@@ -99,127 +104,60 @@ function QuickActionTile({ href, line1, line2, sub, icon: Icon, gradient }: Quic
    ========================================================================= */
 
 export async function SimpleSalesHome({ userId }: { userId: string }) {
-  const [s, cash] = await Promise.all([
-    getSalesHome(userId),
-    getMyCash(userId),
-  ]);
+  const [s, cash] = await Promise.all([getSalesHome(userId), getMyCash(userId)]);
+  const collect = (s.collect ?? []).slice(0, 3);
 
   return (
-    <div className="flex flex-col gap-5 font-sans pt-1">
-      {/* 4 Vibrant Portrait Action Cards (2x2 Grid) */}
+    <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3">
-        <QuickActionTile
-          href="/orders/new"
-          line1="New"
-          line2="Order"
-          sub="Book cement"
-          icon={ShoppingCart}
-          gradient="bg-gradient-to-br from-emerald-400 to-teal-500"
-        />
-
-        <QuickActionTile
-          href="/receipts/new"
-          line1="Collect"
-          line2="Payment"
-          sub="Cash / UPI"
-          icon="rupee"
-          gradient="bg-gradient-to-br from-sky-400 to-blue-500"
-        />
-
-        <QuickActionTile
+        <ActionTile href="/orders/new" title="New order" icon={ShoppingCart} featured />
+        <ActionTile href="/receipts/new" title="Collect payment" icon={IndianRupee} tone="green" />
+        <ActionTile
           href="/orders"
-          line1="Orders"
-          sub={s.pendingRate > 0 ? `${s.pendingRate} need rate` : `${s.today} today`}
+          title="Orders"
+          sub={s.pendingRate > 0 ? `${num(s.pendingRate)} ${s.pendingRate === 1 ? "needs" : "need"} rate` : `${num(s.today)} today`}
           icon={Truck}
-          gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
+          tone="blue"
         />
-
-        <QuickActionTile
-          href="/ledger"
-          line1="Shop"
-          line2="Dues"
-          sub={`${s.retailersWithDues} shops`}
-          icon={Store}
-          gradient="bg-gradient-to-br from-violet-400 to-purple-500"
-        />
+        <ActionTile href="/ledger" title="Shop dues" sub={shopsText(s.retailersWithDues)} icon={Store} tone="rose" />
       </div>
 
-      {/* Cash & Collection Summary Strip */}
       <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/wallet"
-          className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
-        >
-          <span className="text-[11px] font-semibold text-muted-foreground">Cash in Hand</span>
-          <span className="mt-0.5 truncate text-base font-black text-foreground">{money(cash.heldPaise)}</span>
-        </Link>
-        <Link
-          href="/receipts"
-          className="flex flex-col rounded-2xl border border-border/80 bg-card p-3 shadow-xs transition-colors hover:bg-muted/40"
-        >
-          <span className="text-[11px] font-semibold text-muted-foreground">Collected Today</span>
-          <span className="mt-0.5 truncate text-base font-black text-emerald-600 dark:text-emerald-400">
-            {money(s.collectedTodayPaise)}
-          </span>
-        </Link>
+        <StatTile href="/wallet" label="Cash with me" value={money(cash.heldPaise)} />
+        <StatTile href="/receipts" label="Collected today" value={money(s.collectedTodayPaise)} />
       </div>
 
-      {/* Pending Dues (Max 3 + View all) */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-extrabold text-foreground">Pending Dues</h2>
-            <p className="text-xs text-muted-foreground">
-              {s.retailersWithDues} shops with dues &middot; {money(s.duesPaise)}
-            </p>
-          </div>
-          <Link href="/ledger" className="text-xs font-bold text-primary hover:underline">
-            View all
-          </Link>
+      <div className="flex flex-col gap-2">
+        <div className="flex min-h-12 items-center justify-between gap-3">
+          <SectionCaption>
+            Collect · {shopsText(s.retailersWithDues)} · {money(s.duesPaise)}
+          </SectionCaption>
+          {s.retailersWithDues > collect.length && (
+            <TextLink href="/ledger" strong>
+              All {num(s.retailersWithDues)}
+            </TextLink>
+          )}
         </div>
-
-        {s.collect && s.collect.length > 0 ? (
+        {collect.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {s.collect.slice(0, 3).map((r) => (
-              <Link
+            {collect.map((r) => (
+              <ListCard
                 key={r.retailerId}
                 href={`/receipts/new?retailer=${r.retailerId}`}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-base font-extrabold text-foreground">{r.name}</p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{r.place || "Shop"}</p>
-                  {r.overduePaise > 0 ? (
-                    <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
-                      Overdue: {money(r.overduePaise)}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs font-medium text-muted-foreground">Current dues</p>
-                  )}
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="text-base font-black text-foreground">
-                    {money(r.duePaise)}
-                  </p>
-                  <span className="mt-1 inline-block rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                    Collect &rarr;
-                  </span>
-                </div>
-              </Link>
+                title={r.name}
+                bottom={
+                  <>
+                    <span className={cn("text-xs", r.overduePaise > 0 ? "font-semibold text-risk" : "text-muted-foreground")}>
+                      {[r.place, r.overduePaise > 0 ? `Overdue ${money(r.overduePaise)}` : ""].filter(Boolean).join(" · ") || "Dues"}
+                    </span>
+                    <span className="tabular text-2xl leading-tight font-bold tracking-tight">{money(r.duePaise)}</span>
+                  </>
+                }
+              />
             ))}
-            {s.retailersWithDues > 3 && (
-              <Link
-                href="/ledger"
-                className="flex items-center justify-center rounded-xl border border-dashed border-border py-2 text-xs font-bold text-primary hover:bg-muted/40"
-              >
-                View all ({s.retailersWithDues}) shops with dues &rarr;
-              </Link>
-            )}
           </div>
         ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No pending dues &middot; All clear
-          </div>
+          <EmptyState title="No dues to collect" />
         )}
       </div>
     </div>
