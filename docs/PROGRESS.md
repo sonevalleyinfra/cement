@@ -68,7 +68,7 @@ A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continu
 - [ ] Stage 2: simple staff screens (back arrow, homes, short forms, plain words, one success pattern)
   - [x] Back arrow on every inner screen (More screens go back to More, Notifications to Home, Home-button screens to Home)
   - [x] Home screens for all five roles (coloured job buttons, "Waiting for you", bottom bar is Home and More only, owner detail on `/business`)
-  - [ ] Short forms with "More details"
+  - [ ] Short forms with "More details" (new order done; shop, payment, purchase, dispatch still to do)
   - [ ] Plain words (no jargon, no Hindi or Hinglish)
   - [ ] One success pattern
 - [ ] Stage 3: owner Dashboard, charts, new reports, Exceptions report, Excel and PDF

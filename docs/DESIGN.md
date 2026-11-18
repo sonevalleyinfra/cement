@@ -60,7 +60,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Reduced-motion users get no animation (handled globally).
 
 ## Components (`src/components/app/`)
-`AppShell`, `BottomNav`, `ActionTile` / `TodoRow` / `RowCard` / `HomeHeading` / `HomeStat` (Home screens), `PageHeader` (screen title, 48px row, optional `back` chevron and right `action`), `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`),
+`AppShell`, `BottomNav`, `ActionTile` / `TodoRow` / `RowCard` / `HomeHeading` / `HomeStat` (Home screens), `MoreDetails` (keeps a form short: fields most entries never need sit behind one "More details" row), `PageHeader` (screen title, 48px row, optional `back` chevron and right `action`), `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`),
 `RangeForm` / `FilterSelect` (date range and filters as a plain GET form), `DataTable` (compact numbers table that scrolls
 sideways inside its own box, never the page; `stacked` turns each row into a small card for tables with many number
 columns), `FilterTabs` (filter pills that are links, the pick lives in the address: `/orders?show=rate`, so Home can link to it),
