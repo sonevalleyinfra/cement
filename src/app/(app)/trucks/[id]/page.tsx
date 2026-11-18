@@ -1,14 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft,
   Building2,
   CheckCircle2,
   Clock,
   Factory,
-  MapPin,
-  Package,
-  Phone,
   Truck,
 } from "lucide-react";
 import { CallButton } from "@/components/app/call-button";
@@ -16,7 +12,6 @@ import { PageHeader } from "@/components/app/page-header";
 import { can } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { getTruckJourney } from "@/lib/trucks";
-import { cn } from "@/lib/utils";
 import { bagsText, formatCount } from "@/lib/words";
 
 function formatIST(date: Date): string {
