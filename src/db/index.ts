@@ -12,32 +12,41 @@ if (process.platform === "win32") {
   } catch {}
   const cache = new Map<string, string>();
   const origLookup = dns.lookup;
-  // @ts-expect-error Windows DNS fix
-  dns.lookup = function (hostname: string, options: any, callback: any) {
-    let cb = callback;
-    let opt = options;
+  type LookupCallback = (
+    err: NodeJS.ErrnoException | null,
+    address: string | dns.LookupAddress[],
+    family?: number,
+  ) => void;
+  dns.lookup = function (
+    hostname: string,
+    options: dns.LookupOptions | number | null | undefined | LookupCallback,
+    callback?: LookupCallback,
+  ) {
+    let cb = callback as LookupCallback;
+    let opt = options as dns.LookupOptions | number | null | undefined;
     if (typeof options === "function") {
       cb = options;
       opt = {};
     }
+    const lookupOpt = opt as dns.LookupOptions | null | undefined;
     if (typeof hostname === "string" && hostname.includes("neon.tech")) {
       const cached = cache.get(hostname);
       if (cached) {
-        if (opt && opt.all) return cb(null, [{ address: cached, family: 4 }]);
+        if (lookupOpt && lookupOpt.all) return cb(null, [{ address: cached, family: 4 }]);
         return cb(null, cached, 4);
       }
       dns.resolve4(hostname, (err, addrs) => {
         if (!err && addrs && addrs[0]) {
           cache.set(hostname, addrs[0]);
-          if (opt && opt.all) return cb(null, addrs.map((a) => ({ address: a, family: 4 })));
+          if (lookupOpt && lookupOpt.all) return cb(null, addrs.map((a) => ({ address: a, family: 4 })));
           return cb(null, addrs[0], 4);
         }
-        origLookup(hostname, opt, cb);
+        origLookup(hostname, opt as dns.LookupOptions, cb as never);
       });
       return;
     }
-    origLookup(hostname, opt, cb);
-  };
+    origLookup(hostname, opt as dns.LookupOptions, cb as never);
+  } as typeof dns.lookup;
 }
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
