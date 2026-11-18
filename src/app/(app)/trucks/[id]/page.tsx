@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { can } from "@/lib/permissions";
 import { requireRole } from "@/lib/session";
 import { getTruckJourney } from "@/lib/trucks";
+import { cn } from "@/lib/utils";
 import { bagsText, formatCount } from "@/lib/words";
 
 function formatIST(date: Date): string {
@@ -135,56 +136,74 @@ export default async function TruckJourneyPage({
       )}
 
       {/* Amazon / Flipkart Style Live Journey Stepper */}
-      <div className="flex flex-col gap-4 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-        <div className="flex items-center justify-between border-b border-foreground/6 pb-2.5">
-          <span className="text-sm font-black uppercase tracking-wider text-foreground">
-            Live Journey Timeline
-          </span>
-          <span className="text-xs font-semibold text-muted-foreground">
-            {events.length} {events.length === 1 ? "activity" : "activities"}
-          </span>
-        </div>
+      {(() => {
+        const hasStartedDelivering = events.length > 0;
+        const isHighwayActive = isLoaded && !hasStartedDelivering;
 
-        <div className="relative flex flex-col gap-6 pl-6 pt-1">
-          {/* Vertical Tracking Line */}
-          <div className="absolute bottom-4 left-2.5 top-3 w-0.5 bg-gradient-to-b from-emerald-500 via-primary to-border" />
-
-          {/* Milestone 1: Latest Purchase / Plant Loading */}
-          {latestPurchase && (
-            <div className="relative flex flex-col gap-1">
-              <span className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xs">
-                <CheckCircle2 className="size-3.5" />
+        return (
+          <div className="flex flex-col gap-4 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
+            <div className="flex items-center justify-between border-b border-foreground/6 pb-2.5">
+              <span className="text-sm font-black uppercase tracking-wider text-foreground">
+                Live Journey Timeline
               </span>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-bold text-foreground">Loaded at Factory / Plant</span>
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  {formatIST(latestPurchase.createdAt)}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Invoice #{latestPurchase.invoiceNo} &middot;{" "}
-                <span className="font-bold text-foreground">{formatCount(latestPurchase.billedBags)} Bags Billed</span>
-              </p>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Factory className="size-3 text-emerald-600" />
-                <span>Tracking ID: {latestPurchase.trackingId}</span>
-              </div>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {events.length} {events.length === 1 ? "delivery / unload" : "deliveries / unloads"}
+                {isLoaded ? ` · ${vehicle.bags} bags left` : " · 0 bags left"}
+              </span>
             </div>
-          )}
 
-          {/* Milestone 2: Highway Transit / Entered Territory */}
-          <div className="relative flex flex-col gap-1">
-            <span className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xs">
-              <CheckCircle2 className="size-3.5" />
-            </span>
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-sm font-bold text-foreground">In-Transit on Highway</span>
-              <span className="text-[11px] text-emerald-600 font-semibold">Active</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Driver: {vehicle.driverName || "Assigned"} ({vehicle.driverPhone || "No contact"}) &middot; Vehicle #{vehicle.number}
-            </p>
-          </div>
+            <div className="relative flex flex-col gap-6 pl-6 pt-1">
+              {/* Vertical Tracking Line */}
+              <div className="absolute bottom-4 left-2.5 top-3 w-0.5 bg-gradient-to-b from-emerald-500 via-primary to-border" />
+
+              {/* Milestone 1: Latest Purchase / Plant Loading */}
+              {latestPurchase && (
+                <div className="relative flex flex-col gap-1">
+                  <span className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xs">
+                    <CheckCircle2 className="size-3.5" />
+                  </span>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-bold text-foreground">Loaded at Factory / Plant</span>
+                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                      {formatIST(latestPurchase.createdAt)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Invoice #{latestPurchase.invoiceNo} &middot;{" "}
+                    <span className="font-bold text-foreground">{formatCount(latestPurchase.billedBags)} Bags Billed</span>
+                  </p>
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Factory className="size-3 text-emerald-600" />
+                    <span>Tracking ID: {latestPurchase.trackingId}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Milestone 2: Highway Transit / Entered Territory */}
+              <div className="relative flex flex-col gap-1">
+                <span
+                  className={cn(
+                    "absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full text-white shadow-xs",
+                    isHighwayActive ? "bg-emerald-600 ring-2 ring-emerald-500/30" : "bg-emerald-500",
+                  )}
+                >
+                  <CheckCircle2 className="size-3.5" />
+                </span>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-bold text-foreground">In-Transit on Highway</span>
+                  {isHighwayActive ? (
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600">
+                      <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-muted-foreground">Completed</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Driver: {vehicle.driverName || "Assigned"} ({vehicle.driverPhone || "No contact"}) &middot; Vehicle #{vehicle.number}
+                </p>
+              </div>
 
           {/* Milestone 3: Intermediate Dispatches & Unloads */}
           {events.length > 0 ? (
@@ -252,6 +271,8 @@ export default async function TruckJourneyPage({
           </div>
         </div>
       </div>
-    </div>
+    );
+  })()}
+</div>
   );
 }
