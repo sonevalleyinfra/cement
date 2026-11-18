@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 /**
  * The title row at the top of every screen (not Home). Always 48px tall, so screens with and without
  * an `action` line up. `back` is the parent screen's href: the arrow goes there (owner decision,
- * PLAN-v3: a back arrow on every inner screen). A bottom-tab screen has no `back`.
+ * PLAN-v3: a back arrow on every inner screen). Only Home and More have no `back`.
  */
 export function PageHeader({
   title,
@@ -16,7 +16,7 @@ export function PageHeader({
 }: {
   /** One or two words, or a record name on detail screens. */
   title: ReactNode;
-  /** Href of the parent screen; renders the back arrow. Leave out on a bottom-tab screen. */
+  /** Href of the parent screen; renders the back arrow. Leave out only on More. */
   back?: string;
   /** Right side: a StatusChip or TextLink(s). */
   action?: ReactNode;

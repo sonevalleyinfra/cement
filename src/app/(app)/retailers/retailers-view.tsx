@@ -123,7 +123,10 @@ export function RetailersView({
   viewerId,
   hasScopeTabs = false,
   initialScope = "all",
+  back,
 }: {
+  /** Where the back arrow of the full list goes (Home or More, by role). */
+  back: string;
   rows: Row[];
   /** Admin: add, edit and turn off shops. */
   canEdit: boolean;
@@ -175,7 +178,7 @@ export function RetailersView({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Retailers & Customers" back={fromHome ? "/retailers" : undefined} />
+      <PageHeader title="Retailers & Customers" back={fromHome ? "/retailers" : back} />
 
       {hasScopeTabs && (
         <div className="grid grid-cols-2 gap-2">

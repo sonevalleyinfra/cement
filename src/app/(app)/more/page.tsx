@@ -16,6 +16,8 @@ import {
   Users,
   Wallet,
   type LucideIcon,
+  ClipboardList,
+  Store,
 } from "lucide-react";
 import Link from "next/link";
 import { IconTile, type Tone } from "@/components/app/icon-tile";
@@ -30,6 +32,8 @@ import { cn } from "@/lib/utils";
 import { signOut } from "../dashboard/actions";
 
 const looks: Record<string, { icon: LucideIcon; tone: Tone }> = {
+  "/orders": { icon: ClipboardList, tone: "blue" },
+  "/retailers": { icon: Store, tone: "rose" },
   "/receipts": { icon: Receipt, tone: "teal" },
   "/wallet": { icon: Wallet, tone: "green" },
   "/ledger": { icon: BookOpen, tone: "rose" },
