@@ -1,54 +1,50 @@
 /**
- * The bottom tabs per role, as plain functions (no database, no request).
- * Home, Orders and More are the same for everyone; the third tab is the role's own job:
- * sales and admin Retailers, accounts Payments, logistics Stock, a shop its own Dues.
- * In addition, Ledger is available directly in the bottom navigation for roles with viewLedger permission.
- * A person with several staff roles gets the first match in that order.
+ * Navigation rules as plain functions (no database, no request).
+ * Owner decision (18 Nov 2026, PLAN-v3): the bottom bar has two items only, Home and More, for every
+ * role. Every daily job is a button on Home; More lists every screen the role may open.
  */
 import type { NavItem } from "@/components/app/bottom-nav";
 import { can, type Action } from "./permissions";
-import { hasAnyRole, hasRole, isAdmin } from "./roles";
+import { hasAnyRole, hasRole, isAdmin, type Role } from "./roles";
 
-export function thirdTab(role: string | null | undefined): NavItem {
-  if (isAdmin(role) || hasRole(role, "sales")) return { href: "/retailers", label: "Retailers", icon: "retailers" };
-  if (hasRole(role, "accounts")) return { href: "/receipts", label: "Payments", icon: "receipts" };
-  if (hasRole(role, "logistics")) return { href: "/stock", label: "Stock", icon: "stock" };
-  return { href: "/ledger", label: "Ledger", icon: "money" };
-}
-
-export function navFor(role: string | null | undefined): NavItem[] {
-  const third = thirdTab(role);
-  const items: NavItem[] = [
+export function navFor(): NavItem[] {
+  return [
     { href: "/dashboard", label: "Home", icon: "home" },
-    { href: "/orders", label: "Orders", icon: "orders" },
-    third,
+    { href: "/more", label: "More", icon: "more" },
   ];
-  if (isAdmin(role) || hasRole(role, "logistics") || hasRole(role, "accounts")) {
-    items.push({ href: "/trucks", label: "Trucks", icon: "vehicles" });
-  } else if (third.href !== "/ledger" && can(role, "viewLedger")) {
-    items.push({ href: "/ledger", label: "Ledger", icon: "money" });
-  }
-  items.push({ href: "/more", label: "More", icon: "more" });
-  return items;
 }
 
 /**
- * Where the back arrow of a screen listed in More goes: to More, unless the screen is one of this
- * role's bottom tabs (a tab has no back arrow). Payments is a tab for accounts, Stock for logistics.
+ * The list screens a role opens straight from Home (its daily work). Their back arrow goes Home.
+ * A person with several roles gets all of them.
  */
-export function backFromMore(role: string | null | undefined, href: string): string | undefined {
-  return navFor(role).some((tab) => tab.href === href) ? undefined : "/more";
+export function homeScreens(role: string | null | undefined): string[] {
+  const screens = new Set<string>(["/orders"]);
+  if (isAdmin(role)) for (const s of ["/retailers", "/trucks"]) screens.add(s);
+  if (hasRole(role, "sales")) screens.add("/ledger");
+  if (hasRole(role, "accounts")) for (const s of ["/receipts", "/trucks"]) screens.add(s);
+  if (hasRole(role, "logistics")) for (const s of ["/stock", "/trucks"]) screens.add(s);
+  if (hasRole(role, "retailer")) screens.add("/ledger");
+  return [...screens];
 }
 
-/** More does not repeat the role's own third tab (a shop's Ledger, accounts' Payments, logistics' Stock). */
-export function moreHides(role: string | null | undefined, href: string): boolean {
-  return href === thirdTab(role).href;
+/** Where a list screen's back arrow goes: Home when the role opens it from Home, otherwise More. */
+export function backFor(role: string | null | undefined, href: string): string {
+  return homeScreens(role).includes(href) ? "/dashboard" : "/more";
 }
 
-export type MoreRow = { href: string; label: string; permission?: Action; adminOnly?: boolean };
+/** `roles` is for a screen with no permission of its own (admin always passes). */
+export type MoreRow = { href: string; label: string; permission?: Action; roles?: Role[]; adminOnly?: boolean };
 export type MoreGroup = { title: string; rows: MoreRow[] };
 
 const MORE_GROUPS: MoreGroup[] = [
+  {
+    title: "Orders and shops",
+    rows: [
+      { href: "/orders", label: "Orders" },
+      { href: "/retailers", label: "Retailers", permission: "viewRetailers" },
+    ],
+  },
   {
     title: "Money",
     rows: [
@@ -66,7 +62,7 @@ const MORE_GROUPS: MoreGroup[] = [
       { href: "/stock", label: "Stock", permission: "viewStock" },
       { href: "/dispatch", label: "Dispatch", permission: "dispatch" },
       { href: "/godowns", label: "Godowns", permission: "viewStock" },
-      { href: "/trucks", label: "Trucks", permission: "dispatch" },
+      { href: "/trucks", label: "Trucks", roles: ["logistics", "accounts"] },
       { href: "/catalogue", label: "Catalogue", permission: "manageCatalogue" },
     ],
   },
@@ -93,7 +89,9 @@ export function moreGroups(role: string | null | undefined): MoreGroup[] {
     title: g.title,
     rows: g.rows.filter(
       (r) =>
-        (!r.permission || can(role, r.permission)) && (!r.adminOnly || isAdmin(role)) && !moreHides(role, r.href),
+        (!r.permission || can(role, r.permission)) &&
+        (!r.roles || hasAnyRole(role, r.roles)) &&
+        (!r.adminOnly || isAdmin(role)),
     ),
   })).filter((g) => g.rows.length > 0);
 }

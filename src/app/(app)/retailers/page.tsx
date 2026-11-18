@@ -10,6 +10,7 @@ import { hasScopeTabs, parseRetailerScope } from "@/lib/order-filter-rules";
 import { can, rolesFor } from "@/lib/permissions";
 import { pickableRetailerLogins } from "@/lib/retailer-rules";
 import { pickableSalesReps } from "@/lib/sales-rep-rules";
+import { backFor } from "@/lib/nav-rules";
 import { requireRole } from "@/lib/session";
 import { isCreditStatus } from "@/lib/shop-lists";
 import { RetailersView } from "./retailers-view";
@@ -145,6 +146,7 @@ export default async function RetailersPage({
       canRecordPayment={can(user.role, "recordReceipt")}
       canOrder={can(user.role, "placeOrder")}
       viewerId={user.id}
+      back={backFor(user.role, "/retailers")}
       // A Home shortcut's list is unscoped, with no Mine / All.
       hasScopeTabs={hasScopeTabs(user.role) && !onlyNoRep && !onlyNoLimit}
       initialScope={parseRetailerScope(sp.scope, user.role)}

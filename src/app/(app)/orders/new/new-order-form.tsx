@@ -6,6 +6,7 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { chipClass } from "@/components/app/chip";
 import { FormHint } from "@/components/app/form-hint";
 import { GroupCaption } from "@/components/app/group-caption";
+import { MoreDetails } from "@/components/app/more-details";
 import { PageHeader } from "@/components/app/page-header";
 import { PinnedAction } from "@/components/app/pinned-action";
 import { RateField } from "@/components/app/rate-field";
@@ -234,20 +235,20 @@ export function NewOrderForm({
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <Label>Retailer</Label>
+          <Label>Shop</Label>
           <button
             type="button"
             onClick={() => setOpen(true)}
             className="flex h-14 items-center justify-between gap-2 rounded-2xl bg-card px-4 text-left text-base font-semibold shadow-card ring-1 ring-foreground/6"
           >
-            {retailer ? retailer.name : <span className="text-muted-foreground">Pick retailer</span>}
+            {retailer ? retailer.name : <span className="text-muted-foreground">Pick shop</span>}
             <ChevronDown className="size-5 shrink-0 text-muted-foreground" aria-hidden />
           </button>
         </div>
       )}
 
       <div className="flex flex-col gap-1">
-        <SelectField label="Product" value={productId ?? ""} onChange={setProductId} groups={productGroups(products)} />
+        <SelectField label="Cement" value={productId ?? ""} onChange={setProductId} groups={productGroups(products)} />
         {askRate && <StockHintLine stockBags={current?.stockBags ?? null} bags={Number(bags || 0)} />}
       </div>
 
@@ -274,6 +275,8 @@ export function NewOrderForm({
         </RateField>
       )}
 
+      {/* Most orders need only the four fields above (owner decision, 18 Nov 2026). */}
+      <MoreDetails>
       <ChipChoice
         label="Deliver to"
         options={DELIVER_TO.map((v) => ({ value: v, label: DELIVER_TO_LABELS[v] }))}
@@ -344,7 +347,7 @@ export function NewOrderForm({
 
       {staff && (
         <ChipChoice
-          label="Source"
+          label="How the order came"
           options={STAFF_ORDER_SOURCES.map((v) => ({ value: v, label: ORDER_SOURCE_LABELS[v] }))}
           value={source}
           onChange={setSource}
@@ -376,6 +379,8 @@ export function NewOrderForm({
         </Field>
       )}
 
+      </MoreDetails>
+
       {error && <p className="text-sm text-destructive">{error}</p>}
       <PinnedAction>
         <FormHint>{hint}</FormHint>
@@ -384,7 +389,7 @@ export function NewOrderForm({
         </Button>
       </PinnedAction>
 
-      <Sheet open={open} onOpenChange={setOpen} title="Retailer">
+      <Sheet open={open} onOpenChange={setOpen} title="Shop">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -395,8 +400,8 @@ export function NewOrderForm({
         {groups ? (
           <div className="flex flex-col gap-6">
             {[
-              { label: "My retailers", rows: groups.mine },
-              { label: "Other retailers", rows: groups.other },
+              { label: "My shops", rows: groups.mine },
+              { label: "Other shops", rows: groups.other },
             ]
               .filter((g) => g.rows.length > 0)
               .map((g) => (

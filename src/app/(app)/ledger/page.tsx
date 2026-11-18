@@ -30,6 +30,7 @@ import {
 import { can } from "@/lib/permissions";
 import { param } from "@/lib/report-range";
 import { hasAnyRole, hasRole } from "@/lib/roles";
+import { backFor } from "@/lib/nav-rules";
 import { requireUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { walletBalance } from "@/lib/wallet-rules";
@@ -43,7 +44,7 @@ export default async function LedgerPage({ searchParams }: { searchParams: Searc
   if (!can(user.role, "viewLedger")) redirect("/dashboard");
   const staff = hasAnyRole(user.role, ["accounts", "sales"]);
   const isRetailer = hasRole(user.role, "retailer");
-  const header = <PageHeader title={staff ? "Dues" : "Ledger"} />;
+  const header = <PageHeader title={staff ? "Dues" : "Ledger"} back={backFor(user.role, "/ledger")} />;
   const empty = (title: string) => (
     <div className="flex flex-col gap-4">
       {header}

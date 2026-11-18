@@ -30,7 +30,10 @@ No real data is in the app yet, so restructuring is safe.
 | Sales, logistics and shop dues | Kept as today (16 Nov 2026): all staff see every shop's balance on the Retailers screen and in the payment form; a sales person opens the full ledger only for their own shops |
 | Notification bell | Checks every 20 seconds (17 Nov 2026), at once when the app is opened or comes back to the front, never in the background. Later (after Stage 4): replace the checking with a push from the server (web socket or similar), so alerts are instant |
 | Back arrow | Bring it back on every inner screen |
-| Owner home | Simple Home (today + needs attention) plus a separate Dashboard with charts |
+| Owner home | Simple Home (today + needs attention) plus a separate Dashboard with charts. Until Stage 3 the detail lives on "Business overview" (`/business`) |
+| Bottom bar (18 Nov 2026) | Two items only: Home and More. Every daily job is a coloured button on Home; More lists every screen |
+| Home look (17 Nov 2026) | Lively and clean: one colour per job, only things with a purpose; the old design rules are not binding |
+| Design method (18 Nov 2026) | Pictures of 3 or 4 options first; the owner picks; then build |
 | Long forms | Short form first, rest behind "More details"; credit terms stay admin-only |
 | Accountability extras | No acting as other users; Exceptions report |
 | Order of work | Safety → staff screens → dashboard and reports → extras |

@@ -93,7 +93,7 @@ export async function ScopedOrders({
   return (
     <>
       <div className="mb-4">
-        <PageHeader title="Orders" />
+        <PageHeader title="Orders" back="/dashboard" />
       </div>
       <nav aria-label="Whose orders" className="mb-4 grid grid-cols-2 gap-2">
         {scopes.map((s) => (

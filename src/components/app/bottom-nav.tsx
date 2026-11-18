@@ -19,7 +19,7 @@ const icons = {
 
 export type NavItem = { href: string; label: string; icon: keyof typeof icons };
 
-/** Fixed bottom tabs. Four at most. The active tab gets a soft orange pill. */
+/** Fixed bottom bar. Two items, Home and More (nav-rules.ts). The active one gets a soft pill. */
 export function BottomNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (

@@ -39,7 +39,7 @@ export default async function DashboardPage() {
       case "accounts":
         return <SimpleAccountsHome />;
       case "logistics":
-        return <SimpleLogisticsHome />;
+        return <SimpleLogisticsHome userId={user.id} />;
       case "retailer":
         return <SimpleRetailerHome userId={user.id} />;
       case "cash":

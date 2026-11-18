@@ -22,7 +22,7 @@ import { editTruck, setTruckActive } from "./actions";
 
 const counterClass = "rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/6";
 
-export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) {
+export function TrucksView({ rows, back }: { rows: TruckRow[]; initialTab?: string; back: string }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [sheet, setSheet] = useState<{ truck: TruckRow } | null>(null);
@@ -48,7 +48,7 @@ export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) 
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Trucks" back="/more" />
+      <PageHeader title="Trucks" back={back} />
 
       {/* Live Fleet Radar Banner */}
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-emerald-600/10 p-3.5 ring-1 ring-primary/20">

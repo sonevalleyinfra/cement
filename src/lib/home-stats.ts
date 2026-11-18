@@ -363,7 +363,7 @@ export async function getAdminHome() {
 /** A retailer login's own open orders and balance. Null if the login has no shop. */
 export async function getRetailerHome(userId: string) {
   const [shop] = await db
-    .select({ id: retailers.id })
+    .select({ id: retailers.id, salesRepId: retailers.salesRepId })
     .from(retailers)
     .where(and(eq(retailers.userId, userId), isNotNull(retailers.userId)))
     .limit(1);
@@ -383,5 +383,29 @@ export async function getRetailerHome(userId: string) {
     .where(and(eq(receipts.retailerId, shop.id), notInArray(receipts.status, [...LAST_PAYMENT_SKIPS])))
     .orderBy(desc(receipts.receivedOn), desc(receipts.createdAt))
     .limit(1);
-  return { openOrders: n(open?.c), balancePaise: n(bal?.p), lastPayment: last ?? null };
+  // The newest order with the bags sent so far (sum of its loads; a reversal is a minus row).
+  const [lastOrder] = await db
+    .select({
+      id: orders.id,
+      productName: products.name,
+      bags: orders.bags,
+      status: orders.status,
+      sentBags: sql<number>`coalesce((select sum(${dispatches.bags}) from ${dispatches} where ${dispatches.orderId} = ${orders.id}), 0)`.mapWith(Number),
+    })
+    .from(orders)
+    .innerJoin(products, eq(products.id, orders.productId))
+    .where(eq(orders.retailerId, shop.id))
+    .orderBy(desc(orders.createdAt))
+    .limit(1);
+  const [rep] = shop.salesRepId
+    ? await db.select({ name: user.name, phone: user.phone }).from(user).where(eq(user.id, shop.salesRepId)).limit(1)
+    : [];
+  return {
+    openOrders: n(open?.c),
+    balancePaise: n(bal?.p),
+    lastPayment: last ?? null,
+    lastOrder: lastOrder ?? null,
+    /** The shop's sales person, to call. Null when none is set. */
+    salesRep: rep ?? null,
+  };
 }

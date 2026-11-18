@@ -47,6 +47,12 @@ export async function getOwnerToday(w: HomeWindows) {
   };
 }
 
+/** Accounts home: money collected today (cash and online) and what all shops owe now. */
+export async function getMoneyToday(w: HomeWindows) {
+  const [cash, dues] = await Promise.all([collected(rangeOf(w.today, w.today)), dueRows()]);
+  return { collectedPaise: cash.totalPaise, duesPaise: totalDuesPaise(dues) };
+}
+
 export async function getOwnerMonth(w: HomeWindows) {
   const [sales, prevSales, purchases, profit, prevProfit, cash, prevCash] = await Promise.all([
     getSalesReport(w.mtd),
@@ -83,6 +89,9 @@ export async function getOwnerRisk(w: HomeWindows, now: Date) {
   const overduePaise = overdue.reduce((n, r) => n + r.overduePaise, 0);
   return {
     outstandingPaise: outstanding,
+    /** Shops past their credit days, and how much of their dues is late. */
+    overdueShops: overdue.filter((r) => r.overduePaise > 0).length,
+    overduePaise,
     overduePct: overduePercent(overduePaise, outstanding),
     dso: dsoDays(outstanding, sales90.valuePaise),
     stock: stockValue(balances, purchaseCostTotals(costs)),

@@ -13,7 +13,7 @@ import { isRetailerOnly } from "@/lib/order-access";
 import { can, isStaff } from "@/lib/permissions";
 import { MODE_LABELS, receiptChip } from "@/lib/receipt-rules";
 import { istStartOf } from "@/lib/report-range";
-import { backFromMore } from "@/lib/nav-rules";
+import { backFor } from "@/lib/nav-rules";
 import { requireUser } from "@/lib/session";
 
 /**
@@ -60,7 +60,7 @@ export default async function ReceiptsPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Payments"
-        back={backFromMore(user.role, "/receipts")}
+        back={backFor(user.role, "/receipts")}
         action={
           staff && (
             <>

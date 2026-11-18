@@ -79,7 +79,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="mb-4">
-        <PageHeader title={focused ? ORDER_FILTER_LABELS.rate : "Orders"} back={focused ? "/orders" : undefined} />
+        <PageHeader title={focused ? ORDER_FILTER_LABELS.rate : "Orders"} back={focused ? "/orders" : "/dashboard"} />
       </div>
       {!focused && (
         <div className="mb-3">
