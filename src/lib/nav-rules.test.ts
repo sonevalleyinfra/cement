@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moreGroups, moreHides, navFor, thirdTab } from "./nav-rules";
+import { backFromMore, moreGroups, moreHides, navFor, thirdTab } from "./nav-rules";
 
 describe("navFor", () => {
   it("gives each role its third tab", () => {
@@ -14,13 +14,13 @@ describe("navFor", () => {
     expect(thirdTab("accounts,logistics").href).toBe("/receipts");
     expect(thirdTab("sales,accounts").href).toBe("/retailers");
   });
-  it("includes Ledger only for roles with viewLedger permission", () => {
+  it("includes Ledger or Trucks for staff with relevant permissions", () => {
     // logistics, sales, and accounts now have bottom nav tabs:
-    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/more"]);
+    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/trucks", "/more"]);
     expect(navFor("sales").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/ledger", "/more"]);
-    expect(navFor("accounts").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/receipts", "/ledger", "/more"]);
-    // roles with viewLedger permission and bottom nav:
-    expect(navFor("admin").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/ledger", "/more"]);
+    expect(navFor("accounts").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/receipts", "/trucks", "/more"]);
+    // roles with viewLedger / dispatch permission and bottom nav:
+    expect(navFor("admin").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/trucks", "/more"]);
     expect(navFor("retailer").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/ledger", "/more"]);
   });
 });
@@ -82,5 +82,21 @@ describe("moreGroups", () => {
     for (const role of ["admin", "sales", "accounts", "logistics", "retailer", "accounts,logistics"]) {
       expect(moreGroups(role).every((g) => g.rows.length > 0)).toBe(true);
     }
+  });
+});
+
+describe("backFromMore", () => {
+  it("goes back to More from a screen that is not one of the role's tabs", () => {
+    expect(backFromMore("admin", "/stock")).toBe("/more");
+    expect(backFromMore("admin", "/receipts")).toBe("/more");
+    expect(backFromMore("sales", "/receipts")).toBe("/more");
+    expect(backFromMore("logistics", "/dispatch")).toBe("/more");
+  });
+
+  it("has no back arrow on the role's own tab", () => {
+    expect(backFromMore("accounts", "/receipts")).toBeUndefined();
+    expect(backFromMore("logistics", "/stock")).toBeUndefined();
+    expect(backFromMore("admin", "/retailers")).toBeUndefined();
+    expect(backFromMore("retailer", "/ledger")).toBeUndefined();
   });
 });

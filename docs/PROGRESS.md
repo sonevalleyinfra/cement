@@ -50,7 +50,7 @@ One line per merged PR: date · PR · what changed · kanban task.
 
 A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continue at **Next up**.
 
-**Next up:** Stage 2 (simple staff screens). Start with the back arrow, then the home screens; show the owner before/after for every screen.
+**Next up:** Stage 2, home screens (rebuild on the shared components); show the owner before/after for every screen.
 
 - [x] Stage 0: plan and spec documented
 - [x] Stage 1: safety and accountability
@@ -66,5 +66,10 @@ A fresh session starts here: read `docs/PLAN-v3.md`, then this list, and continu
   - [x] 9b Database tests for the main saves: the real actions run against the test database (`src/test/save-actions.db.test.ts`; sign-in and database swapped by `src/test/save-kit.ts`)
   - [x] 10 Bell checks every 20 seconds (not in the background) and counts all unread; stale cheque test titles fixed
 - [ ] Stage 2: simple staff screens (back arrow, homes, short forms, plain words, one success pattern)
+  - [x] Back arrow on every inner screen (More screens go back to More, Notifications to Home, no arrow on a role's own tab)
+  - [ ] Home screens on the shared components
+  - [ ] Short forms with "More details"
+  - [ ] Plain words (no jargon, no Hindi or Hinglish)
+  - [ ] One success pattern
 - [ ] Stage 3: owner Dashboard, charts, new reports, Exceptions report, Excel and PDF
 - [ ] Stage 4: day book, WhatsApp statement, sales targets, proof of delivery, instant alerts (push instead of the 20-second check)

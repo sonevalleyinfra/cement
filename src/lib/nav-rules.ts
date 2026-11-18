@@ -23,11 +23,21 @@ export function navFor(role: string | null | undefined): NavItem[] {
     { href: "/orders", label: "Orders", icon: "orders" },
     third,
   ];
-  if (third.href !== "/ledger" && can(role, "viewLedger")) {
+  if (isAdmin(role) || hasRole(role, "logistics") || hasRole(role, "accounts")) {
+    items.push({ href: "/trucks", label: "Trucks", icon: "vehicles" });
+  } else if (third.href !== "/ledger" && can(role, "viewLedger")) {
     items.push({ href: "/ledger", label: "Ledger", icon: "money" });
   }
   items.push({ href: "/more", label: "More", icon: "more" });
   return items;
+}
+
+/**
+ * Where the back arrow of a screen listed in More goes: to More, unless the screen is one of this
+ * role's bottom tabs (a tab has no back arrow). Payments is a tab for accounts, Stock for logistics.
+ */
+export function backFromMore(role: string | null | undefined, href: string): string | undefined {
+  return navFor(role).some((tab) => tab.href === href) ? undefined : "/more";
 }
 
 /** More does not repeat the role's own third tab (a shop's Ledger, accounts' Payments, logistics' Stock). */

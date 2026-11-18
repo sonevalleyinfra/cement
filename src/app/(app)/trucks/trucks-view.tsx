@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Truck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { CallButton } from "@/components/app/call-button";
@@ -48,7 +48,21 @@ export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) 
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Trucks" />
+      <PageHeader title="Trucks" back="/more" />
+
+      {/* Live Fleet Radar Banner */}
+      <div className="flex items-center justify-between gap-2 rounded-2xl bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-emerald-600/10 p-3.5 ring-1 ring-primary/20">
+        <div className="flex items-center gap-2">
+          <span className="relative flex size-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+          </span>
+          <span className="text-xs font-black tracking-wide uppercase text-foreground">Live Fleet Radar</span>
+        </div>
+        <span className="text-xs font-semibold text-muted-foreground">
+          {visibleRows.length} active {visibleRows.length === 1 ? "truck" : "trucks"} on road
+        </span>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Loaded trucks" value={formatCount(visibleRows.length)} className={counterClass} />
@@ -130,6 +144,97 @@ export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) 
   );
 }
 
+function SimpleTruckGraphic({ bags, products }: { bags: number; products?: { name: string; bags: number }[] }) {
+  const isMulti = (products?.length ?? 0) > 1;
+  const p1 = products?.[0];
+  const p2 = products?.[1];
+
+  return (
+    <div className="relative overflow-hidden rounded-xl bg-gradient-to-b from-muted/60 to-muted/20 p-2.5 ring-1 ring-foreground/6">
+      <div className="flex items-center justify-between pb-1 text-[11px] font-semibold text-muted-foreground">
+        <span className="flex items-center gap-1 font-bold text-foreground">
+          <Truck className="size-3.5 text-primary" />
+          Cargo Bed
+        </span>
+        <span className="font-bold text-primary tabular-nums">{formatCount(bags)} Bags Loaded</span>
+      </div>
+      <svg
+        viewBox="0 0 240 64"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-16 w-full max-w-sm mx-auto"
+        role="img"
+        aria-label="Loaded Truck Graphic"
+      >
+        {/* Road line with subtle dashes */}
+        <line x1="10" y1="58" x2="230" y2="58" stroke="currentColor" strokeWidth="2" strokeDasharray="6 4" className="text-muted-foreground/30" />
+        
+        {/* Truck Cabin (Right facing) */}
+        <rect x="165" y="24" width="46" height="30" rx="6" className="fill-blue-600 dark:fill-blue-500" />
+        <path d="M190 26 H207 C209.5 26 211 28 211 31 L211 39 H190 V26 Z" className="fill-sky-100 dark:fill-sky-950" />
+        {/* Headlight */}
+        <circle cx="211" cy="46" r="2.5" className="fill-amber-300" />
+        {/* Front bumper */}
+        <rect x="207" y="50" width="6" height="4" rx="1.5" className="fill-foreground/40" />
+
+        {/* Flatbed Chassis */}
+        <rect x="18" y="48" width="150" height="6" rx="2" className="fill-foreground/50" />
+        <rect x="16" y="52" width="195" height="2" className="fill-foreground/20" />
+
+        {/* Cargo Bed / Sacks */}
+        {bags > 0 ? (
+          isMulti ? (
+            <g>
+              {/* Product 1 stack (rear/left) */}
+              <rect x="24" y="20" width="64" height="28" rx="4" className="fill-emerald-600/90" />
+              <rect x="27" y="23" width="58" height="7" rx="2" className="fill-white/30" />
+              <rect x="27" y="32" width="58" height="7" rx="2" className="fill-white/30" />
+              <rect x="27" y="41" width="58" height="5" rx="1.5" className="fill-white/20" />
+              <text x="56" y="37" textAnchor="middle" fontSize="9" fontWeight="900" fill="white">
+                {p1?.bags ?? 0}
+              </text>
+
+              {/* Product 2 stack (front/right) */}
+              <rect x="92" y="20" width="68" height="28" rx="4" className="fill-indigo-600/90" />
+              <rect x="95" y="23" width="62" height="7" rx="2" className="fill-white/30" />
+              <rect x="95" y="32" width="62" height="7" rx="2" className="fill-white/30" />
+              <rect x="95" y="41" width="62" height="5" rx="1.5" className="fill-white/20" />
+              <text x="126" y="37" textAnchor="middle" fontSize="9" fontWeight="900" fill="white">
+                {p2?.bags ?? 0}
+              </text>
+            </g>
+          ) : (
+            <g>
+              {/* Single product stack */}
+              <rect x="24" y="18" width="136" height="30" rx="4" className="fill-primary/90" />
+              <rect x="28" y="22" width="128" height="7" rx="2" className="fill-white/25" />
+              <rect x="28" y="31" width="128" height="7" rx="2" className="fill-white/25" />
+              <rect x="28" y="40" width="128" height="6" rx="2" className="fill-white/15" />
+              <text x="92" y="36" textAnchor="middle" fontSize="10" fontWeight="900" fill="white">
+                {formatCount(bags)} Bags
+              </text>
+            </g>
+          )
+        ) : (
+          <rect x="24" y="44" width="136" height="4" rx="2" className="fill-muted-foreground/30" />
+        )}
+
+        {/* Wheels with rim details */}
+        <g>
+          <circle cx="44" cy="54" r="7" className="fill-zinc-800 dark:fill-zinc-900" />
+          <circle cx="44" cy="54" r="3" className="fill-zinc-400" />
+          <circle cx="64" cy="54" r="7" className="fill-zinc-800 dark:fill-zinc-900" />
+          <circle cx="64" cy="54" r="3" className="fill-zinc-400" />
+          <circle cx="140" cy="54" r="7" className="fill-zinc-800 dark:fill-zinc-900" />
+          <circle cx="140" cy="54" r="3" className="fill-zinc-400" />
+          <circle cx="192" cy="54" r="7" className="fill-zinc-800 dark:fill-zinc-900" />
+          <circle cx="192" cy="54" r="3" className="fill-zinc-400" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }) {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -145,9 +250,17 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
   }
 
   return (
-    <div className={cn("flex flex-col gap-2.5 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6", !r.active && "opacity-75")}>
+    <div className={cn("flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6", !r.active && "opacity-75")}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-base font-bold tracking-wide">{r.number}</span>
+        <Link href={`/trucks/${r.id}`} className="group flex items-center gap-2 hover:opacity-80">
+          <span className="text-base font-extrabold tracking-wide group-hover:underline">{r.number}</span>
+          {r.active && r.bags > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              Active
+            </span>
+          )}
+        </Link>
         {r.active ? (
           <span className="tabular text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
             {bagsText(r.bags)}
@@ -156,6 +269,11 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
           <StatusChip status="cancelled" label="Hidden" />
         )}
       </div>
+
+      {/* Visual Animated Truck Bed Graphic */}
+      <Link href={`/trucks/${r.id}`} className="block transition-transform active:scale-[0.99]">
+        <SimpleTruckGraphic bags={r.bags} products={r.products} />
+      </Link>
 
       {/* Product breakdown with name and quantity */}
       {r.products && r.products.length > 0 && (
@@ -174,6 +292,7 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
         </div>
       )}
 
+      {/* Driver Info & Quick Call */}
       <div className="flex items-center justify-between gap-2 border-t border-foreground/6 pt-2 text-sm text-muted-foreground">
         <div>
           <p className="font-medium text-foreground">{r.driverName || "No driver"}</p>
@@ -184,44 +303,56 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {r.bags > 0 ? (
-          <div className="flex items-center gap-1.5">
-            <Link
-              href={`/stock/transfer?from=vehicle:${r.id}`}
-              className="inline-flex min-h-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95"
-            >
-              Unload to Godown
-            </Link>
-            <Link
-              href={`/dispatch?truck=${encodeURIComponent(r.number)}`}
-              className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground shadow-xs transition-all hover:bg-primary/90 active:scale-95"
-            >
-              Dispatch
-            </Link>
-          </div>
-        ) : (
-          <span />
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
-          <Button type="button" variant="outline" size="sm" onClick={onEdit} aria-label={`Edit ${r.number}`}>
-            <Pencil className="size-3.5" />
-            Edit
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={toggle}>
-            {r.active ? (
-              <>
-                <EyeOff className="size-3.5" />
-                Hide
-              </>
-            ) : (
-              <>
-                <Eye className="size-3.5" />
-                Unhide
-              </>
-            )}
-          </Button>
+      {/* Track Live Journey Link */}
+      <Link
+        href={`/trucks/${r.id}`}
+        className="flex items-center justify-between rounded-xl bg-primary/8 px-3 py-2 text-xs font-bold text-primary transition-all hover:bg-primary/15 active:scale-[0.99]"
+      >
+        <span className="flex items-center gap-1.5">
+          <Truck className="size-3.5" />
+          Track Live Journey
+        </span>
+        <ChevronRight className="size-4" />
+      </Link>
+
+      {/* 1-Tap Operational Action Buttons */}
+      {r.bags > 0 && (
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <Link
+            href={`/stock/transfer?from=vehicle:${r.id}`}
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-primary/25 bg-primary/10 px-3 py-2 text-xs font-bold text-primary transition-all hover:bg-primary/20 active:scale-95 shadow-2xs"
+          >
+            <Building2 className="size-3.5" />
+            Unload to Godown
+          </Link>
+          <Link
+            href={`/dispatch?truck=${encodeURIComponent(r.number)}`}
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground shadow-xs transition-all hover:bg-primary/90 active:scale-95"
+          >
+            <Truck className="size-3.5" />
+            Dispatch / Divert
+          </Link>
         </div>
+      )}
+
+      <div className="flex items-center justify-end gap-1.5 pt-0.5 border-t border-foreground/5">
+        <Button type="button" variant="outline" size="sm" onClick={onEdit} aria-label={`Edit ${r.number}`}>
+          <Pencil className="size-3.5" />
+          Edit
+        </Button>
+        <Button type="button" variant="outline" size="sm" disabled={pending} onClick={toggle}>
+          {r.active ? (
+            <>
+              <EyeOff className="size-3.5" />
+              Hide
+            </>
+          ) : (
+            <>
+              <Eye className="size-3.5" />
+              Unhide
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );

@@ -39,7 +39,7 @@ export default async function ApprovalsPage() {
   ]);
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Approvals" />
+      <PageHeader title="Approvals" back="/more" />
       {rows.length === 0 ? (
         <EmptyState title="Nothing waiting for approval" />
       ) : (

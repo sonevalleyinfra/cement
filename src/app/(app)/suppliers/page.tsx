@@ -22,7 +22,7 @@ export default async function SuppliersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Suppliers" />
+      <PageHeader title="Suppliers" back="/more" />
       {suppliers.length === 0 ? (
         <EmptyState title="Add a brand in Catalogue" icon={Factory} tone="amber" />
       ) : (

@@ -37,7 +37,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Activity" />
+      <PageHeader title="Activity" back="/more" />
       <RangeForm from={range.from} to={range.to}>
         <div className="grid grid-cols-2 gap-2">
           <FilterSelect
