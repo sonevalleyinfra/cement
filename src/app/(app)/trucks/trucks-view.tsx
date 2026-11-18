@@ -48,7 +48,7 @@ export function TrucksView({ rows }: { rows: TruckRow[]; initialTab?: string }) 
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Trucks" />
+      <PageHeader title="Trucks" back="/more" />
 
       {/* Live Fleet Radar Banner */}
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-emerald-600/10 p-3.5 ring-1 ring-primary/20">

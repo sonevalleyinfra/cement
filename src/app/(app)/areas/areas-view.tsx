@@ -62,7 +62,7 @@ export function AreasView({ rows }: { rows: Row[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Areas" />
+      <PageHeader title="Areas" back="/more" />
       {rows.length === 0 ? (
         <EmptyState title="No areas" />
       ) : (

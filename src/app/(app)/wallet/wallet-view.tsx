@@ -101,7 +101,7 @@ export function WalletView({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Cash" />
+      <PageHeader title="Cash" back="/more" />
       <ListCard
         index={0}
         title="My cash held"

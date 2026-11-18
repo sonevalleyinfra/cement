@@ -22,6 +22,7 @@ export default async function NotificationsPage() {
   const header = (
     <PageHeader
       title="Notifications"
+      back="/dashboard"
       action={
         hasUnread && (
           <form action={markAllRead}>

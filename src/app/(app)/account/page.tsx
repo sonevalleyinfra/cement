@@ -8,7 +8,7 @@ export default async function AccountPage() {
   const { user } = await requireUser();
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Account" />
+      <PageHeader title="Account" back="/more" />
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>

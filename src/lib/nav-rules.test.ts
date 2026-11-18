@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moreGroups, moreHides, navFor, thirdTab } from "./nav-rules";
+import { backFromMore, moreGroups, moreHides, navFor, thirdTab } from "./nav-rules";
 
 describe("navFor", () => {
   it("gives each role its third tab", () => {
@@ -82,5 +82,21 @@ describe("moreGroups", () => {
     for (const role of ["admin", "sales", "accounts", "logistics", "retailer", "accounts,logistics"]) {
       expect(moreGroups(role).every((g) => g.rows.length > 0)).toBe(true);
     }
+  });
+});
+
+describe("backFromMore", () => {
+  it("goes back to More from a screen that is not one of the role's tabs", () => {
+    expect(backFromMore("admin", "/stock")).toBe("/more");
+    expect(backFromMore("admin", "/receipts")).toBe("/more");
+    expect(backFromMore("sales", "/receipts")).toBe("/more");
+    expect(backFromMore("logistics", "/dispatch")).toBe("/more");
+  });
+
+  it("has no back arrow on the role's own tab", () => {
+    expect(backFromMore("accounts", "/receipts")).toBeUndefined();
+    expect(backFromMore("logistics", "/stock")).toBeUndefined();
+    expect(backFromMore("admin", "/retailers")).toBeUndefined();
+    expect(backFromMore("retailer", "/ledger")).toBeUndefined();
   });
 });
