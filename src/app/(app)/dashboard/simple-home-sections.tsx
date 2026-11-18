@@ -2,6 +2,7 @@ import {
   BadgeCheck,
   Building2,
   ChevronRight,
+  ClipboardList,
   FileSpreadsheet,
   History,
   IndianRupee,
@@ -109,10 +110,12 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* The two things a sales person does all day. */}
+      {/* Every daily job is a button here (owner rule: never only in the bottom bar). */}
       <div className="grid grid-cols-2 gap-3">
         <ActionTile href="/orders/new" title="New order" icon={ShoppingCart} color="blue" />
         <ActionTile href="/receipts/new" title="Collect payment" icon={IndianRupee} color="green" />
+        <ActionTile href="/orders" title="My orders" icon={ClipboardList} color="violet" badge={s.pendingRate} />
+        <ActionTile href="/ledger" title="Shop dues" icon={Store} color="rose" badge={s.retailersWithDues} />
       </div>
 
       {/* Only while there is something to do. */}

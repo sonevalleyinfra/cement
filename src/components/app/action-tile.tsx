@@ -4,16 +4,18 @@ import { cn } from "@/lib/utils";
 
 /**
  * Home is built from these. Each job has its own strong colour, the same everywhere, so people who
- * do not read much can find it by colour and picture: blue = orders, green = money coming in,
- * amber = something waiting for you, rose = money owed.
+ * do not read much can find it by colour and picture: blue = new order, violet = orders list,
+ * green = money coming in, rose = money owed, amber = something waiting for you.
+ * Every daily job is a tile on Home (owner rule): the bottom bar is never the only way to a daily job.
  */
-export type JobColor = "blue" | "green" | "amber" | "rose";
+export type JobColor = "blue" | "green" | "amber" | "rose" | "violet";
 
 const solid: Record<JobColor, string> = {
   blue: "bg-gradient-to-br from-blue-500 to-blue-700 shadow-blue-600/25",
   green: "bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-emerald-600/25",
   amber: "bg-gradient-to-br from-amber-500 to-orange-600 shadow-orange-600/25",
   rose: "bg-gradient-to-br from-rose-500 to-rose-700 shadow-rose-600/25",
+  violet: "bg-gradient-to-br from-violet-500 to-violet-700 shadow-violet-600/25",
 };
 
 const soft: Record<JobColor, { box: string; icon: string; text: string }> = {
@@ -21,18 +23,32 @@ const soft: Record<JobColor, { box: string; icon: string; text: string }> = {
   green: { box: "bg-emerald-50 ring-emerald-200", icon: "bg-emerald-600", text: "text-emerald-900" },
   amber: { box: "bg-amber-50 ring-amber-300", icon: "bg-amber-500", text: "text-amber-950" },
   rose: { box: "bg-rose-50 ring-rose-200", icon: "bg-rose-600", text: "text-rose-900" },
+  violet: { box: "bg-violet-50 ring-violet-200", icon: "bg-violet-600", text: "text-violet-900" },
 };
 
 /**
  * One of a role's main jobs: a big coloured button with a large picture and two or three words.
- * Two side by side at the top of Home; nothing else on the screen is this loud.
+ * Two per row at the top of Home; nothing else on the screen is this loud. `badge` is a small count
+ * in the corner (things waiting inside), shown only above zero.
  */
-export function ActionTile({ href, title, icon: Icon, color }: { href: string; title: string; icon: LucideIcon; color: JobColor }) {
+export function ActionTile({
+  href,
+  title,
+  icon: Icon,
+  color,
+  badge = 0,
+}: {
+  href: string;
+  title: string;
+  icon: LucideIcon;
+  color: JobColor;
+  badge?: number;
+}) {
   return (
     <Link
       href={href}
       className={cn(
-        "relative flex min-h-36 flex-col justify-between overflow-hidden rounded-3xl p-4 text-white shadow-lg transition-transform duration-200 ease-out active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "relative flex min-h-32 flex-col justify-between overflow-hidden rounded-3xl p-4 text-white shadow-lg transition-transform duration-200 ease-out active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         solid[color],
       )}
     >
@@ -41,6 +57,11 @@ export function ActionTile({ href, title, icon: Icon, color }: { href: string; t
       <span aria-hidden className="relative inline-flex size-14 items-center justify-center rounded-2xl bg-white/20">
         <Icon className="size-8" strokeWidth={2.2} />
       </span>
+      {badge > 0 && (
+        <span className="absolute top-3 right-3 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-2 text-sm font-bold text-foreground shadow-sm">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
       <span className="relative text-xl leading-tight font-bold">{title}</span>
     </Link>
   );
