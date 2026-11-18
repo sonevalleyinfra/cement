@@ -12,10 +12,13 @@ if (process.platform === "win32") {
   } catch {}
   const cache = new Map<string, string>();
   const origLookup = dns.lookup;
-  // @ts-expect-error Windows DNS fix
-  dns.lookup = function (hostname: string, options: any, callback: any) {
+  dns.lookup = ((
+    hostname: string,
+    options: dns.LookupOptions | number | null | undefined | ((err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void),
+    callback?: (err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void,
+  ) => {
     let cb = callback;
-    let opt = options;
+    let opt = (options && typeof options === "object" ? options : {}) as dns.LookupOptions;
     if (typeof options === "function") {
       cb = options;
       opt = {};
@@ -23,21 +26,29 @@ if (process.platform === "win32") {
     if (typeof hostname === "string" && hostname.includes("neon.tech")) {
       const cached = cache.get(hostname);
       if (cached) {
-        if (opt && opt.all) return cb(null, [{ address: cached, family: 4 }]);
-        return cb(null, cached, 4);
+        if (opt.all) {
+          cb?.(null, [{ address: cached, family: 4 }]);
+          return;
+        }
+        cb?.(null, cached, 4);
+        return;
       }
       dns.resolve4(hostname, (err, addrs) => {
         if (!err && addrs && addrs[0]) {
           cache.set(hostname, addrs[0]);
-          if (opt && opt.all) return cb(null, addrs.map((a) => ({ address: a, family: 4 })));
-          return cb(null, addrs[0], 4);
+          if (opt.all) {
+            cb?.(null, addrs.map((a) => ({ address: a, family: 4 })));
+            return;
+          }
+          cb?.(null, addrs[0], 4);
+          return;
         }
-        origLookup(hostname, opt, cb);
+        Reflect.apply(origLookup, dns, [hostname, opt, cb]);
       });
       return;
     }
-    origLookup(hostname, opt, cb);
-  };
+    Reflect.apply(origLookup, dns, [hostname, opt, cb]);
+  }) as typeof dns.lookup;
 }
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";

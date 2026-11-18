@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, ChevronDown, ChevronRight, Eye, EyeOff, Package, Pencil, Phone, Truck } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Truck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { CallButton } from "@/components/app/call-button";

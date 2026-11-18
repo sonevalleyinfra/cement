@@ -457,8 +457,8 @@ export async function getTruckJourney(vehicleId: string): Promise<TruckJourney |
     });
   }
 
-  // Sort events chronologically descending
-  events.sort((a, b) => b.date.getTime() - a.date.getTime());
+  // Sort events chronologically ascending (natural timeline flow from past to present)
+  events.sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const totalDispatchedBags = dispatchRows.reduce((sum, d) => sum + d.bags, 0);
   const totalTransferredBags = transferRows.reduce((sum, t) => (t.bags < 0 ? sum + Math.abs(t.bags) : sum), 0);
