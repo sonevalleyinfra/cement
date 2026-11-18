@@ -21,7 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { ActionTile, TodoRow } from "@/components/app/action-tile";
+import { ActionTile, RowCard, TodoRow } from "@/components/app/action-tile";
 import { CallButton } from "@/components/app/call-button";
 import { EmptyState } from "@/components/app/empty-state";
 import { RefreshButton } from "@/components/app/refresh-button";
@@ -109,78 +109,64 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
   const moreShops = s.retailersWithDues - collect.length;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       {/* Every daily job is a button here (owner rule: never only in the bottom bar). */}
       <div className="grid grid-cols-2 gap-3">
         <ActionTile href="/orders/new" title="New order" icon={ShoppingCart} color="blue" />
         <ActionTile href="/receipts/new" title="Collect payment" icon={IndianRupee} color="green" />
-        <ActionTile href="/orders" title="My orders" icon={ClipboardList} color="violet" badge={s.pendingRate} />
-        <ActionTile href="/ledger" title="Shop dues" icon={Store} color="rose" badge={s.retailersWithDues} />
+        <ActionTile href="/orders" title="My orders" icon={ClipboardList} color="violet" />
+        <ActionTile href="/ledger" title="Shop dues" icon={Store} color="rose" />
       </div>
 
       {/* Only while there is something to do. */}
-      {s.pendingRate > 0 && (
-        <TodoRow
-          href="/orders?show=rate"
-          icon={Tag}
-          color="amber"
-          title={s.pendingRate === 1 ? "1 order needs a rate" : `${num(s.pendingRate)} orders need a rate`}
-          action="Fill rate"
-        />
-      )}
-      {cash.heldPaise > 0 && (
-        <TodoRow href="/wallet" icon={Wallet} color="green" title="Cash with me" value={money(cash.heldPaise)} action="Hand over" />
-      )}
+      <RowCard>
+        {s.pendingRate > 0 && (
+          <TodoRow
+            href="/orders?show=rate"
+            icon={Tag}
+            color="amber"
+            title={s.pendingRate === 1 ? "1 order needs a rate" : `${num(s.pendingRate)} orders need a rate`}
+          />
+        )}
+        {cash.heldPaise > 0 && <TodoRow href="/wallet" icon={Wallet} color="green" title="Cash to hand over" value={money(cash.heldPaise)} />}
+      </RowCard>
 
       {/* Who to collect from: most overdue first. Tap the shop to take a payment, the phone to call. */}
       {collect.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <h2 className="px-1 pt-1 text-lg font-bold">Collect from</h2>
-          {collect.map((r) => (
-            <CollectCard key={r.retailerId} row={r} />
-          ))}
-          {moreShops > 0 && (
-            <Link
-              href="/ledger"
-              className="flex min-h-12 items-center justify-center gap-1 rounded-2xl bg-card text-base font-semibold text-primary ring-1 ring-foreground/10 transition-transform duration-200 ease-out active:scale-[0.98]"
-            >
-              {num(moreShops)} more {moreShops === 1 ? "shop" : "shops"}
-              <ChevronRight aria-hidden className="size-5" />
-            </Link>
-          )}
+        <div className="flex flex-col gap-2">
+          <h2 className="px-1 text-base font-bold">Collect from</h2>
+          <RowCard>
+            {collect.map((r) => (
+              <CollectRow key={r.retailerId} row={r} />
+            ))}
+            {moreShops > 0 && (
+              <Link href="/ledger" className="flex min-h-12 items-center justify-center text-sm font-semibold text-primary active:bg-muted">
+                {num(moreShops)} more {moreShops === 1 ? "shop" : "shops"}
+              </Link>
+            )}
+          </RowCard>
         </div>
       )}
     </div>
   );
 }
 
-/** One shop that owes money: name, how much, how late. The card opens the payment form; the phone dials. */
-function CollectCard({ row }: { row: { retailerId: string; name: string; place: string; phone: string; duePaise: number; overduePaise: number; daysPastTerms?: number } }) {
+/** One shop that owes money. The row opens the payment form for it; the phone dials the shop. */
+function CollectRow({ row }: { row: { retailerId: string; name: string; phone: string; duePaise: number; overduePaise: number; daysPastTerms?: number } }) {
   const late = row.overduePaise > 0;
   return (
-    <div className="relative flex items-center gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6">
-      <span aria-hidden className={cn("w-1.5 self-stretch rounded-full", late ? "bg-rose-500" : "bg-emerald-500")} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+    <div className="relative flex min-h-16 items-center gap-2 py-2 pr-2 pl-4">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Link
           href={`/receipts/new?retailer=${row.retailerId}`}
-          className="truncate text-base font-bold outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
+          className="truncate text-base font-semibold outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
         >
           {row.name}
         </Link>
-        <span className="tabular text-2xl leading-tight font-bold tracking-tight">{money(row.duePaise)}</span>
-        {late ? (
-          <span className="text-sm font-semibold text-rose-600">
-            {money(row.overduePaise)} late{row.daysPastTerms ? ` by ${daysText(row.daysPastTerms)}` : ""}
-          </span>
-        ) : (
-          row.place && <span className="text-sm text-muted-foreground">{row.place}</span>
-        )}
+        {late && <span className="text-xs font-medium text-rose-600">Late by {daysText(row.daysPastTerms ?? 0)}</span>}
       </div>
-      <CallButton
-        phone={row.phone}
-        shop={row.name}
-        className="relative z-10 size-12 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
-      />
+      <span className="tabular shrink-0 text-lg font-bold">{money(row.duePaise)}</span>
+      <CallButton phone={row.phone} shop={row.name} className="relative z-10 size-12 text-emerald-700" />
     </div>
   );
 }
