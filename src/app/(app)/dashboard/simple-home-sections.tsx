@@ -3,11 +3,10 @@ import {
   Building2,
   ChevronRight,
   ClipboardList,
-  FileSpreadsheet,
-  History,
   IndianRupee,
   Package,
   PackagePlus,
+  Phone,
   Receipt,
   ShoppingCart,
   Store,
@@ -18,13 +17,11 @@ import {
   Users,
   Wallet,
   Warehouse,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { ActionTile, RowCard, TodoRow } from "@/components/app/action-tile";
+import { ActionTile, HomeHeading, HomeStat, RowCard, TodoRow } from "@/components/app/action-tile";
 import { CallButton } from "@/components/app/call-button";
 import { EmptyState } from "@/components/app/empty-state";
-import { RefreshButton } from "@/components/app/refresh-button";
 import { StatusChip } from "@/components/app/status-chip";
 import { isOrderStatus } from "@/lib/order-rules";
 import {
@@ -37,7 +34,7 @@ import {
 } from "@/lib/home-stats";
 import { NO_LIMIT_FILTER, NO_REP_FILTER } from "@/lib/home-rules";
 import { formatINR, formatINRCompact } from "@/lib/money";
-import { getCashWithStaff, getOwnerMonth, getOwnerRisk, getOwnerToday, getTopOverdue } from "@/lib/owner-home";
+import { getCashWithStaff, getMoneyToday, getOwnerMonth, getOwnerRisk, getOwnerToday, getTopOverdue } from "@/lib/owner-home";
 import { cashAgePill, deltaPct, homeWindows, supplierValue } from "@/lib/owner-home-rules";
 import { overridesMonthText } from "@/lib/credit-check-rules";
 import { rangeQuery } from "@/lib/report-range";
@@ -48,56 +45,6 @@ import { daysText, formatCount, shopsText } from "@/lib/words";
 const num = (v: number) => new Intl.NumberFormat("en-IN").format(v);
 const money = (p: number) => formatINR(p, { hidePaise: true });
 const short = (p: number) => (Math.abs(p) >= 1_00_000_00 ? formatINRCompact(p) : money(p));
-
-/* -------------------------------------------------------------------------
-   Reusable Portrait Action Card (Exact match to Image 2: rounded-3xl, 
-   top icon inside white/20 rounded-xl, 2-line bold text at bottom)
-   ------------------------------------------------------------------------- */
-
-interface QuickActionTileProps {
-  href: string;
-  line1: string;
-  line2?: string;
-  sub?: string;
-  icon: LucideIcon | "rupee";
-  gradient: string;
-}
-
-function QuickActionTile({ href, line1, line2, sub, icon: Icon, gradient }: QuickActionTileProps) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "group flex min-h-[142px] flex-col justify-between rounded-3xl p-3.5 text-white shadow-sm transition-all duration-200 active:scale-[0.98] hover:shadow-md hover:brightness-105",
-        gradient,
-      )}
-    >
-      <div className="flex size-10 items-center justify-center rounded-xl bg-white/20 transition-transform group-hover:scale-105">
-        {Icon === "rupee" ? (
-          <span className="text-lg font-black leading-none">&#8377;</span>
-        ) : (
-          <Icon className="size-5 text-white" strokeWidth={2.4} />
-        )}
-      </div>
-      <div>
-        <span className="text-sm font-black leading-tight block">
-          {line1}
-          {line2 ? (
-            <>
-              <br />
-              {line2}
-            </>
-          ) : null}
-        </span>
-        {sub && (
-          <span className="mt-1 block text-[11px] font-semibold text-white/80 truncate">
-            {sub}
-          </span>
-        )}
-      </div>
-    </Link>
-  );
-}
 
 /* =========================================================================
    1. SALES SCREEN (Exact Match to Image 2)
@@ -134,7 +81,7 @@ export async function SimpleSalesHome({ userId }: { userId: string }) {
       {/* Who to collect from: most overdue first. Tap the shop to take a payment, the phone to call. */}
       {collect.length > 0 && (
         <div className="flex flex-col gap-2">
-          <h2 className="px-1 text-base font-bold">Collect from</h2>
+          <HomeHeading>Collect from</HomeHeading>
           <RowCard>
             {collect.map((r) => (
               <CollectRow key={r.retailerId} row={r} />
@@ -171,354 +118,249 @@ function CollectRow({ row }: { row: { retailerId: string; name: string; phone: s
   );
 }
 
+/* Words for a count: "1 order to send", "3 orders to send". */
+const orderWord = (n: number, rest: string) => `${num(n)} ${n === 1 ? "order" : "orders"} ${rest}`;
+
 /* =========================================================================
-   2. LOGISTICS SCREEN
+   2. LOGISTICS HOME
    ========================================================================= */
 
-export async function SimpleLogisticsHome() {
-  const now = new Date();
-  const s = await getLogisticsHome(now);
+export async function SimpleLogisticsHome({ userId }: { userId: string }) {
+  const [s, cash] = await Promise.all([getLogisticsHome(), getMyCash(userId)]);
+  const toSend = s.ready + s.partly;
 
   return (
-    <div className="flex flex-col gap-5 font-sans pt-1">
-      {/* 4 Vibrant Portrait Action Cards (2x2 Grid) */}
+    <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3">
-        <QuickActionTile
-          href="/stock/purchase"
-          line1="Purchase"
-          sub="Purchase cement"
-          icon={Warehouse}
-          gradient="bg-gradient-to-br from-emerald-400 to-teal-500"
-        />
-
-        <QuickActionTile
-          href="/stock/transfer"
-          line1="Transfer"
-          line2="Stock"
-          sub="Transfer / Unload"
-          icon={Package}
-          gradient="bg-gradient-to-br from-sky-400 to-blue-500"
-        />
-
-        <QuickActionTile
-          href="/orders"
-          line1="Orders"
-          sub={`${s.ready} ready`}
-          icon={Truck}
-          gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
-        />
-
-        <QuickActionTile
-          href="/stock"
-          line1="Stock"
-          sub={`Godown - ${num(s.godown.bags)} bags`}
-          icon={Store}
-          gradient="bg-gradient-to-br from-violet-400 to-purple-500"
-        />
+        <ActionTile href="/dispatch" title="Send goods" icon={Truck} color="blue" />
+        <ActionTile href="/stock/purchase" title="New purchase" icon={PackagePlus} color="amber" />
+        <ActionTile href="/stock" title="Stock" icon={Package} color="violet" />
+        <ActionTile href="/trucks" title="Trucks" icon={Warehouse} color="slate" />
+        <ActionTile href="/receipts/new" title="Collect payment" icon={IndianRupee} color="green" />
+        <ActionTile href="/orders" title="Orders" icon={ClipboardList} color="rose" />
       </div>
 
-      {/* Stock on Wheels Section (All loaded trucks with full product details) */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-extrabold text-foreground">Stock on Wheels</h2>
-            <p className="text-xs text-muted-foreground">{s.trucks.length} trucks loaded</p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <RefreshButton className="size-7" />
-            <Link href="/trucks?tab=loaded" className="text-xs font-bold text-primary hover:underline">
-              View all
-            </Link>
-          </div>
-        </div>
-
-        {s.trucks.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {s.trucks.slice(0, 2).map((t) => (
-              <div
-                key={t.truck}
-                className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-base font-black tracking-tight text-foreground">{t.truck}</p>
-                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
-                      {num(t.bags)} bags
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Link
-                      href="/stock/transfer"
-                      className="inline-flex min-h-9 items-center justify-center rounded-xl border border-border bg-muted/60 px-3 py-1 text-xs font-bold text-foreground transition-all duration-150 hover:bg-muted active:scale-95"
-                    >
-                      Unload
-                    </Link>
-                    <Link
-                      href={`/dispatch?truck=${encodeURIComponent(t.truck)}`}
-                      className="inline-flex min-h-9 items-center justify-center rounded-xl bg-primary/10 px-3 py-1 text-xs font-bold text-primary transition-all duration-150 hover:bg-primary/20 active:scale-95"
-                    >
-                      Dispatch
-                    </Link>
-                  </div>
-                </div>
-
-                {/* Product Name with Bags list for this truck */}
-                <div className="divide-y divide-border/50 rounded-xl bg-muted/30 px-3 py-1">
-                  {t.products.map((p) => (
-                    <div
-                      key={p.name}
-                      className="flex items-center justify-between py-1.5 text-xs first:pt-1 last:pb-1"
-                    >
-                      <span className="font-semibold text-foreground">{p.name}</span>
-                      <span className="shrink-0 font-extrabold text-foreground">
-                        {num(p.bags)} bags
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {s.trucks.length > 2 && (
-              <Link
-                href="/trucks?tab=loaded"
-                className="flex items-center justify-center rounded-xl border border-dashed border-border py-2.5 text-xs font-bold text-primary hover:bg-muted/40"
-              >
-                View all ({s.trucks.length}) trucks &rarr;
-              </Link>
-            )}
-          </div>
-        ) : (
-          <div className="flex min-h-24 flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 p-4 text-center">
-            <Truck className="mb-1 size-6 text-muted-foreground/60" />
-            <p className="text-xs font-semibold text-muted-foreground">No loaded trucks on wheels</p>
-          </div>
+      <Waiting>
+        {toSend > 0 && <TodoRow href="/dispatch" icon={Truck} color="blue" title={orderWord(toSend, "to send")} />}
+        {s.trucks.length > 0 && (
+          <TodoRow
+            href="/trucks?tab=loaded"
+            icon={Warehouse}
+            color="slate"
+            title={s.trucks.length === 1 ? "1 truck is loaded" : `${num(s.trucks.length)} trucks are loaded`}
+          />
         )}
-      </div>
+        {cash.heldPaise > 0 && <TodoRow href="/wallet" icon={Wallet} color="green" title="Cash to hand over" value={money(cash.heldPaise)} />}
+      </Waiting>
     </div>
   );
 }
 
-export async function SimpleAccountsHome() {
-  const s = await getAccountsHome();
-
+/** The "Waiting for you" card. Shows nothing at all when no row is given. */
+function Waiting({ title = "Waiting for you", children }: { title?: string; children: React.ReactNode }) {
+  const rows = (Array.isArray(children) ? children : [children]).flat().filter(Boolean);
+  if (rows.length === 0) return null;
   return (
-    <div className="flex flex-col gap-5 font-sans pt-1">
-      {/* 4 Vibrant Portrait Action Cards (2x2 Grid) */}
-      <div className="grid grid-cols-2 gap-3">
-        <QuickActionTile
-          href="/approvals"
-          line1="Approve"
-          line2="Orders"
-          sub={s.approvals > 0 ? `${s.approvals} waiting` : "All clear"}
-          icon={BadgeCheck}
-          gradient="bg-gradient-to-br from-emerald-400 to-teal-500"
-        />
-
-        <QuickActionTile
-          href="/receipts/review"
-          line1="Verify"
-          line2="Online"
-          sub={s.unverifiedOnline > 0 ? `${s.unverifiedOnline} UPI waiting` : "All verified"}
-          icon={Receipt}
-          gradient="bg-gradient-to-br from-sky-400 to-blue-500"
-        />
-
-        <QuickActionTile
-          href="/wallet"
-          line1="Cash"
-          line2="Handover"
-          sub={s.handoversToConfirm > 0 ? `${s.handoversToConfirm} requests` : "No pending"}
-          icon={Wallet}
-          gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
-        />
-
-        <QuickActionTile
-          href="/ledger"
-          line1="Shop"
-          line2="Ledger"
-          sub="Accounts & dues"
-          icon={Store}
-          gradient="bg-gradient-to-br from-violet-400 to-purple-500"
-        />
-      </div>
-
-      {/* Orders Waiting Approval (Max 3 + View all) */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-extrabold text-foreground">Waiting Approval</h2>
-            <p className="text-xs text-muted-foreground">{s.approvals} orders waiting</p>
-          </div>
-          <Link href="/approvals" className="text-xs font-bold text-primary hover:underline">
-            View all
-          </Link>
-        </div>
-
-        {s.pendingOrders.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {s.pendingOrders.slice(0, 3).map((o) => (
-              <Link
-                key={o.id}
-                href="/approvals"
-                className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-all duration-150 hover:border-primary/40 active:scale-[0.99]"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-base font-extrabold text-foreground">{o.retailerName}</p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{o.retailerPlace}</p>
-                  <p className="mt-1 text-xs font-semibold text-foreground">
-                    {o.productName} &middot; {num(o.bags)} bags
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  {o.ratePaise != null && (
-                    <p className="text-sm font-extrabold text-foreground">
-                      {money(o.bags * o.ratePaise)}
-                    </p>
-                  )}
-                  <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                    Approve &rarr;
-                  </span>
-                </div>
-              </Link>
-            ))}
-            {s.pendingOrders.length > 3 && (
-              <Link
-                href="/approvals"
-                className="flex items-center justify-center rounded-xl border border-dashed border-border py-2 text-xs font-bold text-primary hover:bg-muted/40"
-              >
-                View all ({s.approvals}) orders &rarr;
-              </Link>
-            )}
-          </div>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No orders waiting approval
-          </div>
-        )}
-      </div>
+    <div className="flex flex-col gap-2">
+      <HomeHeading>{title}</HomeHeading>
+      <RowCard>{rows}</RowCard>
     </div>
   );
 }
 
 /* =========================================================================
-   3. RETAILER SCREEN
+   3. ACCOUNTS HOME
+   ========================================================================= */
+
+export async function SimpleAccountsHome() {
+  const [s, today] = await Promise.all([getAccountsHome(), getMoneyToday(homeWindows(new Date())).catch(() => null)]);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-3">
+        <ActionTile href="/approvals" title="Approve orders" icon={BadgeCheck} color="blue" />
+        <ActionTile href="/receipts" title="Payments" icon={Receipt} color="green" />
+        <ActionTile href="/wallet" title="Cash from staff" icon={Wallet} color="amber" />
+        <ActionTile href="/ledger" title="Shop dues" icon={Store} color="rose" />
+      </div>
+
+      <Waiting>
+        {s.approvals > 0 && <TodoRow href="/approvals" icon={BadgeCheck} color="blue" title={orderWord(s.approvals, "to approve")} />}
+        {s.unverifiedOnline > 0 && (
+          <TodoRow
+            href="/receipts/review"
+            icon={Receipt}
+            color="green"
+            title={s.unverifiedOnline === 1 ? "1 online payment to check" : `${num(s.unverifiedOnline)} online payments to check`}
+          />
+        )}
+        {s.handoversToConfirm > 0 && (
+          <TodoRow
+            href="/wallet"
+            icon={Wallet}
+            color="amber"
+            title={s.handoversToConfirm === 1 ? "1 cash handover to receive" : `${num(s.handoversToConfirm)} cash handovers to receive`}
+            value={money(s.cashToConfirmPaise)}
+          />
+        )}
+      </Waiting>
+
+      {today && (
+        <div className="flex flex-col gap-2">
+          <HomeHeading>Today</HomeHeading>
+          <div className="grid grid-cols-2 gap-3">
+            <HomeStat label="Collected" value={short(today.collectedPaise)} href="/receipts" />
+            <HomeStat label="Total dues" value={short(today.duesPaise)} href="/ledger" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   4. SHOP (RETAILER) HOME
    ========================================================================= */
 
 export async function SimpleRetailerHome({ userId }: { userId: string }) {
   const s = await getRetailerHome(userId);
-  if (!s) return <EmptyState title="No shop linked" />;
-
-  const isDue = s.balancePaise > 0;
+  if (!s) return <EmptyState title="No shop is linked to this login" />;
+  const owes = s.balancePaise > 0;
+  const repPhone = s.salesRep && /^\d{10}$/.test(s.salesRep.phone) ? s.salesRep.phone : null;
+  const o = s.lastOrder;
+  const left = o ? Math.max(o.bags - o.sentBags, 0) : 0;
 
   return (
-    <div className="flex flex-col gap-4 font-sans">
-      {/* Top Hero: Balance Card with Pay Online button */}
-      <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-xs">
-        <div className="flex items-start justify-between">
-          <div>
-            <span className="text-xs font-semibold text-muted-foreground">
-              {isDue ? "Outstanding Dues:" : "Advance Balance:"}
-            </span>
-            <p
-              className={cn(
-                "mt-0.5 text-3xl font-black tracking-tight",
-                isDue ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400",
-              )}
-            >
-              {money(Math.abs(s.balancePaise))}
-            </p>
-          </div>
-        </div>
+    <div className="flex flex-col gap-6">
+      {/* What the shop owes comes first: it is the one number they open the app for. */}
+      <Link href="/ledger" className="flex flex-col rounded-2xl bg-card px-4 py-3 shadow-card ring-1 ring-foreground/6 active:bg-muted">
+        <span className="text-sm text-muted-foreground">{owes ? "You have to pay" : s.balancePaise < 0 ? "Paid in advance" : "Nothing to pay"}</span>
+        {s.balancePaise !== 0 && <span className="tabular text-3xl leading-tight font-bold">{money(Math.abs(s.balancePaise))}</span>}
+      </Link>
 
-        {/* Payments Summary */}
-        <div className="mt-3.5 flex items-center justify-between border-t border-border/50 pt-3 text-xs text-muted-foreground">
-          <span>Open Orders: <strong className="text-foreground">{s.openOrders} orders</strong></span>
-          {s.lastPayment && (
-            <span>Last Payment: <strong className="text-emerald-600 dark:text-emerald-400">{money(s.lastPayment.totalPaise)}</strong></span>
-          )}
-        </div>
+      <div className="grid grid-cols-2 gap-3">
+        <ActionTile href="/orders/new" title="New order" icon={ShoppingCart} color="blue" />
+        <ActionTile href="/orders" title="My orders" icon={ClipboardList} color="violet" />
+        <ActionTile href="/ledger" title="My account" icon={Store} color="rose" />
+        {repPhone && <ActionTile href={`tel:+91${repPhone}`} title="Call sales person" icon={Phone} color="green" />}
       </div>
 
-      {/* Quick Actions (3 Vibrant Portrait Cards in a row) */}
-      <div>
-        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Quick Actions</h2>
-        <div className="grid grid-cols-3 gap-2.5">
-          <QuickActionTile
-            href="/orders/new"
-            line1="Order"
-            line2="Cement"
-            sub="PPC / OPC"
-            icon={ShoppingCart}
-            gradient="bg-gradient-to-b from-blue-600 to-indigo-700"
-          />
-
-          <QuickActionTile
-            href="/orders?show=open"
-            line1="Track"
-            line2="Delivery"
-            sub={`${s.openOrders} active`}
-            icon={Truck}
-            gradient="bg-gradient-to-b from-emerald-500 to-emerald-600"
-          />
-
-          <QuickActionTile
-            href="/ledger"
-            line1="My"
-            line2="Ledger"
-            sub="Statement & Bills"
-            icon={Store}
-            gradient="bg-gradient-to-b from-blue-600 to-blue-700"
-          />
+      {o && (
+        <div className="flex flex-col gap-2">
+          <HomeHeading>Your last order</HomeHeading>
+          <RowCard>
+            <Link href={`/orders/${o.id}`} className="flex min-h-16 items-center gap-3 px-4 py-2 active:bg-muted">
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-base font-semibold">
+                  {num(o.bags)} bags {o.productName}
+                </span>
+                {o.sentBags > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {num(o.sentBags)} sent{left > 0 ? `, ${num(left)} to come` : ""}
+                  </span>
+                )}
+              </span>
+              {isOrderStatus(o.status) && <StatusChip status={o.status} />}
+              <ChevronRight aria-hidden className="size-5 shrink-0 text-muted-foreground/60" />
+            </Link>
+          </RowCard>
         </div>
-      </div>
-
-      {/* Orders Status Feed */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">Active Deliveries</h2>
-          <Link href="/orders?show=open" className="text-xs font-bold text-primary hover:underline">
-            View All ({s.openOrders})
-          </Link>
-        </div>
-
-        {s.openOrders > 0 ? (
-          <Link
-            href="/orders?show=open"
-            className="flex items-center justify-between rounded-2xl border border-border/80 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40"
-          >
-            <div>
-              <p className="text-sm font-bold text-foreground">Order In Progress</p>
-              <p className="text-xs text-muted-foreground">Truck dispatched / out for delivery</p>
-            </div>
-            <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-              Active
-            </span>
-          </Link>
-        ) : (
-          <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-xs font-medium text-muted-foreground">
-            No active orders right now
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
 
 /* =========================================================================
-   5. ADMIN / OWNER SCREEN (Detailed Accounts, Master Management & Operations)
+   5. OWNER HOME: today's numbers, what needs attention, then the daily screens.
+   The detail (month, risk, top overdue, cash with staff, suppliers) is on /business.
    ========================================================================= */
 
 export async function SimpleAdminHome() {
   const now = new Date();
   const w = homeWindows(now);
+  const [today, risk, cashStaff, todo] = await Promise.all([
+    getOwnerToday(w).catch(() => null),
+    getOwnerRisk(w, now).catch(() => null),
+    getCashWithStaff(now).catch(() => null),
+    getAdminHome().catch(() => null),
+  ]);
+  const dash = "\u2014";
+  const staffCash = cashStaff ? cashStaff.reduce((acc, p) => acc + p.heldPaise, 0) : null;
 
-  const [today, month, risk, cashStaff, suppliersList, adminHome, topOverdue] = await Promise.all([
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <HomeHeading>Today</HomeHeading>
+        <div className="grid grid-cols-2 gap-3">
+          <HomeStat label="Sold" value={today ? `${num(today.bags)} bags` : dash} href="/reports" />
+          <HomeStat label="Collected" value={today ? short(today.collected.totalPaise) : dash} href="/receipts" />
+          <HomeStat label="Total dues" value={risk ? short(risk.outstandingPaise) : dash} href="/ledger" />
+          <HomeStat label="Cash with staff" value={staffCash === null ? dash : short(staffCash)} href="/wallet" />
+        </div>
+      </div>
+
+      <Waiting title="Needs your attention">
+        {todo && todo.approvals > 0 && <TodoRow href="/approvals" icon={BadgeCheck} color="blue" title={orderWord(todo.approvals, "to approve")} />}
+        {todo && todo.toDispatch > 0 && <TodoRow href="/dispatch" icon={Truck} color="blue" title={orderWord(todo.toDispatch, "to send")} />}
+        {todo && todo.unverifiedOnline > 0 && (
+          <TodoRow
+            href="/receipts/review"
+            icon={Receipt}
+            color="green"
+            title={todo.unverifiedOnline === 1 ? "1 online payment to check" : `${num(todo.unverifiedOnline)} online payments to check`}
+          />
+        )}
+        {risk && risk.overdueShops > 0 && (
+          <TodoRow
+            href="/ledger"
+            icon={TriangleAlert}
+            color="rose"
+            title={risk.overdueShops === 1 ? "1 shop is late paying" : `${num(risk.overdueShops)} shops are late paying`}
+            value={short(risk.overduePaise)}
+          />
+        )}
+        {todo && todo.shopsWithoutSalesRep > 0 && (
+          <TodoRow
+            href={`/retailers?filter=${NO_REP_FILTER}`}
+            icon={Users}
+            color="amber"
+            title={todo.shopsWithoutSalesRep === 1 ? "1 shop has no sales person" : `${num(todo.shopsWithoutSalesRep)} shops have no sales person`}
+          />
+        )}
+        {risk && risk.noLimitShops > 0 && (
+          <TodoRow
+            href={`/retailers?filter=${NO_LIMIT_FILTER}`}
+            icon={Store}
+            color="amber"
+            title={risk.noLimitShops === 1 ? "1 shop has no credit limit" : `${num(risk.noLimitShops)} shops have no credit limit`}
+          />
+        )}
+      </Waiting>
+
+      <div className="grid grid-cols-2 gap-3">
+        <ActionTile href="/business" title="Business overview" icon={TrendingUp} color="blue" />
+        <ActionTile href="/orders" title="Orders" icon={ClipboardList} color="violet" />
+        <ActionTile href="/retailers" title="Shops" icon={Store} color="rose" />
+        <ActionTile href="/trucks" title="Trucks" icon={Truck} color="slate" />
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   6. BUSINESS OVERVIEW (owner only, /business): month, accounts, risk, overdue, staff cash, suppliers
+   ========================================================================= */
+
+export async function BusinessOverview() {
+  const now = new Date();
+  const w = homeWindows(now);
+
+  const [today, month, risk, cashStaff, suppliersList, topOverdue] = await Promise.all([
     getOwnerToday(w).catch(() => null),
     getOwnerMonth(w).catch(() => null),
     getOwnerRisk(w, now).catch(() => null),
     getCashWithStaff(now).catch(() => []),
     getSuppliers().catch(() => []),
-    getAdminHome().catch(() => null),
     getTopOverdue(w).catch(() => []),
   ]);
 
@@ -544,11 +386,6 @@ export async function SimpleAdminHome() {
   const totalSupplierPayable = suppliersList.reduce((acc, s) => acc + s.balancePaise, 0);
   const topSupplier = suppliersList[0];
 
-  const pendingApprovals = adminHome?.approvals ?? 0;
-  const pendingDispatch = adminHome?.toDispatch ?? 0;
-  const pendingOnline = adminHome?.unverifiedOnline ?? 0;
-  const unassignedShops = adminHome?.shopsWithoutSalesRep ?? 0;
-  const totalPendingWork = pendingApprovals + pendingDispatch + pendingOnline + unassignedShops;
 
   return (
     <div className="flex flex-col gap-5 font-sans">
@@ -681,9 +518,7 @@ export async function SimpleAdminHome() {
               <span className="mt-2 text-base font-black tracking-tight text-foreground">
                 {money(month?.collected.onlinePaise ?? 0)}
               </span>
-              <span className="mt-0.5 text-[11px] font-medium text-muted-foreground truncate">
-                {pendingOnline > 0 ? `${pendingOnline} to verify` : "Month online"}
-              </span>
+              <span className="mt-0.5 text-[11px] font-medium text-muted-foreground truncate">This month, online</span>
             </Link>
           </div>
         </div>
@@ -706,125 +541,6 @@ export async function SimpleAdminHome() {
               </span>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* 2. PENDING TO-DO & ACTION QUEUE (Approvals, Dispatch, Verification) */}
-      {totalPendingWork > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-              Needs Attention ({totalPendingWork})
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {pendingApprovals > 0 && (
-              <Link
-                href="/approvals"
-                className="flex items-center justify-between rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 transition-colors hover:bg-amber-500/15"
-              >
-                <div>
-                  <span className="text-xs font-black text-amber-800 dark:text-amber-300">Approvals</span>
-                  <p className="text-[11px] text-muted-foreground">Credit &amp; rates</p>
-                </div>
-                <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-black text-amber-950">
-                  {pendingApprovals}
-                </span>
-              </Link>
-            )}
-
-            {pendingDispatch > 0 && (
-              <Link
-                href="/dispatch"
-                className="flex items-center justify-between rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3 transition-colors hover:bg-blue-500/15"
-              >
-                <div>
-                  <span className="text-xs font-black text-blue-800 dark:text-blue-300">Dispatch</span>
-                  <p className="text-[11px] text-muted-foreground">Orders to send</p>
-                </div>
-                <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-black text-white">
-                  {pendingDispatch}
-                </span>
-              </Link>
-            )}
-
-            {pendingOnline > 0 && (
-              <Link
-                href="/receipts/review"
-                className="flex items-center justify-between rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-3 transition-colors hover:bg-indigo-500/15"
-              >
-                <div>
-                  <span className="text-xs font-black text-indigo-800 dark:text-indigo-300">Verify UPI</span>
-                  <p className="text-[11px] text-muted-foreground">Online receipts</p>
-                </div>
-                <span className="rounded-full bg-indigo-500 px-2 py-0.5 text-xs font-black text-white">
-                  {pendingOnline}
-                </span>
-              </Link>
-            )}
-
-            {unassignedShops > 0 && (
-              <Link
-                href={`/retailers?filter=${NO_REP_FILTER}`}
-                className="flex items-center justify-between rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 transition-colors hover:bg-rose-500/15"
-              >
-                <div>
-                  <span className="text-xs font-black text-rose-800 dark:text-rose-300">Unassigned</span>
-                  <p className="text-[11px] text-muted-foreground">No sales rep</p>
-                </div>
-                <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-black text-white">
-                  {unassignedShops}
-                </span>
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3. QUICK ACTIONS (Reports-focused 2x2 Grid) */}
-      <div>
-        <div className="mb-2.5 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-foreground">Quick Actions</h2>
-          <Link href="/stock/purchase" className="text-xs font-bold text-primary hover:underline">
-            + Record Purchase
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <QuickActionTile
-            href={`/reports/purchases?from=${w.today}&to=${w.today}`}
-            line1="Purchase"
-            line2="Report"
-            sub={todayPurchaseBags > 0 ? `${short(todayPurchasePaise)} \u00b7 ${num(todayPurchaseBags)} bags` : "Truck journey & CSV"}
-            icon={PackagePlus}
-            gradient="bg-gradient-to-br from-blue-600 to-indigo-700"
-          />
-
-          <QuickActionTile
-            href={`/reports/sales?from=${w.today}&to=${w.today}`}
-            line1="Dispatch"
-            line2="Report"
-            sub={bags > 0 ? `${short(salesPaise)} \u00b7 ${num(bags)} bags` : "Register & CSV"}
-            icon={Truck}
-            gradient="bg-gradient-to-br from-sky-600 to-blue-700"
-          />
-
-          <QuickActionTile
-            href="/retailers"
-            line1="Shops &"
-            line2="Credit"
-            sub={`${short(marketDues)} due`}
-            icon={Store}
-            gradient="bg-gradient-to-br from-blue-600 to-blue-700"
-          />
-
-          <QuickActionTile
-            href="/reports"
-            line1="All Reports"
-            line2="& CSV"
-            sub="Profit, Stock & Dues"
-            icon={FileSpreadsheet}
-            gradient="bg-gradient-to-br from-emerald-600 to-emerald-700"
-          />
         </div>
       </div>
 
@@ -1014,90 +730,6 @@ export async function SimpleAdminHome() {
           </div>
         </div>
       )}
-
-      {/* 8. MASTER MANAGEMENT & SETTINGS (6 Touch-Friendly Control Cards) */}
-      <div>
-        <h2 className="mb-2.5 text-sm font-extrabold text-foreground">Master Management &amp; Settings</h2>
-        <div className="grid grid-cols-2 gap-2.5">
-          <Link
-            href="/users"
-            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
-          >
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Users className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black text-foreground">Staff &amp; Users</p>
-              <p className="text-[11px] text-muted-foreground truncate">Roles &amp; Logins</p>
-            </div>
-          </Link>
-
-          <Link
-            href="/trucks"
-            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
-          >
-            <div className="flex size-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
-              <Truck className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black text-foreground">Transport Fleet</p>
-              <p className="text-[11px] text-muted-foreground truncate">Trucks &amp; Drivers</p>
-            </div>
-          </Link>
-
-          <Link
-            href="/godowns"
-            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
-          >
-            <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Warehouse className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black text-foreground">Godowns</p>
-              <p className="text-[11px] text-muted-foreground truncate">Warehouses &amp; Stock</p>
-            </div>
-          </Link>
-
-          <Link
-            href="/catalogue"
-            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
-          >
-            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <Package className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black text-foreground">Catalogue &amp; Rates</p>
-              <p className="text-[11px] text-muted-foreground truncate">PPC, OPC &amp; Bags</p>
-            </div>
-          </Link>
-
-          <Link
-            href="/bank-accounts"
-            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
-          >
-            <div className="flex size-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-              <Receipt className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black text-foreground">Bank &amp; QR</p>
-              <p className="text-[11px] text-muted-foreground truncate">UPI &amp; Accounts</p>
-            </div>
-          </Link>
-
-          <Link
-            href="/activity"
-            className="flex items-center gap-3 rounded-2xl border border-border/80 bg-card p-3.5 shadow-xs transition-all hover:bg-muted/40 hover:border-primary/30"
-          >
-            <div className="flex size-10 items-center justify-center rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-400">
-              <History className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-black text-foreground">Audit Trail</p>
-              <p className="text-[11px] text-muted-foreground truncate">Activity &amp; Changes</p>
-            </div>
-          </Link>
-        </div>
-      </div>
     </div>
   );
 }

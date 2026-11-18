@@ -5,8 +5,10 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 
 ## Screen
 - Phone first. Design at 390px wide. One column, `max-w-md`, centred on bigger screens.
-- Bottom nav: 4 tabs at most. Frame is `AppShell`.
-- Every screen starts with `PageHeader`, except Home (the app header is its title). Sub-screens pass `back` (the parent screen's href); there is no other way-back link. A screen listed in More goes back to More (`backFromMore` in `nav-rules.ts`), Notifications to Home; a bottom-tab screen has no arrow.
+- Bottom bar: two items only, Home and More, for every role (owner decision, 18 Nov 2026). Frame is `AppShell`.
+- Every screen starts with `PageHeader`, except Home (the app header is its title). Every screen except Home and More passes `back`. A list screen the role opens from a Home button goes back to Home, any other screen in More goes back to More (`backFor` in `nav-rules.ts`), Notifications to Home.
+- Home (owner decisions, 17 and 18 Nov 2026; these replace the older "calm white cards" rule): every daily job of the role is a big coloured `ActionTile` on Home, never only in More. One colour per job, the same for every role. Then a "Waiting for you" `RowCard` of `TodoRow`s, each shown only while there is something to do. Everything on Home must have a purpose: no decoration, no shortcuts to settings. The owner sees today's numbers (`HomeStat`) first; the detail is on `/business`.
+- Design first: show the owner 3 or 4 picture options and let them pick before building a screen.
 - One primary button per screen, in `PinnedAction`. Tap targets are 48px or more (`Button` default is 48px, `lg` 56px).
 - Inputs are 48px high with 16px text (stops iOS zoom).
 - **Every tap target is 48px or more**: buttons, drop-downs, chips, text links (`TextLink`), phone links, checkboxes.
@@ -58,7 +60,7 @@ Demo of every component: run `pnpm dev`, open `/design` (development only).
 - Reduced-motion users get no animation (handled globally).
 
 ## Components (`src/components/app/`)
-`AppShell`, `BottomNav`, `PageHeader` (screen title, 48px row, optional `back` chevron and right `action`), `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`),
+`AppShell`, `BottomNav`, `ActionTile` / `TodoRow` / `RowCard` / `HomeHeading` / `HomeStat` (Home screens), `PageHeader` (screen title, 48px row, optional `back` chevron and right `action`), `PinnedAction`, `ListCard` (`icon`, `featured`), `IconTile`, `StatusChip`, `Stat`, `Sheet`, `Keypad`, `Skeleton` / `ListSkeleton`, `EmptyState` (`icon`, `tone`),
 `RangeForm` / `FilterSelect` (date range and filters as a plain GET form), `DataTable` (compact numbers table that scrolls
 sideways inside its own box, never the page; `stacked` turns each row into a small card for tables with many number
 columns), `FilterTabs` (filter pills that are links, the pick lives in the address: `/orders?show=rate`, so Home can link to it),
