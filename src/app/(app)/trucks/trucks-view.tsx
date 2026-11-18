@@ -252,15 +252,15 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
   return (
     <div className={cn("flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/6", !r.active && "opacity-75")}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-base font-extrabold tracking-wide">{r.number}</span>
+        <Link href={`/trucks/${r.id}`} className="group flex items-center gap-2 hover:opacity-80">
+          <span className="text-base font-extrabold tracking-wide group-hover:underline">{r.number}</span>
           {r.active && r.bags > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               Active
             </span>
           )}
-        </div>
+        </Link>
         {r.active ? (
           <span className="tabular text-xs font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">
             {bagsText(r.bags)}
@@ -271,7 +271,9 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
       </div>
 
       {/* Visual Animated Truck Bed Graphic */}
-      <SimpleTruckGraphic bags={r.bags} products={r.products} />
+      <Link href={`/trucks/${r.id}`} className="block transition-transform active:scale-[0.99]">
+        <SimpleTruckGraphic bags={r.bags} products={r.products} />
+      </Link>
 
       {/* Product breakdown with name and quantity */}
       {r.products && r.products.length > 0 && (
@@ -300,6 +302,18 @@ function TruckCard({ truck: r, onEdit }: { truck: TruckRow; onEdit: () => void }
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {/* Track Live Journey Link */}
+      <Link
+        href={`/trucks/${r.id}`}
+        className="flex items-center justify-between rounded-xl bg-primary/8 px-3 py-2 text-xs font-bold text-primary transition-all hover:bg-primary/15 active:scale-[0.99]"
+      >
+        <span className="flex items-center gap-1.5">
+          <Truck className="size-3.5" />
+          Track Live Journey
+        </span>
+        <ChevronRight className="size-4" />
+      </Link>
 
       {/* 1-Tap Operational Action Buttons */}
       {r.bags > 0 && (

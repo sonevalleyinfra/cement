@@ -14,13 +14,13 @@ describe("navFor", () => {
     expect(thirdTab("accounts,logistics").href).toBe("/receipts");
     expect(thirdTab("sales,accounts").href).toBe("/retailers");
   });
-  it("includes Ledger only for roles with viewLedger permission", () => {
+  it("includes Ledger or Trucks for staff with relevant permissions", () => {
     // logistics, sales, and accounts now have bottom nav tabs:
-    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/more"]);
+    expect(navFor("logistics").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/stock", "/trucks", "/more"]);
     expect(navFor("sales").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/ledger", "/more"]);
-    expect(navFor("accounts").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/receipts", "/ledger", "/more"]);
-    // roles with viewLedger permission and bottom nav:
-    expect(navFor("admin").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/ledger", "/more"]);
+    expect(navFor("accounts").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/receipts", "/trucks", "/more"]);
+    // roles with viewLedger / dispatch permission and bottom nav:
+    expect(navFor("admin").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/retailers", "/trucks", "/more"]);
     expect(navFor("retailer").map((n) => n.href)).toEqual(["/dashboard", "/orders", "/ledger", "/more"]);
   });
 });

@@ -1,6 +1,6 @@
-import { and, asc, eq, gt, gte, isNotNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNotNull, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { dispatches, products, stockMovements, vehicles } from "@/db/schema";
+import { dispatches, godowns, orders, products, purchases, retailers, stockMovements, vehicles } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { canSwitchOffTruck, truckSaveDecision } from "@/lib/truck-rules";
@@ -299,4 +299,175 @@ export async function switchTruck(id: string, active: boolean, actorId: string):
     });
     return { ok: true, id };
   });
+}
+
+export type TruckJourneyEvent = {
+  id: string;
+  type: "purchase" | "dispatch" | "transfer" | "return";
+  title: string;
+  subtitle: string;
+  bags: number;
+  date: Date;
+  details?: {
+    orderId?: string | null;
+    retailerName?: string | null;
+    retailerPlace?: string | null;
+    godownName?: string | null;
+    invoiceNo?: string | null;
+    ratePaise?: number | null;
+    trackingId?: string | null;
+  };
+};
+
+export type TruckJourney = {
+  vehicle: TruckRow;
+  latestPurchase?: {
+    invoiceNo: string;
+    invoiceDate: string;
+    billedBags: number;
+    driverName: string;
+    driverPhone: string;
+    trackingId: string;
+    createdAt: Date;
+  } | null;
+  events: TruckJourneyEvent[];
+  totalDispatchedBags: number;
+  totalTransferredBags: number;
+};
+
+/** Fetches full live Amazon/Flipkart-style journey and dispatches for a specific truck. Server-only. */
+export async function getTruckJourney(vehicleId: string): Promise<TruckJourney | null> {
+  const [v] = await db
+    .select({
+      id: vehicles.id,
+      number: vehicles.number,
+      driverName: vehicles.driverName,
+      driverPhone: vehicles.driverPhone,
+      active: vehicles.active,
+    })
+    .from(vehicles)
+    .where(eq(vehicles.id, vehicleId));
+
+  if (!v) return null;
+
+  const [productRows, [latestPurchase], dispatchRows, transferRows] = await Promise.all([
+    db
+      .select({
+        productId: stockMovements.productId,
+        name: products.name,
+        bags: sql<number>`coalesce(sum(${stockMovements.bags}), 0)`.mapWith(Number),
+      })
+      .from(stockMovements)
+      .innerJoin(products, eq(products.id, stockMovements.productId))
+      .where(eq(stockMovements.vehicleId, vehicleId))
+      .groupBy(stockMovements.productId, products.name),
+    db
+      .select({
+        invoiceNo: purchases.invoiceNo,
+        invoiceDate: purchases.invoiceDate,
+        billedBags: purchases.billedBags,
+        driverName: purchases.driverName,
+        driverPhone: purchases.driverPhone,
+        trackingId: purchases.trackingId,
+        createdAt: purchases.createdAt,
+      })
+      .from(purchases)
+      .where(eq(purchases.truckNumber, v.number))
+      .orderBy(desc(purchases.createdAt))
+      .limit(1),
+    db
+      .select({
+        id: dispatches.id,
+        orderId: dispatches.orderId,
+        bags: dispatches.bags,
+        ratePaise: dispatches.ratePaise,
+        createdAt: dispatches.createdAt,
+        retailerName: retailers.name,
+        retailerPlace: retailers.place,
+        trackingId: dispatches.trackingId,
+      })
+      .from(dispatches)
+      .leftJoin(orders, eq(dispatches.orderId, orders.id))
+      .leftJoin(retailers, eq(orders.retailerId, retailers.id))
+      .where(or(eq(dispatches.vehicleId, v.id), eq(dispatches.fromVehicleId, v.id)))
+      .orderBy(desc(dispatches.createdAt)),
+    db
+      .select({
+        id: stockMovements.id,
+        type: stockMovements.type,
+        bags: stockMovements.bags,
+        createdAt: stockMovements.createdAt,
+        godownName: godowns.name,
+        productName: products.name,
+      })
+      .from(stockMovements)
+      .innerJoin(products, eq(products.id, stockMovements.productId))
+      .leftJoin(godowns, eq(stockMovements.godownId, godowns.id))
+      .where(and(eq(stockMovements.vehicleId, v.id), eq(stockMovements.type, "transfer")))
+      .orderBy(desc(stockMovements.createdAt)),
+  ]);
+
+  const loadedProducts = productRows
+    .filter((p) => p.bags > 0)
+    .sort((a, b) => b.bags - a.bags || a.name.localeCompare(b.name));
+  const currentBags = productRows.reduce((sum, p) => sum + Math.max(0, p.bags), 0);
+
+  const vehicleRow: TruckRow = {
+    ...v,
+    driverName: v.driverName || latestPurchase?.driverName || "",
+    driverPhone: v.driverPhone || latestPurchase?.driverPhone || "",
+    bags: currentBags,
+    products: loadedProducts,
+  };
+
+  const events: TruckJourneyEvent[] = [];
+
+  // Add dispatches
+  for (const d of dispatchRows) {
+    events.push({
+      id: d.id,
+      type: "dispatch",
+      title: `Dispatched to ${d.retailerName || "Retailer"}`,
+      subtitle: `${d.retailerPlace ? d.retailerPlace + " · " : ""}${d.bags} Bags Delivered · Order #${d.trackingId || ""}`,
+      bags: d.bags,
+      date: d.createdAt,
+      details: {
+        orderId: d.orderId,
+        retailerName: d.retailerName,
+        retailerPlace: d.retailerPlace,
+        ratePaise: d.ratePaise,
+        trackingId: d.trackingId,
+      },
+    });
+  }
+
+  // Add transfers
+  for (const t of transferRows) {
+    const isOut = t.bags < 0;
+    events.push({
+      id: t.id,
+      type: "transfer",
+      title: isOut ? `Unloaded to ${t.godownName || "Godown"}` : `Loaded from ${t.godownName || "Godown"}`,
+      subtitle: `${Math.abs(t.bags)} Bags · ${t.productName}`,
+      bags: Math.abs(t.bags),
+      date: t.createdAt,
+      details: {
+        godownName: t.godownName,
+      },
+    });
+  }
+
+  // Sort events chronologically descending
+  events.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  const totalDispatchedBags = dispatchRows.reduce((sum, d) => sum + d.bags, 0);
+  const totalTransferredBags = transferRows.reduce((sum, t) => (t.bags < 0 ? sum + Math.abs(t.bags) : sum), 0);
+
+  return {
+    vehicle: vehicleRow,
+    latestPurchase: latestPurchase || null,
+    events,
+    totalDispatchedBags,
+    totalTransferredBags,
+  };
 }

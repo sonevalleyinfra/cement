@@ -23,7 +23,9 @@ export function navFor(role: string | null | undefined): NavItem[] {
     { href: "/orders", label: "Orders", icon: "orders" },
     third,
   ];
-  if (third.href !== "/ledger" && can(role, "viewLedger")) {
+  if (isAdmin(role) || hasRole(role, "logistics") || hasRole(role, "accounts")) {
+    items.push({ href: "/trucks", label: "Trucks", icon: "vehicles" });
+  } else if (third.href !== "/ledger" && can(role, "viewLedger")) {
     items.push({ href: "/ledger", label: "Ledger", icon: "money" });
   }
   items.push({ href: "/more", label: "More", icon: "more" });
